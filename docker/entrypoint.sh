@@ -81,7 +81,12 @@ fi
 IWADS="doom2f.wad doom2.wad plutonia.wad tnt.wad doomu.wad doom.wad doom1.wad"
 LINKDIR="$STATE/.iwads"
 
-[ -d "$WADDIR" ] || die "WAD directory '$WADDIR' does not exist. Mount one with -v /path/to/wads:$WADDIR:ro"
+# The bundled shareware IWAD, used only when nothing was mounted.
+BUNDLED_WAD="${DOOM_BUNDLED_WAD:-/usr/share/doom/doom1.wad}"
+BUNDLED_MD5="f0cefca49926d00903cf57551d901abe"
+
+# Not fatal any more: without a mount there is still the shareware WAD.
+[ -d "$WADDIR" ] || log "no WAD directory at $WADDIR"
 
 rm -rf "$LINKDIR"
 mkdir -p "$LINKDIR"
@@ -96,8 +101,27 @@ for want in $IWADS; do
     fi
 done
 
+if [ -z "$found" ] && [ -r "$BUNDLED_WAD" ]; then
+    # Check the bundled file really is the shareware IWAD before trusting it.
+    # A truncated or substituted copy would otherwise fail much later, inside
+    # the engine, with something far less obvious than this.
+    actual_md5=$(md5sum "$BUNDLED_WAD" 2>/dev/null | cut -d' ' -f1)
+
+    if [ "$actual_md5" != "$BUNDLED_MD5" ]; then
+        log "bundled shareware WAD is not the file it should be"
+        log "    expected md5 $BUNDLED_MD5"
+        log "    got          ${actual_md5:-unreadable}"
+    else
+        ln -sf "$BUNDLED_WAD" "$LINKDIR/doom1.wad"
+        found=" doom1.wad"
+        log "no IWAD mounted; using the bundled shareware DOOM1.WAD (episode 1)"
+        log "mount your own at $WADDIR to play the full game:"
+        log "    docker run --rm -p $WEB_PORT:$WEB_PORT -v \"\$PWD/wads:$WADDIR:ro\" doom"
+    fi
+fi
+
 if [ -z "$found" ]; then
-    log "no IWAD found in $WADDIR"
+    log "no IWAD found in $WADDIR and no usable bundled copy"
     log "the engine recognises these names (any capitalisation):"
     for want in $IWADS; do log "    $want"; done
     log "mount a directory containing one, e.g.:"
@@ -107,9 +131,15 @@ fi
 
 export DOOMWADDIR="$LINKDIR"
 
-# The in-game WAD menu scans this instead, so it lists what the user
-# actually mounted rather than the lowercase symlinks above.
-export DOOM_WADPATH="$WADDIR"
+# The in-game WAD menu scans this instead, so it lists what the user actually
+# mounted rather than the lowercase symlinks above. With nothing mounted there
+# is no such directory, so point it at the links, where the bundled shareware
+# WAD is the one entry.
+if [ -d "$WADDIR" ]; then
+    export DOOM_WADPATH="$WADDIR"
+else
+    export DOOM_WADPATH="$LINKDIR"
+fi
 
 ##############################################################################
 # Sound.

@@ -9,6 +9,12 @@ The version follows the engine this is built from, linuxdoom-1.10.
 ## [Unreleased]
 
 ### Added
+- The shareware IWAD ships in the image, so the container plays with nothing
+  mounted — `docker run -p 6080:6080 ghcr.io/krippler/doom` is now the whole
+  of it. Episode 1, nine levels, id's file under their shareware terms. A
+  mounted IWAD still takes precedence, the entrypoint verifies the bundled
+  file's checksum before using it, and commercial game data is still yours to
+  supply. Adds 6 MB to the image.
 - `play.html`, a browser client that captures the mouse. noVNC is a remote
   desktop client and reports where the pointer *is*; a game needs to know how
   far it *moved*. This page locks the pointer instead and sends movement, so

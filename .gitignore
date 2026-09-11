@@ -8,6 +8,10 @@ sndserv/linux/
 *.WAD
 wads/
 
+# ...except the shareware IWAD, which id distributes freely and which
+# ships in the image so the game runs with nothing mounted.
+!shareware/doom1.wad
+
 # Runtime artefacts
 doomsav*.dsg
 DOOM*.pcx

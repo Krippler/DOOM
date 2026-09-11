@@ -6,7 +6,7 @@ host beyond Docker — no X server and no display. Sound is optional and needs
 only a shared audio socket; see below.
 
 ```
-docker run --rm -p 6080:6080 -v "$PWD/wads:/wads:ro" ghcr.io/krippler/doom
+docker run --rm -p 6080:6080 ghcr.io/krippler/doom
 ```
 
 Or build it yourself, which is what the rest of this page assumes when it
@@ -28,10 +28,14 @@ docker compose up --build
 
 ## Game data
 
-The source release contains no game data, so you have to supply an IWAD. Put
-one in the directory you mount at `/wads`. The engine recognises these names,
-and the container matches them case-insensitively, so `DOOM1.WAD` works as
-well as `doom1.wad`:
+The shareware IWAD is in the image — episode 1, nine levels — so the container
+plays out of the box with nothing mounted. It is id's file, distributed under
+their shareware terms, and the entrypoint checks its checksum before using it.
+
+To play anything else, mount a directory at `/wads` containing your own IWAD.
+A mounted IWAD always wins over the bundled one. The engine recognises these
+names, and the container matches them case-insensitively, so `DOOM1.WAD` works
+as well as `doom1.wad`:
 
 | File | Game |
 | --- | --- |
@@ -47,8 +51,8 @@ The freely redistributable shareware `DOOM1.WAD` is the easiest way to try
 this; it ships with any copy of shareware Doom. Commercial IWADs come from
 your own copy of the game.
 
-If no IWAD is found the container stops immediately and lists what it looked
-for.
+If no IWAD is mounted the container falls back to the bundled shareware file
+and says so. It stops only if that is missing or fails its checksum too.
 
 Mods (PWADs) go in the same directory. They are not matched against the table
 above; anything ending in `.wad` shows up in the in-game WAD menu below.
@@ -143,6 +147,7 @@ Everything is set through the environment:
 | --- | --- | --- |
 | `DOOM_SCALE` | `2` | Pixel scale, 1–4. The window is 320×200 times this. |
 | `DOOM_WADDIR` | `/wads` | Where to look for IWADs. |
+| `DOOM_BUNDLED_WAD` | `/usr/share/doom/doom1.wad` | Shareware IWAD used when nothing is mounted. |
 | `DOOM_STATE` | `/doom/state` | Config file, savegames and logs. |
 | `DOOM_WEB_PORT` | `6080` | noVNC HTTP port. |
 | `DOOM_VNC_PORT` | `5900` | VNC port. |

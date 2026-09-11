@@ -5,15 +5,19 @@ a current 64-bit Linux, given the sound and music the original left unfinished,
 and packaged as a container you play in a browser.
 
 ```
-docker run --rm -p 6080:6080 -v "$PWD/wads:/wads:ro" ghcr.io/krippler/doom
+docker run --rm -p 6080:6080 ghcr.io/krippler/doom
 ```
 
 Then open **<http://localhost:6080/play.html>** and click to play.
 
-Nothing is installed on the host — no X server, no display, no audio setup.
-**Game data is not included**: put an IWAD in the directory you mount at
-`/wads`. The freely redistributable shareware `DOOM1.WAD` is enough to play
-episode one.
+Nothing is installed on the host — no X server, no display, no audio setup,
+and no game data to find: the shareware IWAD is in the image, so that command
+is the whole of it. To play the full game, mount your own IWAD and it takes
+precedence:
+
+```
+docker run --rm -p 6080:6080 -v "$PWD/wads:/wads:ro" ghcr.io/krippler/doom
+```
 
 ---
 
@@ -75,8 +79,8 @@ equivalent of:
 
 ## Images
 
-Published to `ghcr.io/krippler/doom`, 216 MB to pull and 603 MB unpacked,
-`linux/amd64` only. `latest` is the newest release, `edge` tracks `master`.
+Published to `ghcr.io/krippler/doom`, 609 MB unpacked including the shareware
+game data, `linux/amd64` only. `latest` is the newest release, `edge` tracks `master`.
 Signed with cosign on every push.
 
 Unraid users: the Community Applications template is
@@ -101,10 +105,15 @@ The sources are GPLv2 — see [LICENSE.TXT](LICENSE.TXT), which is the licence
 id relicensed them under in 1999. The per-file headers still carry the older
 1997 DOOM Source Code License notice; they were never updated upstream.
 
-None of that covers the game data. WADs are not included here, are not in the
-published images, and are not redistributable — you supply your own. Shareware
-`DOOM1.WAD` may be shared freely; `DOOM.WAD`, `DOOM2.WAD`, `TNT.WAD` and
-`PLUTONIA.WAD` come from your own copy of the game.
+None of that covers the game data. The shareware `DOOM1.WAD` in
+[`shareware/`](shareware/) is id's, distributed under their shareware terms —
+free to copy unmodified, not to sell — and is the one data file included.
+Episode 1, nine levels.
+
+`DOOM.WAD`, `DOOM2.WAD`, `TNT.WAD` and `PLUTONIA.WAD` are commercial and come
+from your own copy of the game. They are not here, are not in the published
+images, and the ignore rules exclude every `*.wad` except the shareware one by
+name so they cannot be committed or baked in by accident.
 
 DOOM is a trademark of id Software LLC. This is an unaffiliated port of the
 sources they published.

@@ -95,6 +95,11 @@ COPY docker/entrypoint.sh /usr/local/bin/doom-entrypoint
 # positions, which a game cannot use: see the comment at the top of the file.
 COPY docker/play.html /usr/share/novnc/play.html
 
+# The shareware IWAD, so the container is playable with nothing mounted.
+# id distributes it freely; see shareware/README.md. A mounted IWAD still
+# wins over it. Commercial game data is not here and never will be.
+COPY shareware/doom1.wad /usr/share/doom/doom1.wad
+
 # The directories come first so useradd does not warn about a home it
 # cannot chown yet.
 RUN chmod +x /usr/local/bin/doom-entrypoint \

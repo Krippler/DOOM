@@ -12,8 +12,9 @@
 
     Sound effects and music both work where a PulseAudio server is reachable,
     and the game runs silently where one is not, which is the usual case on a
-    server. Game data is not included: you supply an IWAD, and the freely
-    redistributable shareware DOOM1.WAD is enough to play episode one.
+    server. The shareware game data is included, so it plays as soon as it
+    starts; your own IWAD takes precedence when you add one. Commercial game
+    data is not included and comes from your own copy of the game.
 
     Keys and the mouse are configured from inside the game, under Options -
     Setup, which also lists the WAD files in the mounted folder and loads the
