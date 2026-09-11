@@ -46,12 +46,24 @@ for.
 
 ## Size
 
-The image is about 330 MB to pull and 1.1 GB unpacked. Most of that is not
-DOOM: the FluidR3 soundfont is 142 MB, `xvfb` pulls in Mesa and LLVM for GLX
-support at around 180 MB, and `novnc` depends on Node and a Python stack. The
-engine and sound server together are under 600 kB. Swapping
-`fluid-soundfont-gm` for `timgm6mb-soundfont` in the Dockerfile is the one
-easy saving, at the cost of music quality.
+About 216 MB to pull, 603 MB unpacked. The engine and sound server together
+are under 600 kB; the rest is what it takes to run an X server and reach it
+from a browser.
+
+The Dockerfile removes three things the distro packages drag in but this image
+never uses, together about 400 MB:
+
+- The Mesa GLX driver and the LLVM behind it. `xvfb` links `libGL.so.1` so the
+  dispatch library stays, but nothing here renders through GLX and the driver
+  is never loaded.
+- Node and `net-tools`, which the `novnc` package depends on for tooling this
+  image does not run. noVNC itself is 1.2 MB of static files, unpacked
+  directly and served by websockify.
+- numpy and LAPACK, which websockify uses only to unmask client-to-server
+  WebSocket frames — for a VNC session that is keystrokes, not video.
+
+What remains is roughly 142 MB of soundfont (see below to change it), the
+Ubuntu base, and the Python runtime websockify needs.
 
 ## Options
 
