@@ -112,6 +112,15 @@ static channel_t*	channels;
 // Internal default is max out of 0-15.
 int 		snd_SfxVolume = 15;
 
+//
+// The mixers index a volume lookup table running 0..127, but the game's own
+// volume scale -- snd_SfxVolume and everything S_AdjustSoundParams derives
+// from it -- only reaches 15, so every effect played at about an eighth of
+// its intended amplitude. m_menu.c still carries the commented-out "*8"
+// where this scaling used to happen.
+//
+#define S_SFX_VOL(v)	(((v) * 127) / 15)
+
 // Maximum volume of music. Useless so far.
 int 		snd_MusicVolume = 15; 
 
@@ -388,7 +397,7 @@ S_StartSoundAtVolume
   //  mix/output buffer.
   channels[cnum].handle = I_StartSound(sfx_id,
 				       /*sfx->data,*/
-				       volume,
+				       S_SFX_VOL(volume),
 				       sep,
 				       pitch,
 				       priority);
@@ -594,7 +603,8 @@ void S_UpdateSounds(void* listener_p)
 			S_StopChannel(cnum);
 		    }
 		    else
-			I_UpdateSoundParams(c->handle, volume, sep, pitch);
+			I_UpdateSoundParams(c->handle, S_SFX_VOL(volume),
+					    sep, pitch);
 		}
 	    }
 	    else

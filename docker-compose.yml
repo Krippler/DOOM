@@ -9,9 +9,13 @@ services:
     volumes:
       - ./wads:/wads:ro  # put DOOM1.WAD (or doom.wad, doom2.wad, ...) here
       - doom-state:/doom/state
+      # - /run/user/1000/pulse/native:/tmp/pulse:ro
     environment:
       DOOM_SCALE: "2"    # 1..4; window is 320x200 times this
       # DOOM_VNC_PASSWORD: "changeme"
+      # Uncomment together with the volume below to hear the game through
+      # the host's PulseAudio/PipeWire. See DOCKER.md.
+      # PULSE_SERVER: "unix:/tmp/pulse"
     # Arguments are passed to the engine, e.g. start straight in E1M1:
     # command: ["-warp", "1", "1", "-skill", "3"]
 

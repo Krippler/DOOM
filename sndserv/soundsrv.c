@@ -47,6 +47,7 @@ static const char rcsid[] = "$Id: soundsrv.c,v 1.3 1997/01/29 22:40:44 b1 Exp $"
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <string.h>
 #include <malloc.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -300,6 +301,28 @@ int mix(void)
 
 
 
+//
+// Joins a directory and a WAD file name into a freshly allocated string.
+// The original hand-counted these lengths and got "doomu.wad" wrong by one.
+//
+static char* wadfilename (char* dir, char* file)
+{
+    size_t	len;
+    char*	path;
+
+    len = strlen(dir) + 1 + strlen(file) + 1;
+    path = malloc(len);
+
+    if (!path)
+    {
+	fprintf(stderr, "Could not allocate WAD file name\n");
+	exit(-1);
+    }
+
+    snprintf(path, len, "%s/%s", dir, file);
+    return path;
+}
+
 void
 grabdata
 ( int		c,
@@ -312,7 +335,8 @@ grabdata
     char*	doomuwad;
     char*	doom2wad;
     char*	doom2fwad;
-    // Now where are TNT and Plutonia. Yuck.
+    char*	plutoniawad;
+    char*	tntwad;
     
     //	char *home;
     char*	doomwaddir;
@@ -322,20 +346,13 @@ grabdata
     if (!doomwaddir)
 	doomwaddir = ".";
 
-    doom1wad = malloc(strlen(doomwaddir)+1+9+1);
-    sprintf(doom1wad, "%s/doom1.wad", doomwaddir);
-
-    doom2wad = malloc(strlen(doomwaddir)+1+9+1);
-    sprintf(doom2wad, "%s/doom2.wad", doomwaddir);
-
-    doom2fwad = malloc(strlen(doomwaddir)+1+10+1);
-    sprintf(doom2fwad, "%s/doom2f.wad", doomwaddir);
-    
-    doomuwad = malloc(strlen(doomwaddir)+1+8+1);
-    sprintf(doomuwad, "%s/doomu.wad", doomwaddir);
-    
-    doomwad = malloc(strlen(doomwaddir)+1+8+1);
-    sprintf(doomwad, "%s/doom.wad", doomwaddir);
+    doom1wad = wadfilename(doomwaddir, "doom1.wad");
+    doom2wad = wadfilename(doomwaddir, "doom2.wad");
+    doom2fwad = wadfilename(doomwaddir, "doom2f.wad");
+    doomuwad = wadfilename(doomwaddir, "doomu.wad");
+    doomwad = wadfilename(doomwaddir, "doom.wad");
+    plutoniawad = wadfilename(doomwaddir, "plutonia.wad");
+    tntwad = wadfilename(doomwaddir, "tnt.wad");
 
     //	home = getenv("HOME");
     //	if (!home)
@@ -358,6 +375,10 @@ grabdata
 	name = doom2fwad;
     else if (! access(doom2wad, R_OK) )
 	name = doom2wad;
+    else if (! access(plutoniawad, R_OK) )
+	name = plutoniawad;
+    else if (! access(tntwad, R_OK) )
+	name = tntwad;
     else if (! access(doomuwad, R_OK) )
 	name = doomuwad;
     else if (! access(doomwad, R_OK) )
@@ -387,7 +408,7 @@ grabdata
 	    if (longsound < lengths[i]) longsound = lengths[i];
 	} else {
 	    S_sfx[i].data = S_sfx[i].link->data;
-	    lengths[i] = lengths[(S_sfx[i].link - S_sfx)/sizeof(sfxinfo_t)];
+	    lengths[i] = lengths[S_sfx[i].link - S_sfx];
 	}
 	// test only
 	//  {

@@ -2,7 +2,8 @@
 
 Builds the original `linuxdoom-1.10` sources and runs them inside the image,
 with the game reachable from a browser. Nothing needs to be installed on the
-host beyond Docker — no X server, no display, no audio.
+host beyond Docker — no X server and no display. Sound is optional and needs
+only a shared audio socket; see below.
 
 ```
 docker build -t doom .
@@ -55,6 +56,8 @@ Everything is set through the environment:
 | `DOOM_WEB_PORT` | `6080` | noVNC HTTP port. |
 | `DOOM_VNC_PORT` | `5900` | VNC port. |
 | `DOOM_VNC_PASSWORD` | unset | If set, the VNC session requires this password. |
+| `DOOM_SOUND` | `1` | Set to `0` to not start the sound server at all. |
+| `PULSE_SERVER` | unset | PulseAudio server for sound, e.g. `unix:/tmp/pulse`. |
 
 Anything you pass after the image name goes straight to the engine:
 
@@ -109,11 +112,42 @@ to true colour for the VNC client.
 
 ## Sound
 
-There is none. The engine predates ALSA and expects either an OSS `/dev/dsp`
-or the external `sndserver` helper talking to one. OSS is long gone from
-modern kernels and there is no audio device in the container, so the game runs
-silent. Everything else is unaffected — the missing device used to be fatal,
-and that is fixed (see `PORTING-NOTES.md`).
+The engine plays effects through a separate `sndserver` process, which is how
+the original release worked. That server has been given a PulseAudio backend
+(`sndserv/pulse.c`), so audio leaves the container over a PulseAudio socket.
+There is no music — linuxdoom never implemented any.
+
+Note on `padsp`: the usual way to feed OSS-era software into PulseAudio no
+longer exists. `padsp` and its `libpulsedsp.so` were removed upstream in
+PulseAudio 16 and are not in any current distribution, and `aoss` (the ALSA
+equivalent) needs a real ALSA stack in the container and fails the format
+negotiation the engine does at startup. Talking to PulseAudio directly avoids
+both problems and works against PipeWire too, since `pipewire-pulse` accepts
+PulseAudio clients unchanged.
+
+To hear the game, share the host's audio socket. On a normal Linux desktop
+running PulseAudio or PipeWire:
+
+```
+docker run --rm -p 6080:6080 \
+    -v "$PWD/wads:/wads:ro" \
+    -v "/run/user/$(id -u)/pulse/native:/tmp/pulse:ro" \
+    -v "$HOME/.config/pulse/cookie:/doom/state/.pulse-cookie:ro" \
+    -e PULSE_SERVER=unix:/tmp/pulse \
+    -e PULSE_COOKIE=/doom/state/.pulse-cookie \
+    doom
+```
+
+The cookie is only needed if your PulseAudio requires authentication; many
+setups work without it. If the socket is not readable by the container user,
+add `--user "$(id -u):$(id -g)"`.
+
+Without any of that the container prints how to enable sound and plays
+silently — a missing or unreachable audio server is not fatal.
+
+Set `DOOM_SOUND=0` to skip starting the sound server entirely.
+
+Volume is the usual in-game setting, under Options → Sound Volume.
 
 ## Troubleshooting
 
@@ -127,6 +161,12 @@ top level. `-v "$PWD/wads:/wads:ro"` mounts `./wads`, so the file must be at
 **Keys do nothing.** Doom uses Ctrl to fire and Alt to strafe, which browsers
 and window managers like to intercept. noVNC's toolbar has a modifier-key
 pad for exactly this.
+
+**No sound.** The container logs what it decided at startup, on the lines
+beginning `[doom] sound:`. If it reports a `PULSE_SERVER` but you still hear
+nothing, the sound server prints its own error (`Could not connect to
+PulseAudio (...)`) in the same output — usually the socket is not readable by
+the container user, which `--user "$(id -u):$(id -g)"` fixes.
 
 **Diagnostics.** `xvfb.log`, `x11vnc.log` and `websockify.log` are written to
 `/doom/state`.

@@ -69,12 +69,57 @@ current gcc and glibc. Behaviour is otherwise left alone.
 - **`z_zone.c`, `d_net.c`, `d_main.c`, `i_video.c`** — remaining
   pointer-to-integer casts widened to `intptr_t`/`uintptr_t`.
 
+## Sound server (`sndserv/`)
+
+The engine drives sound through a separate `sndserver` process (`SNDSERV` is
+defined by default, and the directory's own README explains that the separate
+process gave the best results). It needed the same treatment as the engine:
+
+- **`linux.c`** — `extern int errno` broke the link, `<sys/ioctl.h>` was
+  missing so `ioctl` was implicitly declared, and a failed `/dev/dsp` open was
+  followed by `ioctl`s on the bad descriptor, which `myioctl` answers with
+  `exit(-1)`. It also ignored its own `samplerate` argument.
+- **`soundsrv.c`** — `<string.h>` was missing, so `strlen` and `strcmp` were
+  implicitly declared; the IWAD paths repeated the `"doomu.wad"` off-by-one;
+  and aliased sounds divided a pointer difference by the element size, as in
+  the engine. The server now also recognises `tnt.wad` and `plutonia.wad`,
+  which it previously refused to load sounds from.
+- **`i_sound.c`** (engine side) — the server is spoken to over a pipe, so if
+  it exited the engine's next write raised `SIGPIPE` and took the game down.
+  `SIGPIPE` is now ignored; losing sound is enough.
+
+### PulseAudio output
+
+`sndserv/linux.c` writes to `/dev/dsp`, which no current kernel provides.
+PulseAudio's OSS shim (`padsp`) was removed upstream in PulseAudio 16 and is
+no longer packaged, and `aoss` needs a real ALSA stack and fails the format
+negotiation this code does at startup.
+
+`sndserv/pulse.c` is a new platform layer implementing the same five-function
+interface against libpulse's simple API, and is what `make -C sndserv` builds
+by default. Like the OSS version its write blocks until the server accepts
+more audio, which is what paces the sound server's main loop. The original
+backend is still there: `make -C sndserv SNDBACKEND=oss`.
+
+### Effect volume
+
+`s_sound.c` passed `I_StartSound` and `I_UpdateSoundParams` a volume taken
+from `snd_SfxVolume`, which runs 0..15, but both mixers index a volume lookup
+table running 0..127. Every effect therefore played at roughly an eighth of
+its intended amplitude. `m_menu.c` still carries the commented-out `*8` where
+the scaling used to be. Measured off a PulseAudio null sink, a pistol shot at
+the default volume setting went from a peak of 1693 to 14114 once the scaling
+was restored.
+
 ## Not changed
 
 - Networking (`i_net.c`) is untouched and untested here.
+- There is still no music; linuxdoom never implemented any.
 - The `-DUSEASM` assembly paths remain off; they are 32-bit x86 only.
 - `SNDSERV` is still defined by default, as upstream had it, so sound goes
   through the external `sndserver` helper rather than the in-process OSS mixer.
+  The in-process mixer's own fixes are still in place for anyone who builds
+  without it.
 
 ## Verifying
 

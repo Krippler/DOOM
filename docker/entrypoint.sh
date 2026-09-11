@@ -13,6 +13,7 @@ VNC_PORT="${DOOM_VNC_PORT:-5900}"
 WEB_PORT="${DOOM_WEB_PORT:-6080}"
 DISP="${DOOM_DISPLAY:-:99}"
 DOOM_BIN="${DOOM_BIN:-/usr/local/games/linuxxdoom}"
+SNDSERVER_BIN="${DOOM_SNDSERVER_BIN:-/usr/local/games/sndserver}"
 NOVNC_ROOT="${DOOM_NOVNC_ROOT:-/usr/share/novnc}"
 
 log() { printf '[doom] %s\n' "$*" >&2; }
@@ -61,6 +62,32 @@ if [ -z "$found" ]; then
 fi
 
 export DOOMWADDIR="$LINKDIR"
+
+##############################################################################
+# Sound.
+#
+# The engine spawns a separate sound server process and looks for it at
+# $DOOMWADDIR/sndserver, so it goes in the same directory as the IWAD links.
+# The server plays through PulseAudio; if it cannot reach a server it says so
+# and the game runs silent.
+##############################################################################
+if [ "${DOOM_SOUND:-1}" = "1" ] && [ -x "$SNDSERVER_BIN" ]; then
+    ln -sf "$SNDSERVER_BIN" "$LINKDIR/sndserver"
+
+    if [ -n "${PULSE_SERVER:-}" ]; then
+        log "sound: PULSE_SERVER=$PULSE_SERVER"
+    elif [ -S "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/pulse/native" ]; then
+        log "sound: using ${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/pulse/native"
+    else
+        log "sound: no PulseAudio server configured, the game will be silent"
+        log "sound: to hear it, share the host's audio socket, e.g."
+        log "sound:   -v /run/user/\$(id -u)/pulse/native:/tmp/pulse:ro \\"
+        log "sound:   -e PULSE_SERVER=unix:/tmp/pulse"
+    fi
+else
+    log "sound: disabled"
+    rm -f "$LINKDIR/sndserver"
+fi
 
 ##############################################################################
 # Background services. Everything is torn down together.

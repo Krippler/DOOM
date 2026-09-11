@@ -747,7 +747,12 @@ I_InitSound()
 { 
 #ifdef SNDSERV
   char buffer[256];
-  
+
+  // The server is talked to over a pipe. If it dies -- no audio device, no
+  // WAD it recognises -- the next write would raise SIGPIPE and take the
+  // game down with it. Losing sound is enough.
+  signal(SIGPIPE, SIG_IGN);
+
   if (getenv("DOOMWADDIR"))
     sprintf(buffer, "%s/%s",
 	    getenv("DOOMWADDIR"),

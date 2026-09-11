@@ -6,6 +6,9 @@
 wads/
 linuxdoom-1.10/linux/
 linuxdoom-1.10/CVS/
+sndserv/linux/
+ipx/
+sersrc/
 *.o
 *.pcx
 doomsav*.dsg

@@ -37,14 +37,20 @@ static const char rcsid[] = "$Id: linux.c,v 1.3 1997/01/26 07:45:01 b1 Exp $";
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <errno.h>
+#include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
 
 #include <linux/soundcard.h>
 
 #include "soundsrv.h"
 
-int	audio_fd;
+// -1 when no OSS device could be opened. The server then keeps running and
+// discards audio rather than exiting, because the engine talks to it over a
+// pipe and would take a SIGPIPE if it died.
+int	audio_fd = -1;
 
 void
 myioctl
@@ -53,7 +59,6 @@ myioctl
   int*	arg )
 {   
     int		rc;
-    extern int	errno;
     
     rc = ioctl(fd, command, arg);  
     if (rc < 0)
@@ -78,14 +83,16 @@ I_InitSound
                 
     audio_fd = open("/dev/dsp", O_WRONLY);
     if (audio_fd<0)
-        fprintf(stderr, "Could not open /dev/dsp\n");
-         
-                     
+    {
+        fprintf(stderr, "Could not open /dev/dsp, running without sound\n");
+        return;
+    }
+
     i = 11 | (2<<16);                                           
     myioctl(audio_fd, SNDCTL_DSP_SETFRAGMENT, &i);
                     
     myioctl(audio_fd, SNDCTL_DSP_RESET, 0);
-    i=11025;
+    i=samplerate;
     myioctl(audio_fd, SNDCTL_DSP_SPEED, &i);
     i=1;    
     myioctl(audio_fd, SNDCTL_DSP_STEREO, &i);
@@ -103,13 +110,22 @@ I_SubmitOutputBuffer
 ( void*	samples,
   int	samplecount )
 {
-    write(audio_fd, samples, samplecount*4);
+    if (audio_fd < 0)
+	return;
+
+    if (write(audio_fd, samples, samplecount*4) < 0)
+	fprintf(stderr, "I_SubmitOutputBuffer: write failed: %s\n",
+		strerror(errno));
 }
 
 void I_ShutdownSound(void)
 {
 
-    close(audio_fd);
+    if (audio_fd >= 0)
+    {
+	close(audio_fd);
+	audio_fd = -1;
+    }
 
 }
 
