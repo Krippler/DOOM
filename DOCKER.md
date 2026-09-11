@@ -6,6 +6,13 @@ host beyond Docker — no X server and no display. Sound is optional and needs
 only a shared audio socket; see below.
 
 ```
+docker run --rm -p 6080:6080 -v "$PWD/wads:/wads:ro" ghcr.io/krippler/doom
+```
+
+Or build it yourself, which is what the rest of this page assumes when it
+writes `doom` instead of the full image name:
+
+```
 docker build -t doom .
 docker run --rm -p 6080:6080 -v "$PWD/wads:/wads:ro" doom
 ```

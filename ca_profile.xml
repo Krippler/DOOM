@@ -15,6 +15,10 @@
     server. Game data is not included: you supply an IWAD, and the freely
     redistributable shareware DOOM1.WAD is enough to play episode one.
 
+    Keys and the mouse are configured from inside the game, under Options -
+    Setup, which also lists the WAD files in the mounted folder and loads the
+    one you pick, so mods can be added without changing the container.
+
     Issues and questions go to the GitHub tracker linked below.
   </Profile>
   <Icon>https://raw.githubusercontent.com/Krippler/DOOM/master/templates/doom-icon.png</Icon>

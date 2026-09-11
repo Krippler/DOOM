@@ -6,6 +6,18 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Changed
+- Added a README. GitHub was showing `README.TXT` as the landing page, which
+  is id Software's note from the 1997 source drop: accurate about the code it
+  shipped with, and silent on the port, the container, the sound and music, or
+  how to run any of it. `README.TXT` is left as it was, as the historical
+  document it is.
+- The Unraid template and Community Applications profile mention the in-game
+  Setup menus, and the template's change list covers 1.10.1.
+- `DOCKER.md` leads with pulling the published image rather than building one.
+
 ## [1.10.1] — 2026-09-11
 
 ### Added
