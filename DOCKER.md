@@ -79,7 +79,8 @@ Everything is set through the environment:
 | `DOOM_VNC_PASSWORD` | unset | If set, the VNC session requires this password. |
 | `DOOM_SOUND` | `1` | Set to `0` to not start the sound server at all. |
 | `PULSE_SERVER` | unset | PulseAudio server for sound, e.g. `unix:/tmp/pulse`. |
-| `DOOM_SOUNDFONT` | FluidR3 GM | General MIDI soundfont used for music. |
+| `DOOM_SOUNDFONT` | auto | General MIDI soundfont for music; empty means search for an installed one. |
+| `PUID` / `PGID` | `1001` | User to drop to, when the container starts as root. |
 
 Anything you pass after the image name goes straight to the engine:
 
@@ -100,17 +101,20 @@ plain `docker run` works the same way:
 docker run --rm -p 6080:6080 -v "$PWD/wads:/wads:ro" -v doom-state:/doom/state doom
 ```
 
-Bind-mounting a host directory there needs one extra step, because the
-container runs as uid 1001 and a directory you created is owned by you. Run
-the container as yourself:
+Bind-mounting a host directory works too, but the container has to write as
+somebody who owns it. Started as root it takes ownership of the state
+directory as `PUID:PGID` and then drops to that user for everything else, so
+this is enough:
 
 ```
-docker run --rm -p 6080:6080 --user "$(id -u):$(id -g)" \
+docker run --rm -p 6080:6080 -e PUID="$(id -u)" -e PGID="$(id -g)" \
     -v "$PWD/wads:/wads:ro" -v "$PWD/state:/doom/state" doom
 ```
 
-or hand the directory over with `chown 1001:1001 state`. The container checks
-this at startup and says which to do rather than failing obscurely.
+`PUID`/`PGID` default to 1001. Passing `--user` instead skips the whole thing
+and runs as that user from the start, in which case the directory has to be
+writable by them already — the container checks and says so rather than
+failing obscurely.
 
 `docker stop` is handled gracefully: the engine gets a SIGINT, which is the
 signal it already treats as "save the config and quit".
@@ -230,6 +234,14 @@ docker run --rm -p 6080:6080 \
 unreadable the engine says so and falls back to an installed soundfont rather
 than losing music; if it finds none at all the game still runs, silently.
 
+## Unraid
+
+`unraid/doom.xml` is a Community Applications template, with the icon beside
+it and `unraid/README.md` covering what still has to be done before it can be
+submitted — chiefly publishing the image somewhere CA can pull it from. The
+template can be tried without CA by pasting its raw URL into the *Template*
+field of **Docker → Add Container**.
+
 ## Troubleshooting
 
 **The browser shows a black canvas.** Click it first; noVNC only forwards
@@ -249,9 +261,9 @@ nothing, the sound server prints its own error (`Could not connect to
 PulseAudio (...)`) in the same output — usually the socket is not readable by
 the container user, which `--user "$(id -u):$(id -g)"` fixes.
 
-**"state directory is not writable".** A host directory bind-mounted at
-`/doom/state` is owned by you, not by the container's user. See *Saves and
-config* above; a named volume avoids the problem entirely.
+**"state directory is not writable".** Only happens when `--user` was passed,
+since that skips the ownership fix. Drop `--user` and set `PUID`/`PGID`
+instead, or make the directory writable by the user you asked for.
 
 **Diagnostics.** `xvfb.log`, `x11vnc.log` and `websockify.log` are written to
 `/doom/state`.

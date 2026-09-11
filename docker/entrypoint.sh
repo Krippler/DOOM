@@ -19,6 +19,32 @@ NOVNC_ROOT="${DOOM_NOVNC_ROOT:-/usr/share/novnc}"
 log() { printf '[doom] %s\n' "$*" >&2; }
 die() { printf '[doom] error: %s\n' "$*" >&2; exit 1; }
 
+##############################################################################
+# Drop privileges.
+#
+# Started as root -- which is how Unraid and most NAS front ends run a
+# container -- take ownership of the writable directory as PUID:PGID and
+# then run everything else as that user. On Unraid those are 99:100
+# (nobody:users), which is what its appdata share is owned by.
+#
+# Started as an ordinary user already, via --user or the image default,
+# there is nothing to do and PUID/PGID are ignored.
+##############################################################################
+if [ "$(id -u)" = "0" ]; then
+    PUID="${PUID:-1001}"
+    PGID="${PGID:-1001}"
+
+    case "$PUID$PGID" in
+        *[!0-9]*) die "PUID and PGID must be numeric (got '$PUID' and '$PGID')" ;;
+    esac
+
+    mkdir -p "$STATE" 2>/dev/null || true
+    chown "$PUID:$PGID" "$STATE" 2>/dev/null || true
+
+    log "running as ${PUID}:${PGID}"
+    exec setpriv --reuid "$PUID" --regid "$PGID" --clear-groups "$0" "$@"
+fi
+
 case "$SCALE" in
     1|2|3|4) ;;
     *) die "DOOM_SCALE must be 1, 2, 3 or 4 (got '$SCALE')" ;;

@@ -1,0 +1,78 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>DOOM</Name>
+  <Repository>ghcr.io/krippler/doom:latest</Repository>
+  <Registry>https://github.com/krippler/DOOM/pkgs/container/doom</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/krippler/DOOM/issues</Support>
+  <Project>https://github.com/krippler/DOOM</Project>
+  <Overview>
+    The original 1997 linuxdoom-1.10 sources, built from source and playable in a browser.&#13;
+    &#13;
+    The engine only ever supported an 8-bit PseudoColor X visual, which no current X server offers, so the container runs its own Xvfb at depth 8 and exports it over noVNC. Nothing needs to be installed on the host.&#13;
+    &#13;
+    Sound effects and music both work. Music is converted from the WAD's MUS lumps to MIDI and rendered by FluidSynth; both play to a PulseAudio server if one is reachable, and the game runs silently if not, which is the usual case on a server.&#13;
+    &#13;
+    GAME DATA IS NOT INCLUDED. You must supply an IWAD. Put DOOM1.WAD (the freely redistributable shareware file) or your own DOOM.WAD, DOOM2.WAD, TNT.WAD or PLUTONIA.WAD into the WADs folder below. The name is matched without regard to case.&#13;
+    &#13;
+    Click into the canvas before typing: noVNC only forwards the keyboard once it has focus. Ctrl fires and Alt strafes, which browsers like to intercept, so use the modifier pad in the noVNC toolbar if a key will not reach the game.
+  </Overview>
+  <Category>GameServers: Other:</Category>
+  <WebUI>http://[IP]:[PORT:6080]/vnc.html?autoconnect=1&amp;resize=scale</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/krippler/DOOM/master/unraid/doom.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/krippler/DOOM/master/unraid/icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Requires>An IWAD (game data file) must be placed in the WADs folder. The container will stop and tell you so if none is found.</Requires>
+  <Changes>
+### 1.10.0&#13;
+- First release. linuxdoom-1.10 repaired to build and run on 64-bit Linux, with sound and music added, served over noVNC.
+  </Changes>
+
+  <Config Name="WebUI Port" Target="6080" Default="6080" Mode="tcp"
+          Description="Port for the browser client. Open the WebUI to play."
+          Type="Port" Display="always" Required="true" Mask="false">6080</Config>
+
+  <Config Name="VNC Port" Target="5900" Default="5900" Mode="tcp"
+          Description="Optional. Only needed if you want to connect with a native VNC client instead of the browser."
+          Type="Port" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="WADs" Target="/wads" Default="/mnt/user/appdata/doom/wads" Mode="ro"
+          Description="Folder holding your IWAD. Put DOOM1.WAD (shareware) or your own DOOM.WAD, DOOM2.WAD, TNT.WAD or PLUTONIA.WAD here. Mounted read only; the container never writes to it."
+          Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/doom/wads</Config>
+
+  <Config Name="Saves and config" Target="/doom/state" Default="/mnt/user/appdata/doom/state" Mode="rw"
+          Description="Savegames, the .doomrc config file and the container's logs."
+          Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/doom/state</Config>
+
+  <Config Name="PUID" Target="PUID" Default="99"
+          Description="User the game runs as. 99 is Unraid's nobody, which owns appdata."
+          Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+
+  <Config Name="PGID" Target="PGID" Default="100"
+          Description="Group the game runs as. 100 is Unraid's users group."
+          Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+
+  <Config Name="Scale" Target="DOOM_SCALE" Default="2"
+          Description="Pixel scale, 1 to 4. The picture is 320x200 multiplied by this, so 2 gives 640x400. Larger values cost more bandwidth to the browser."
+          Type="Variable" Display="always" Required="false" Mask="false">2</Config>
+
+  <Config Name="VNC Password" Target="DOOM_VNC_PASSWORD" Default=""
+          Description="Optional. If set, the browser and any VNC client must supply this password. Leave empty for no password, which is fine on a LAN you trust."
+          Type="Variable" Display="always" Required="false" Mask="true"></Config>
+
+  <Config Name="PulseAudio server" Target="PULSE_SERVER" Default=""
+          Description="Optional. Leave empty for no sound, which is normal on a server. To hear the game, point this at a reachable PulseAudio server, for example tcp:192.168.1.50:4713, and make sure that server accepts connections from this container."
+          Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="Soundfont" Target="DOOM_SOUNDFONT" Default=""
+          Description="Optional. Path inside the container to a General MIDI soundfont for music. Leave empty to use the one built into the image."
+          Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+</Container>

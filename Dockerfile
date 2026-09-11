@@ -114,7 +114,10 @@ ENV DOOM_SCALE=2 \
 VOLUME ["/doom/state"]
 EXPOSE 6080 5900
 
-USER doomer
+# No USER: the entrypoint starts as root only long enough to take ownership
+# of the state directory as PUID:PGID, then drops to that user for the rest.
+# Defaults to the doomer account created above. Pass --user to skip that and
+# run as somebody specific from the outset.
 WORKDIR /doom/state
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/doom-entrypoint"]
