@@ -58,7 +58,7 @@ Everything is set through the environment:
 | `DOOM_VNC_PASSWORD` | unset | If set, the VNC session requires this password. |
 | `DOOM_SOUND` | `1` | Set to `0` to not start the sound server at all. |
 | `PULSE_SERVER` | unset | PulseAudio server for sound, e.g. `unix:/tmp/pulse`. |
-| `DOOM_SOUNDFONT` | bundled | General MIDI soundfont used for music. |
+| `DOOM_SOUNDFONT` | FluidR3 GM | General MIDI soundfont used for music. |
 
 Anything you pass after the image name goes straight to the engine:
 
@@ -156,21 +156,29 @@ music have separate volume sliders under Options → Sound Volume.
 
 ### Soundfont
 
-The image ships TimGM6mb, a 6 MB General MIDI soundfont, so it stays small.
-Anything larger sounds better; mount one and point `DOOM_SOUNDFONT` at it:
+The image ships FluidR3 GM, which is the good one. It costs about 140 MB of
+image size, but not much else: FluidSynth is told to load sample data as
+instruments are used rather than reading the whole file at startup, so the
+engine reaches the title screen in about a tenth of a second and the extra
+memory is roughly 20 MB over a small soundfont. Reading it up front instead
+would stall startup for ten seconds and cost 140 MB of RSS.
+
+To use a different one, mount it and point `DOOM_SOUNDFONT` at it:
 
 ```
 docker run --rm -p 6080:6080 \
     -v "$PWD/wads:/wads:ro" \
-    -v "$PWD/FluidR3_GM.sf2:/sf/gm.sf2:ro" \
+    -v "$PWD/other.sf2:/sf/gm.sf2:ro" \
     -e DOOM_SOUNDFONT=/sf/gm.sf2 \
     -e PULSE_SERVER=unix:/tmp/pulse \
     -v "/run/user/$(id -u)/pulse/native:/tmp/pulse:ro" \
     doom
 ```
 
-`-soundfont <file>` on the command line does the same thing. If no soundfont
-can be read the game still runs, without music.
+`-soundfont <file>` on the command line does the same thing. To trade the
+music quality back for a much smaller image, replace `fluid-soundfont-gm`
+with `timgm6mb-soundfont` in the Dockerfile; the engine finds it on its own.
+If no soundfont can be read the game still runs, without music.
 
 ## Troubleshooting
 

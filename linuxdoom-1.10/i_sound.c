@@ -888,12 +888,14 @@ static size_t		song_midi_len = 0;
 // a busy score does not clip.
 #define MUSIC_MAX_GAIN	0.6f
 
+// Searched in order when neither -soundfont nor DOOM_SOUNDFONT says
+// otherwise. Best quality first.
 static const char*	soundfont_paths[] =
 {
-    "/usr/share/sounds/sf2/TimGM6mb.sf2",
     "/usr/share/sounds/sf2/FluidR3_GM.sf2",
     "/usr/share/sounds/sf2/default-GM.sf2",
     "/usr/share/soundfonts/default.sf2",
+    "/usr/share/sounds/sf2/TimGM6mb.sf2",
     NULL
 };
 
@@ -975,6 +977,11 @@ void I_InitMusic(void)
     fluid_settings_setstr (fl_settings, "audio.pulseaudio.media-role", "game");
     fluid_settings_setnum (fl_settings, "synth.sample-rate", 44100.0);
     fluid_settings_setint (fl_settings, "synth.midi-channels", 16);
+
+    // Load sample data as instruments are actually used. A full General MIDI
+    // soundfont is well over a hundred megabytes, and reading all of it up
+    // front stalls startup for several seconds before the game appears.
+    fluid_settings_setint (fl_settings, "synth.dynamic-sample-loading", 1);
 
     fl_synth = new_fluid_synth (fl_settings);
 

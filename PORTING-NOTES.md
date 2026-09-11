@@ -136,6 +136,12 @@ Details worth knowing:
   140 ticks per second MUS counts in.
 - `I_PauseSong` stops the player and sends an all-notes-off, otherwise a note
   sounding at that moment would hang.
+- FluidSynth is set to load sample data on demand
+  (`synth.dynamic-sample-loading`). A full General MIDI soundfont is well
+  over a hundred megabytes and reading all of it at startup stalled the game
+  for ten seconds before anything appeared; on demand it is a tenth of a
+  second, and about 20 MB rather than 140 MB of resident memory, with
+  identical output.
 - Music volume, like effect volume, arrives on DOOM's 0..15 scale;
   `S_SetMusicVolume` also pokes 127 through before setting the real value, so
   the value is clamped before being turned into a synth gain.
