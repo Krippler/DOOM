@@ -31,6 +31,8 @@ rcsid[] = "$Id: m_menu.c,v 1.7 1997/02/03 22:45:10 b1 Exp $";
 #include <fcntl.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <dirent.h>
+#include <strings.h>
 
 
 #include "doomdef.h"
@@ -62,6 +64,8 @@ rcsid[] = "$Id: m_menu.c,v 1.7 1997/02/03 22:45:10 b1 Exp $";
 #include "sounds.h"
 
 #include "m_menu.h"
+#include "m_misc.h"
+#include "i_sound.h"
 
 
 
@@ -164,6 +168,10 @@ typedef struct menu_s
     short		x;
     short		y;		// x,y of menu
     short		lastOn;		// last item user was on in menu
+    // Rows per line. 0 means LINEHEIGHT, which is what the original menus
+    // want; the text pages added later need to pack tighter to fit above
+    // the status bar.
+    short		lineheight;
 } menu_t;
 
 short		itemOn;			// menu item skull is on
@@ -219,6 +227,21 @@ void M_DrawSave(void);
 
 void M_DrawSaveLoadBorder(int x,int y);
 void M_SetupNextMenu(menu_t *menudef);
+void M_Setup(int choice);
+void M_DrawSetup(void);
+void M_Controls(int choice);
+void M_MouseOptions(int choice);
+void M_WadSelect(int choice);
+void M_ChangeBinding(int choice);
+void M_ToggleMouse(int choice);
+void M_ToggleMouseGrab(int choice);
+void M_ChangeMouseFire(int choice);
+void M_ChangeMouseStrafe(int choice);
+void M_ChangeMouseForward(int choice);
+void M_LoadWad(int choice);
+void M_DrawControls(void);
+void M_DrawMouseOptions(void);
+void M_DrawWadSelect(void);
 void M_DrawThermo(int x,int y,int thermWidth,int thermDot);
 void M_DrawEmptyCell(menu_t *menu,int item);
 void M_DrawSelCell(menu_t *menu,int item);
@@ -346,6 +369,7 @@ enum
     mousesens,
     option_empty2,
     soundvol,
+    opt_setup,
     opt_end
 } options_e;
 
@@ -358,7 +382,10 @@ menuitem_t OptionsMenu[]=
     {-1,"",0},
     {2,"M_MSENS",	M_ChangeSensitivity,'m'},
     {-1,"",0},
-    {1,"M_SVOL",	M_Sound,'s'}
+    {1,"M_SVOL",	M_Sound,'s'},
+    // No graphic lump exists for this, and an item with an empty name is
+    // skipped by M_Drawer, so M_DrawOptions writes the label as text.
+    {1,"",		M_Setup,'t'}
 };
 
 menu_t  OptionsDef =
@@ -367,7 +394,7 @@ menu_t  OptionsDef =
     &MainDef,
     OptionsMenu,
     M_DrawOptions,
-    60,37,
+    60,30,
     0
 };
 
@@ -942,6 +969,561 @@ void M_Episode(int choice)
 
 
 //
+// CONTROLS, MOUSE AND WAD SELECTION
+//
+// The original release had no way to rebind a key or pick game data from
+// inside the game: bindings lived only in the config file, and the IWAD was
+// whichever one happened to be found at startup. These three pages add that.
+//
+// None of them have graphic lumps to draw with, so each menu is built from
+// items with empty names -- M_Drawer skips drawing those but still lets the
+// cursor sit on them -- and the menu's own draw routine writes the text.
+//
+
+extern int	key_right;
+extern int	key_left;
+extern int	key_up;
+extern int	key_down;
+extern int	key_strafeleft;
+extern int	key_straferight;
+extern int	key_fire;
+extern int	key_use;
+extern int	key_strafe;
+extern int	key_speed;
+
+extern int	usemouse;
+extern int	mousebfire;
+extern int	mousebstrafe;
+extern int	mousebforward;
+extern int	grabMouse;
+
+
+typedef struct
+{
+    char*	label;
+    int*	key;
+} binding_t;
+
+static binding_t bindings[] =
+{
+    {"FIRE",		&key_fire},
+    {"USE / OPEN",	&key_use},
+    {"FORWARD",		&key_up},
+    {"BACK",		&key_down},
+    {"TURN LEFT",	&key_left},
+    {"TURN RIGHT",	&key_right},
+    {"STRAFE LEFT",	&key_strafeleft},
+    {"STRAFE RIGHT",	&key_straferight},
+    {"STRAFE ON",	&key_strafe},
+    {"RUN",		&key_speed}
+};
+
+#define NUM_BINDINGS	(sizeof(bindings)/sizeof(bindings[0]))
+
+// Set while the next keypress is being captured for a binding.
+static boolean	bindingWait = false;
+
+
+typedef struct
+{
+    int		key;
+    char*	name;
+} keyname_t;
+
+static keyname_t keynames[] =
+{
+    {KEY_RIGHTARROW,	"RIGHT"},
+    {KEY_LEFTARROW,	"LEFT"},
+    {KEY_UPARROW,	"UP"},
+    {KEY_DOWNARROW,	"DOWN"},
+    {KEY_ENTER,		"ENTER"},
+    {KEY_TAB,		"TAB"},
+    {KEY_BACKSPACE,	"BACKSP"},
+    {KEY_PAUSE,		"PAUSE"},
+    {KEY_EQUALS,	"="},
+    {KEY_MINUS,		"-"},
+    {KEY_RSHIFT,	"SHIFT"},
+    {KEY_RCTRL,		"CTRL"},
+    {KEY_RALT,		"ALT"},
+    {' ',		"SPACE"},
+    {',',		"COMMA"},
+    {'.',		"PERIOD"},
+    {'/',		"SLASH"},
+    {';',		"SEMICOL"},
+    {'\'',		"QUOTE"},
+    {'[',		"LBRACK"},
+    {']',		"RBRACK"},
+    {'\\',		"BSLASH"},
+    {'`',		"TILDE"}
+};
+
+
+static char* M_KeyName (int key)
+{
+    static char	buf[10];
+    unsigned	i;
+
+    for (i = 0; i < sizeof(keynames)/sizeof(keynames[0]); i++)
+	if (keynames[i].key == key)
+	    return keynames[i].name;
+
+    if (key >= KEY_F1 && key <= KEY_F10)
+    {
+	snprintf (buf, sizeof(buf), "F%d", key - KEY_F1 + 1);
+	return buf;
+    }
+
+    if (key > 32 && key < 127)
+    {
+	buf[0] = toupper(key);
+	buf[1] = 0;
+	return buf;
+    }
+
+    snprintf (buf, sizeof(buf), "KEY%d", key);
+    return buf;
+}
+
+
+enum
+{
+    setup_controls,
+    setup_mouse,
+    setup_wads,
+    setup_end
+} setup_e;
+
+menuitem_t SetupMenu[] =
+{
+    {1,"",M_Controls,'c'},
+    {1,"",M_MouseOptions,'m'},
+    {1,"",M_WadSelect,'w'}
+};
+
+menu_t SetupDef =
+{
+    setup_end,
+    &OptionsDef,
+    SetupMenu,
+    M_DrawSetup,
+    60,64,
+    0,
+    0
+};
+
+
+void M_Setup (int choice)
+{
+    choice = 0;
+    M_SetupNextMenu (&SetupDef);
+}
+
+
+void M_DrawSetup (void)
+{
+    M_WriteText (60, 40, "SETUP");
+    M_WriteText (SetupDef.x, SetupDef.y + LINEHEIGHT*setup_controls, "CONTROLS");
+    M_WriteText (SetupDef.x, SetupDef.y + LINEHEIGHT*setup_mouse,    "MOUSE");
+    M_WriteText (SetupDef.x, SetupDef.y + LINEHEIGHT*setup_wads,     "LOAD WAD");
+}
+
+
+menuitem_t ControlsMenu[] =
+{
+    {1,"",M_ChangeBinding,0}, {1,"",M_ChangeBinding,0},
+    {1,"",M_ChangeBinding,0}, {1,"",M_ChangeBinding,0},
+    {1,"",M_ChangeBinding,0}, {1,"",M_ChangeBinding,0},
+    {1,"",M_ChangeBinding,0}, {1,"",M_ChangeBinding,0},
+    {1,"",M_ChangeBinding,0}, {1,"",M_ChangeBinding,0}
+};
+
+menu_t ControlsDef =
+{
+    NUM_BINDINGS,
+    &SetupDef,
+    ControlsMenu,
+    M_DrawControls,
+    56,40,
+    0,
+    12
+};
+
+
+void M_Controls (int choice)
+{
+    choice = 0;
+    bindingWait = false;
+    M_SetupNextMenu (&ControlsDef);
+}
+
+
+void M_ChangeBinding (int choice)
+{
+    choice = 0;
+    // The next keypress is taken as the new binding; M_Responder watches
+    // this flag before it does anything else with the key.
+    bindingWait = true;
+    S_StartSound (NULL, sfx_swtchn);
+}
+
+
+void M_DrawControls (void)
+{
+    unsigned	i;
+    int		y;
+
+    M_WriteText (56, 14, "CONTROLS");
+
+    y = ControlsDef.y;
+
+    for (i = 0; i < NUM_BINDINGS; i++)
+    {
+	M_WriteText (ControlsDef.x, y, bindings[i].label);
+
+	if (bindingWait && i == (unsigned)itemOn)
+	    M_WriteText (ControlsDef.x + 148, y, "???");
+	else
+	    M_WriteText (ControlsDef.x + 148, y, M_KeyName(*bindings[i].key));
+
+	y += ControlsDef.lineheight;
+    }
+}
+
+
+//
+// Mouse.
+//
+enum
+{
+    mouse_on,
+    mouse_grab,
+    mouse_firebtn,
+    mouse_strafebtn,
+    mouse_fwdbtn,
+    mouse_end
+} mouse_e;
+
+menuitem_t MouseMenu[] =
+{
+    {1,"",M_ToggleMouse,'m'},
+    {1,"",M_ToggleMouseGrab,'g'},
+    {2,"",M_ChangeMouseFire,'f'},
+    {2,"",M_ChangeMouseStrafe,'s'},
+    {2,"",M_ChangeMouseForward,'w'}
+};
+
+menu_t MouseDef =
+{
+    mouse_end,
+    &SetupDef,
+    MouseMenu,
+    M_DrawMouseOptions,
+    56,56,
+    0,
+    16
+};
+
+
+void M_MouseOptions (int choice)
+{
+    choice = 0;
+    M_SetupNextMenu (&MouseDef);
+}
+
+
+void M_ToggleMouse (int choice)
+{
+    choice = 0;
+    usemouse = !usemouse;
+    S_StartSound (NULL, sfx_pistol);
+}
+
+
+void M_ToggleMouseGrab (int choice)
+{
+    choice = 0;
+    // Grabbing confines the pointer and warps it back to the centre every
+    // frame, which is what lets you keep turning instead of running out of
+    // window. Worth being able to switch off over a remote desktop.
+    grabMouse = !grabMouse;
+    I_SetMouseGrab (grabMouse);
+    S_StartSound (NULL, sfx_pistol);
+}
+
+
+static void M_CycleButton (int* button, int choice)
+{
+    if (choice)
+	*button = (*button + 1) % 3;
+    else
+	*button = (*button + 2) % 3;
+
+    S_StartSound (NULL, sfx_stnmov);
+}
+
+void M_ChangeMouseFire (int choice)	{ M_CycleButton (&mousebfire, choice); }
+void M_ChangeMouseStrafe (int choice)	{ M_CycleButton (&mousebstrafe, choice); }
+void M_ChangeMouseForward (int choice)	{ M_CycleButton (&mousebforward, choice); }
+
+
+void M_DrawMouseOptions (void)
+{
+    int		y = MouseDef.y;
+    char	buf[32];
+
+    M_WriteText (56, 14, "MOUSE");
+
+    M_WriteText (MouseDef.x, y, "ENABLE MOUSE");
+    M_WriteText (MouseDef.x + 148, y, usemouse ? "ON" : "OFF");
+    y += LINEHEIGHT;
+
+    M_WriteText (MouseDef.x, y, "GRAB POINTER");
+    M_WriteText (MouseDef.x + 148, y, grabMouse ? "ON" : "OFF");
+    y += LINEHEIGHT;
+
+    snprintf (buf, sizeof(buf), "BUTTON %d", mousebfire + 1);
+    M_WriteText (MouseDef.x, y, "FIRE");
+    M_WriteText (MouseDef.x + 148, y, buf);
+    y += LINEHEIGHT;
+
+    snprintf (buf, sizeof(buf), "BUTTON %d", mousebstrafe + 1);
+    M_WriteText (MouseDef.x, y, "STRAFE");
+    M_WriteText (MouseDef.x + 148, y, buf);
+    y += LINEHEIGHT;
+
+    snprintf (buf, sizeof(buf), "BUTTON %d", mousebforward + 1);
+    M_WriteText (MouseDef.x, y, "FORWARD");
+    M_WriteText (MouseDef.x + 148, y, buf);
+    y += LINEHEIGHT;
+
+    M_WriteText (56, 140, "SENSITIVITY IS UNDER OPTIONS");
+}
+
+
+//
+// WAD selection.
+//
+#define MAX_WADS	10
+#define WAD_NAMELEN	64
+
+static char	wadNames[MAX_WADS][WAD_NAMELEN];
+static char	wadPaths[MAX_WADS][256];
+static int	numWads = 0;
+static char	wadMessage[48] = "";
+
+
+//
+// Where to look for game data. The container points this at the folder the
+// user mounted, which is not the same place the engine loads its IWAD from.
+//
+static char* M_WadDir (void)
+{
+    char*	dir;
+
+    dir = getenv ("DOOM_WADPATH");
+    if (dir && *dir)
+	return dir;
+
+    dir = getenv ("DOOMWADDIR");
+    if (dir && *dir)
+	return dir;
+
+    return ".";
+}
+
+
+//
+// An IWAD replaces the game; a PWAD is loaded on top of the current one.
+// The four byte signature says which, and is more reliable than the name.
+//
+static boolean M_IsIwad (char* path)
+{
+    FILE*	f;
+    char	id[4];
+    boolean	result = false;
+
+    f = fopen (path, "rb");
+
+    if (!f)
+	return false;
+
+    if (fread (id, 1, 4, f) == 4 && !memcmp (id, "IWAD", 4))
+	result = true;
+
+    fclose (f);
+    return result;
+}
+
+
+static void M_ScanWads (void)
+{
+    DIR*		d;
+    struct dirent*	e;
+    char*		dir = M_WadDir();
+    int			len;
+
+    numWads = 0;
+    d = opendir (dir);
+
+    if (!d)
+    {
+	snprintf (wadMessage, sizeof(wadMessage), "CANNOT READ %s", dir);
+	return;
+    }
+
+    while ((e = readdir(d)) && numWads < MAX_WADS)
+    {
+	len = strlen (e->d_name);
+
+	if (len < 5 || strcasecmp (e->d_name + len - 4, ".wad"))
+	    continue;
+
+	snprintf (wadPaths[numWads], sizeof(wadPaths[0]), "%s/%s", dir, e->d_name);
+
+	if (access (wadPaths[numWads], R_OK))
+	    continue;
+
+	snprintf (wadNames[numWads], WAD_NAMELEN, "%s", e->d_name);
+	numWads++;
+    }
+
+    closedir (d);
+
+    if (!numWads)
+	snprintf (wadMessage, sizeof(wadMessage), "NO WAD FILES IN %s", dir);
+    else
+	wadMessage[0] = 0;
+}
+
+
+//
+// Restart into the chosen file.
+//
+// Nothing here can be swapped while the game is running: textures, sprites,
+// the sound cache and every zone allocation are built once around the WADs
+// loaded at startup. So the engine hands itself the new arguments and starts
+// again, which takes a couple of seconds and lands back on the title screen.
+//
+static void M_RelaunchWith (char* path)
+{
+    char*	newargv[MAX_WADS + 8];
+    int		argc = 0;
+    int		i;
+    boolean	iwad = M_IsIwad (path);
+
+    newargv[argc++] = myargv[0];
+
+    // Carry the original arguments across, dropping any WAD selection made
+    // last time so the choices do not accumulate.
+    for (i = 1; i < myargc && argc < MAX_WADS + 5; i++)
+    {
+	if (!strcasecmp (myargv[i], "-iwad") || !strcasecmp (myargv[i], "-file"))
+	{
+	    // Skip the option and the filenames that follow it.
+	    while (i + 1 < myargc && myargv[i+1][0] != '-')
+		i++;
+	    continue;
+	}
+
+	newargv[argc++] = myargv[i];
+    }
+
+    newargv[argc++] = iwad ? "-iwad" : "-file";
+    newargv[argc++] = path;
+    newargv[argc] = NULL;
+
+    M_SaveDefaults ();
+    I_ShutdownSound ();
+    I_ShutdownMusic ();
+    I_ShutdownGraphics ();
+
+    execv ("/proc/self/exe", newargv);
+
+    // /proc is not always there; fall back to however we were invoked.
+    execv (myargv[0], newargv);
+
+    I_Error ("Could not restart to load %s", path);
+}
+
+
+menuitem_t WadMenu[MAX_WADS] =
+{
+    {1,"",M_LoadWad,0}, {1,"",M_LoadWad,0}, {1,"",M_LoadWad,0},
+    {1,"",M_LoadWad,0}, {1,"",M_LoadWad,0}, {1,"",M_LoadWad,0},
+    {1,"",M_LoadWad,0}, {1,"",M_LoadWad,0}, {1,"",M_LoadWad,0},
+    {1,"",M_LoadWad,0}
+};
+
+menu_t WadDef =
+{
+    1,
+    &SetupDef,
+    WadMenu,
+    M_DrawWadSelect,
+    40,44,
+    0,
+    12
+};
+
+
+void M_WadSelect (int choice)
+{
+    choice = 0;
+    M_ScanWads ();
+    // Only offer as many rows as there are files.
+    WadDef.numitems = numWads ? numWads : 1;
+    WadDef.lastOn = 0;
+    M_SetupNextMenu (&WadDef);
+}
+
+
+void M_LoadWad (int choice)
+{
+    if (choice < 0 || choice >= numWads)
+	return;
+
+    // The engine refuses -file under shareware and exits, which from the
+    // menu would look like the game simply vanished. Say no here instead.
+    if (gamemode == shareware && !M_IsIwad (wadPaths[choice]))
+    {
+	snprintf (wadMessage, sizeof(wadMessage),
+		  "SHAREWARE CANNOT LOAD MODS");
+	S_StartSound (NULL, sfx_oof);
+	return;
+    }
+
+    M_RelaunchWith (wadPaths[choice]);
+}
+
+
+void M_DrawWadSelect (void)
+{
+    int		i;
+    int		y;
+
+    M_WriteText (40, 14, "LOAD WAD");
+    // Above the list: with ten files the rows reach y=152, and anything
+    // below 168 would be drawn onto the status bar and stay there.
+    M_WriteText (40, 28, wadMessage[0] ? wadMessage : "THE GAME RESTARTS TO LOAD");
+
+    if (!numWads)
+    {
+	M_WriteText (40, WadDef.y, "NO WAD FILES FOUND");
+	return;
+    }
+
+    y = WadDef.y;
+
+    for (i = 0; i < numWads; i++)
+    {
+	M_WriteText (WadDef.x, y, wadNames[i]);
+	M_WriteText (WadDef.x + 180, y, M_IsIwad(wadPaths[i]) ? "GAME" : "MOD");
+	y += WadDef.lineheight;
+    }
+}
+
+
+//
 // M_Options
 //
 char    detailNames[2][9]	= {"M_GDHIGH","M_GDLOW"};
@@ -963,6 +1545,9 @@ void M_DrawOptions(void)
 	
     M_DrawThermo(OptionsDef.x,OptionsDef.y+LINEHEIGHT*(scrnsize+1),
 		 9,screenSize);
+
+    // This one has no graphic lump of its own.
+    M_WriteText(OptionsDef.x,OptionsDef.y+LINEHEIGHT*opt_setup,"SETUP");
 }
 
 void M_Options(int choice)
@@ -1448,6 +2033,23 @@ boolean M_Responder (event_t* ev)
     if (ch == -1)
 	return false;
 
+    // Waiting for a key to bind. Take whatever was pressed, unless it is
+    // escape, which backs out and leaves the binding alone.
+    if (bindingWait)
+    {
+	bindingWait = false;
+
+	if (ch != KEY_ESCAPE
+	    && currentMenu == &ControlsDef
+	    && itemOn >= 0 && itemOn < (short)NUM_BINDINGS)
+	{
+	    *bindings[itemOn].key = ch;
+	    S_StartSound (NULL, sfx_pistol);
+	}
+
+	return true;
+    }
+
     
     // Save Game string input
     if (saveStringEnter)
@@ -1743,6 +2345,7 @@ void M_Drawer (void)
     static short	y;
     short		i;
     short		max;
+    short		lh;
     char		string[40];
     int			start;
 
@@ -1756,21 +2359,22 @@ void M_Drawer (void)
 	y = 100 - M_StringHeight(messageString)/2;
 	while(*(messageString+start))
 	{
-	    for (i = 0;i < strlen(messageString+start);i++)
-		if (*(messageString+start+i) == '\n')
-		{
-		    memset(string,0,40);
-		    strncpy(string,messageString+start,i);
-		    start += i+1;
-		    break;
-		}
-				
-	    if (i == strlen(messageString+start))
-	    {
-		strcpy(string,messageString+start);
-		start += i;
-	    }
-				
+	    char*	line = messageString + start;
+	    char*	nl = strchr(line, '\n');
+	    size_t	len = nl ? (size_t)(nl - line) : strlen(line);
+
+	    // Truncate rather than overrun. The original copied a whole line
+	    // into this buffer with no length check, and two missing commas
+	    // in the quit message table joined messages into lines of 47
+	    // characters, which aborted the game on the way out.
+	    start += nl ? len + 1 : len;
+
+	    if (len > sizeof(string) - 1)
+		len = sizeof(string) - 1;
+
+	    memcpy (string, line, len);
+	    string[len] = 0;
+
 	    x = 160 - M_StringWidth(string)/2;
 	    M_WriteText(x,y,string);
 	    y += SHORT(hu_font[0]->height);
@@ -1788,18 +2392,19 @@ void M_Drawer (void)
     x = currentMenu->x;
     y = currentMenu->y;
     max = currentMenu->numitems;
+    lh = currentMenu->lineheight ? currentMenu->lineheight : LINEHEIGHT;
 
     for (i=0;i<max;i++)
     {
 	if (currentMenu->menuitems[i].name[0])
 	    V_DrawPatchDirect (x,y,0,
 			       W_CacheLumpName(currentMenu->menuitems[i].name ,PU_CACHE));
-	y += LINEHEIGHT;
+	y += lh;
     }
 
     
     // DRAW SKULL
-    V_DrawPatchDirect(x + SKULLXOFF,currentMenu->y - 5 + itemOn*LINEHEIGHT, 0,
+    V_DrawPatchDirect(x + SKULLXOFF,currentMenu->y - 5 + itemOn*lh, 0,
 		      W_CacheLumpName(skullName[whichSkull],PU_CACHE));
 
 }

@@ -185,6 +185,7 @@ extern int	key_speed;
 extern int	mousebfire;
 extern int	mousebstrafe;
 extern int	mousebforward;
+extern int	grabMouse;
 
 extern int	joybfire;
 extern int	joybstrafe;
@@ -277,6 +278,7 @@ default_t	defaults[] =
     {"mouseb_fire",&mousebfire,0},
     {"mouseb_strafe",&mousebstrafe,1},
     {"mouseb_forward",&mousebforward,2},
+    {"grab_mouse",&grabMouse,0},
 
     {"use_joystick",&usejoystick, 0},
     {"joyb_fire",&joybfire,0},

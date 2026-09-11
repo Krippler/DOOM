@@ -37,6 +37,7 @@ static const char rcsid[] = "$Id: d_main.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <strings.h>
 #include <fcntl.h>
 #endif
 
@@ -587,6 +588,7 @@ static char* WadFileName (char* dir, char* file)
 //
 void IdentifyVersion (void)
 {
+    int		p;
 
     char*	doom1wad;
     char*	doomwad;
@@ -628,6 +630,47 @@ void IdentifyVersion (void)
       I_Error("Please set $HOME to your home directory");
     snprintf(basedefault, sizeof(basedefault), "%s/.doomrc", home);
 #endif
+
+    // -iwad names the game data outright instead of taking whichever file
+    // turns up in the search below. The WAD menu relaunches the engine with
+    // this, which is the only way to change IWAD: everything from textures to
+    // the sound cache is built once at startup around the file loaded here.
+    p = M_CheckParm ("-iwad");
+
+    if (p && p < myargc-1)
+    {
+	char*	iwad = myargv[p+1];
+	char*	base;
+
+	if (access (iwad, R_OK))
+	    I_Error ("Cannot read IWAD [%s]", iwad);
+
+	base = strrchr (iwad, '/');
+	base = base ? base + 1 : iwad;
+
+	if (!strcasecmp (base, "doom2f.wad"))
+	{
+	    gamemode = commercial;
+	    language = french;
+	}
+	else if (!strcasecmp (base, "doom2.wad")
+		 || !strcasecmp (base, "plutonia.wad")
+		 || !strcasecmp (base, "tnt.wad"))
+	    gamemode = commercial;
+	else if (!strcasecmp (base, "doomu.wad"))
+	    gamemode = retail;
+	else if (!strcasecmp (base, "doom.wad"))
+	    gamemode = registered;
+	else if (!strcasecmp (base, "doom1.wad"))
+	    gamemode = shareware;
+	else
+	    // Unknown name. The engine already tolerates this and treats it
+	    // as shareware for the banner.
+	    gamemode = indetermined;
+
+	D_AddFile (iwad);
+	return;
+    }
 
     if (M_CheckParm ("-shdev"))
     {

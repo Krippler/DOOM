@@ -80,7 +80,7 @@ int		X_shmeventtype;
 // Fake mouse handling.
 // This cannot work properly w/o DGA.
 // Needs an invisible mouse cursor at least.
-boolean		grabMouse;
+int		grabMouse;
 
 // Set from the config file and the options menu. The original stored this
 // and never looked at it again.
@@ -167,13 +167,25 @@ int xlatekey(void)
 
 void I_ShutdownGraphics(void)
 {
-  // Detach from X server
-  if (!XShmDetach(X_display, &X_shminfo))
+  // Nothing to tear down if the display was never opened. This is reached
+  // when startup fails before I_InitGraphics, where detaching a shared
+  // memory segment that was never attached faulted instead of exiting
+  // cleanly.
+  if (!X_display || !image)
+    return;
+
+  // Only the shared memory path has anything attached; without the
+  // extension the image is ordinary client side memory.
+  if (doShm)
+  {
+    // Detach from X server
+    if (!XShmDetach(X_display, &X_shminfo))
 	    I_Error("XShmDetach() failed in I_ShutdownGraphics()");
 
-  // Release shared memory.
-  shmdt(X_shminfo.shmaddr);
-  shmctl(X_shminfo.shmid, IPC_RMID, 0);
+    // Release shared memory.
+    shmdt(X_shminfo.shmaddr);
+    shmctl(X_shminfo.shmid, IPC_RMID, 0);
+  }
 
   // Paranoia.
   image->data = NULL;
@@ -702,6 +714,28 @@ void grabsharedmemory(int size)
 	  (void *) (image->data));
 }
 
+//
+// I_SetMouseGrab
+//
+// Grabbing confines the pointer to the window and lets the warp below
+// recentre it, which is what allows continuous turning. The mouse menu
+// switches it at runtime, so it cannot only be decided at startup.
+//
+void I_SetMouseGrab (boolean grab)
+{
+    if (!X_display)
+	return;
+
+    if (grab)
+	XGrabPointer (X_display, X_mainWindow, True,
+		      ButtonPressMask|ButtonReleaseMask|PointerMotionMask,
+		      GrabModeAsync, GrabModeAsync,
+		      X_mainWindow, None, CurrentTime);
+    else
+	XUngrabPointer (X_display, CurrentTime);
+}
+
+
 void I_InitGraphics(void)
 {
 
@@ -748,7 +782,10 @@ void I_InitGraphics(void)
 	displayname = 0;
 
     // check if the user wants to grab the mouse (quite unnice)
-    grabMouse = !!M_CheckParm("-grabmouse");
+    // The menu setting is loaded from the config before this runs, so the
+    // command line only ever turns the grab on.
+    if (M_CheckParm("-grabmouse"))
+	grabMouse = 1;
 
     // check for command-line geometry
     if ( (pnum=M_CheckParm("-geom")) ) // suggest parentheses around assignment
@@ -794,10 +831,20 @@ void I_InitGraphics(void)
 	if (!displayname) displayname = (char *) getenv("DISPLAY");
 	if (displayname)
 	{
-	    d = displayname;
-	    while (*d && (*d != ':')) d++;
-	    if (*d) *d = 0;
-	    if (!(!strcasecmp(displayname, "unix") || !*displayname)) doShm = false;
+	    // Only the host part decides whether this is a local connection.
+	    // The original truncated the string in place, which for the value
+	    // getenv hands back means writing a NUL into the process's own
+	    // environment: DISPLAY=:0 became DISPLAY= and any later exec of
+	    // ourselves came up with no display at all. Copy it instead.
+	    char	host[256];
+
+	    for (d = host; *displayname && *displayname != ':' &&
+		     d < host + sizeof(host) - 1; displayname++)
+		*d++ = *displayname;
+
+	    *d = 0;
+
+	    if (!(!strcasecmp(host, "unix") || !*host)) doShm = false;
 	}
     }
 

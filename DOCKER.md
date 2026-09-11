@@ -44,6 +44,48 @@ your own copy of the game.
 If no IWAD is found the container stops immediately and lists what it looked
 for.
 
+Mods (PWADs) go in the same directory. They are not matched against the table
+above; anything ending in `.wad` shows up in the in-game WAD menu below.
+
+## Controls
+
+Click into the canvas first — the browser only sends keys to a focused canvas.
+
+| | |
+| --- | --- |
+| Move | arrow keys |
+| Strafe | `,` and `.`, or hold Alt and steer |
+| Run | hold Shift |
+| Fire | Ctrl |
+| Open, use | Space |
+| Weapons | `1`–`7` |
+| Map | Tab |
+| Menu | Esc |
+
+All of these can be changed from the game: **Esc → Options → Setup →
+Controls**. Pick a line, press Return, then press the key you want. The
+choice is written to `.doomrc` in the state directory, so it survives a
+restart.
+
+The mouse turns and moves, and is off until you turn it on under **Options →
+Setup → Mouse**, where the buttons are assignable too. With *grab pointer* on,
+the pointer is confined to the game window while you play; Esc releases it
+along with everything else, since it only holds while the menu is closed.
+
+## Loading WADs from the game
+
+**Options → Setup → Load WAD** lists everything in the mounted WAD directory,
+marked `GAME` for an IWAD and `MOD` for a PWAD, and loads whichever you pick.
+
+The engine builds its textures, sprites, sound cache and every zone allocation
+once at startup around the files it was given, and none of that can be swapped
+while it runs. So choosing a file restarts the engine with it: a couple of
+seconds, and you land back on the title screen. Anything not yet saved is
+lost, the same as quitting.
+
+Shareware refuses to load mods — that is the engine's own restriction, not the
+container's — and the menu says so instead of restarting into a fatal error.
+
 ## Size
 
 About 216 MB to pull, 603 MB unpacked. The engine and sound server together

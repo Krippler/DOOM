@@ -42,6 +42,9 @@ void I_ShutdownGraphics(void);
 // Takes full 8 bit values.
 void I_SetPalette (byte* palette);
 
+// Turn the pointer grab on or off while running.
+void I_SetMouseGrab (boolean grab);
+
 void I_UpdateNoBlit (void);
 void I_FinishUpdate (void);
 

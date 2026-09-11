@@ -68,6 +68,21 @@ current gcc and glibc. Behaviour is otherwise left alone.
   the `(int)` casts are now `intptr_t` so nothing is truncated.
 - **`z_zone.c`, `d_net.c`, `d_main.c`, `i_video.c`** — remaining
   pointer-to-integer casts widened to `intptr_t`/`uintptr_t`.
+- **`i_video.c`** — the MIT-SHM check works out whether the display is local by
+  cutting the host off the display name, and did it by writing a NUL over the
+  `:` of the string `getenv("DISPLAY")` returned. That string is the process's
+  own environment, so `DISPLAY=:0` became `DISPLAY=`. Nothing noticed while
+  DOOM only ever started once; the WAD menu re-executes the engine, and the
+  new process came up with no display. It copies the host out now.
+- **`i_video.c`** — `I_ShutdownGraphics` detached the shared memory segment
+  unconditionally: with no MIT-SHM extension it detached one that was never
+  attached, and on a startup failure before `I_InitGraphics` it passed a null
+  `Display*` to Xlib and faulted, which turned a clean `I_Error` into a
+  segfault.
+- **`i_video.c`** — mouse motion was discarded whenever the pointer shared a
+  row *or* column with the centre of the window, because the filter that
+  throws away the engine's own re-centring warp tested both coordinates with
+  `&&`. Moving straight across the middle of the screen did nothing.
 
 ## Sound server (`sndserv/`)
 
@@ -147,6 +162,34 @@ Details worth knowing:
   the value is clamped before being turned into a synth gain.
 
 Build with `make MUSIC=none` to get the original silent stubs back.
+
+## Added
+
+Three things the 1997 release had no way to do, all reachable from
+**Options → Setup**:
+
+- **Controls** (`m_menu.c`) rebinds the ten movement and action keys. The
+  engine already kept them in the `key_*` globals that `M_LoadDefaults`
+  reads and writes, so a binding survives a restart with no new plumbing.
+- **Mouse** (`m_menu.c`) turns the mouse on and off, assigns its buttons, and
+  toggles a pointer grab (`I_SetMouseGrab`, `XGrabPointer`). The window's
+  event mask had the pointer events commented out; they are back, and gated
+  on `usemouse` so nothing changes when the mouse is off.
+- **Load WAD** (`m_menu.c`) lists the `.wad` files in `$DOOM_WADPATH`
+  (or `$DOOMWADDIR`, or the current directory) and loads the one you pick,
+  reading the four byte signature to tell an IWAD from a PWAD.
+
+  Nothing about the loaded WADs can change while the engine runs — textures,
+  sprites, the sound cache and every zone allocation are built once at
+  startup — so this re-executes the engine with the file appended to its own
+  arguments. `d_main.c` gained `-iwad` to receive it, which the original had
+  no equivalent of: it searched fixed filenames in `$DOOMWADDIR` and took
+  whichever it found first.
+
+The menu structure grew a per-menu line height. The original's three menus all
+use 16-pixel rows drawn from graphic lumps; these pages are text and need to
+fit ten rows above a status bar that only redraws when it is marked dirty, so
+anything drawn below y=168 smears and stays there.
 
 ## Not changed
 

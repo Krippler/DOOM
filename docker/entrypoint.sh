@@ -107,6 +107,10 @@ fi
 
 export DOOMWADDIR="$LINKDIR"
 
+# The in-game WAD menu scans this instead, so it lists what the user
+# actually mounted rather than the lowercase symlinks above.
+export DOOM_WADPATH="$WADDIR"
+
 ##############################################################################
 # Sound.
 #

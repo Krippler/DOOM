@@ -6,6 +6,38 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Added
+- In-game **Options → Setup**, with three pages the 1997 release had no
+  equivalent of:
+  - **Controls** rebinds the ten movement and action keys. Bindings are
+    written to `.doomrc` and survive a restart.
+  - **Mouse** turns the mouse on and off, assigns its buttons, and toggles a
+    pointer grab that confines the pointer to the window while playing.
+  - **Load WAD** lists the `.wad` files in the mounted WAD directory, marks
+    each one `GAME` or `MOD` by reading its signature, and loads the one you
+    pick. Nothing about the loaded WADs can change while the engine runs, so
+    this restarts it — a couple of seconds back to the title screen.
+- `-iwad <file>` on the command line, to name the game data outright rather
+  than take whichever of seven fixed filenames turns up first.
+
+### Fixed
+- The browser stretched the picture. noVNC was told to scale its canvas to the
+  window; the engine renders a fixed 320×200. The link in the docs now passes
+  `resize=off`, and `DOOM_SCALE` is the way to get a bigger picture — 3 and 4
+  render 960×600 and 1280×800 natively, which beats upscaling.
+- The mouse did not work at all. The window's event mask had every pointer
+  event commented out, and the filter meant to drop the engine's own
+  re-centring warp threw away any motion that merely shared a row or column
+  with the centre.
+- `I_ShutdownGraphics` detached a shared memory segment it had never attached
+  when the MIT-SHM extension was missing, and dereferenced a null `Display*`
+  when startup failed before graphics came up, turning a clean error message
+  into a segfault.
+- The engine wrote a NUL into its own `DISPLAY` environment variable while
+  checking whether the X connection was local.
+
 ## [1.10.0] — 2026-09-11
 
 ### Added
