@@ -24,6 +24,12 @@
 #ifndef __DOOMTYPE__
 #define __DOOMTYPE__
 
+// For intptr_t/uintptr_t: this code originally assumed
+// sizeof(int) == sizeof(void*), which is not true on 64-bit targets.
+#include <stdint.h>
+// For offsetof, used to assert the layout of structures read from a WAD.
+#include <stddef.h>
+
 
 #ifndef __BYTEBOOL__
 #define __BYTEBOOL__

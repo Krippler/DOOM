@@ -222,13 +222,21 @@ extern char*	chat_macros[];
 
 
 
+typedef enum
+{
+    dt_int,
+    dt_string
+} defaulttype_t;
+
 typedef struct
 {
-    char*	name;
-    int*	location;
-    int		defaultvalue;
-    int		scantranslate;		// PC scan code hack
-    int		untranslated;		// lousy hack
+    char*		name;
+    void*		location;	// int* for dt_int, char** for dt_string
+    int			defaultvalue;	// used when type is dt_int
+    char*		defaultstring;	// used when type is dt_string
+    defaulttype_t	type;
+    int			scantranslate;	// PC scan code hack
+    int			untranslated;	// lousy hack
 } default_t;
 
 default_t	defaults[] =
@@ -254,15 +262,15 @@ default_t	defaults[] =
 
 // UNIX hack, to be removed. 
 #ifdef SNDSERV
-    {"sndserver", (int *) &sndserver_filename, (int) "sndserver"},
+    {"sndserver", &sndserver_filename, 0, "sndserver", dt_string},
     {"mb_used", &mb_used, 2},
 #endif
     
 #endif
 
 #ifdef LINUX
-    {"mousedev", (int*)&mousedev, (int)"/dev/ttyS0"},
-    {"mousetype", (int*)&mousetype, (int)"microsoft"},
+    {"mousedev", &mousedev, 0, "/dev/ttyS0", dt_string},
+    {"mousetype", &mousetype, 0, "microsoft", dt_string},
 #endif
 
     {"use_mouse",&usemouse, 1},
@@ -285,16 +293,16 @@ default_t	defaults[] =
 
     {"usegamma",&usegamma, 0},
 
-    {"chatmacro0", (int *) &chat_macros[0], (int) HUSTR_CHATMACRO0 },
-    {"chatmacro1", (int *) &chat_macros[1], (int) HUSTR_CHATMACRO1 },
-    {"chatmacro2", (int *) &chat_macros[2], (int) HUSTR_CHATMACRO2 },
-    {"chatmacro3", (int *) &chat_macros[3], (int) HUSTR_CHATMACRO3 },
-    {"chatmacro4", (int *) &chat_macros[4], (int) HUSTR_CHATMACRO4 },
-    {"chatmacro5", (int *) &chat_macros[5], (int) HUSTR_CHATMACRO5 },
-    {"chatmacro6", (int *) &chat_macros[6], (int) HUSTR_CHATMACRO6 },
-    {"chatmacro7", (int *) &chat_macros[7], (int) HUSTR_CHATMACRO7 },
-    {"chatmacro8", (int *) &chat_macros[8], (int) HUSTR_CHATMACRO8 },
-    {"chatmacro9", (int *) &chat_macros[9], (int) HUSTR_CHATMACRO9 }
+    {"chatmacro0", &chat_macros[0], 0, HUSTR_CHATMACRO0, dt_string },
+    {"chatmacro1", &chat_macros[1], 0, HUSTR_CHATMACRO1, dt_string },
+    {"chatmacro2", &chat_macros[2], 0, HUSTR_CHATMACRO2, dt_string },
+    {"chatmacro3", &chat_macros[3], 0, HUSTR_CHATMACRO3, dt_string },
+    {"chatmacro4", &chat_macros[4], 0, HUSTR_CHATMACRO4, dt_string },
+    {"chatmacro5", &chat_macros[5], 0, HUSTR_CHATMACRO5, dt_string },
+    {"chatmacro6", &chat_macros[6], 0, HUSTR_CHATMACRO6, dt_string },
+    {"chatmacro7", &chat_macros[7], 0, HUSTR_CHATMACRO7, dt_string },
+    {"chatmacro8", &chat_macros[8], 0, HUSTR_CHATMACRO8, dt_string },
+    {"chatmacro9", &chat_macros[9], 0, HUSTR_CHATMACRO9, dt_string }
 
 };
 
@@ -317,14 +325,13 @@ void M_SaveDefaults (void)
 		
     for (i=0 ; i<numdefaults ; i++)
     {
-	if (defaults[i].defaultvalue > -0xfff
-	    && defaults[i].defaultvalue < 0xfff)
+	if (defaults[i].type == dt_string)
 	{
-	    v = *defaults[i].location;
-	    fprintf (f,"%s\t\t%i\n",defaults[i].name,v);
-	} else {
 	    fprintf (f,"%s\t\t\"%s\"\n",defaults[i].name,
 		     * (char **) (defaults[i].location));
+	} else {
+	    v = * (int *) (defaults[i].location);
+	    fprintf (f,"%s\t\t%i\n",defaults[i].name,v);
 	}
     }
 	
@@ -351,7 +358,12 @@ void M_LoadDefaults (void)
     // set everything to base values
     numdefaults = sizeof(defaults)/sizeof(defaults[0]);
     for (i=0 ; i<numdefaults ; i++)
-	*defaults[i].location = defaults[i].defaultvalue;
+    {
+	if (defaults[i].type == dt_string)
+	    * (char **) (defaults[i].location) = defaults[i].defaultstring;
+	else
+	    * (int *) (defaults[i].location) = defaults[i].defaultvalue;
+    }
     
     // check for a custom default file
     i = M_CheckParm ("-config");
@@ -388,11 +400,14 @@ void M_LoadDefaults (void)
 		for (i=0 ; i<numdefaults ; i++)
 		    if (!strcmp(def, defaults[i].name))
 		    {
-			if (!isstring)
-			    *defaults[i].location = parm;
-			else
-			    *defaults[i].location =
-				(int) newstring;
+			if (defaults[i].type == dt_string)
+			{
+			    if (isstring)
+				* (char **) (defaults[i].location) =
+				    newstring;
+			}
+			else if (!isstring)
+			    * (int *) (defaults[i].location) = parm;
 			break;
 		    }
 	    }

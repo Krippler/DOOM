@@ -1590,6 +1590,16 @@ void G_DoPlayDemo (void)
     {
       fprintf( stderr, "Demo is from a different game version!\n");
       gameaction = ga_nothing;
+      Z_ChangeTag (demobuffer, PU_CACHE);
+      demobuffer = demo_p = NULL;
+
+      // Returning here leaves no level loaded, so the play loop would tick
+      // a player with no mobj. Fall back to the title screen instead;
+      // -playdemo/-timedemo used to segfault on a version mismatch.
+      timingdemo = false;
+      singledemo = false;
+      gamestate = GS_DEMOSCREEN;
+      D_StartTitle ();
       return;
     }
     

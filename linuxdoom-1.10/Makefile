@@ -4,11 +4,13 @@
 #
 # $Log:$
 #
-CC=  gcc  # gcc or g++
+CC?= gcc  # gcc or g++
 
-CFLAGS=-g -Wall -DNORMALUNIX -DLINUX # -DUSEASM 
-LDFLAGS=-L/usr/X11R6/lib
-LIBS=-lXext -lX11 -lnsl -lm
+CFLAGS?=-O2 -g
+CFLAGS+=-Wall -DNORMALUNIX -DLINUX # -DUSEASM 
+LDFLAGS?=
+# -lnsl is gone on modern glibc: those symbols now live in libc itself.
+LIBS=-lXext -lX11 -lm
 
 # subdirectory for objects
 O=linux
@@ -79,15 +81,18 @@ OBJS=				\
 
 all:	 $(O)/linuxxdoom
 
+$(O):
+	mkdir -p $(O)
+
 clean:
 	rm -f *.o *~ *.flc
 	rm -f linux/*
 
-$(O)/linuxxdoom:	$(OBJS) $(O)/i_main.o
+$(O)/linuxxdoom:	$(O) $(OBJS) $(O)/i_main.o
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) $(O)/i_main.o \
 	-o $(O)/linuxxdoom $(LIBS)
 
-$(O)/%.o:	%.c
+$(O)/%.o:	%.c | $(O)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 #############################################################

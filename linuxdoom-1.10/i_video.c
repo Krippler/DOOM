@@ -46,7 +46,7 @@ int XShmGetEventBase( Display* dpy ); // problems with g++?
 #include <sys/socket.h>
 
 #include <netinet/in.h>
-#include <errnos.h>
+#include <errno.h>
 #include <signal.h>
 
 #include "doomstat.h"
@@ -666,7 +666,6 @@ void grabsharedmemory(int size)
       id = shmget((key_t)key, size, IPC_CREAT|0777);
       if (id==-1)
       {
-	extern int errno;
 	fprintf(stderr, "errno=%d\n", errno);
 	I_Error("Could not get any shared memory");
       }
@@ -685,8 +684,8 @@ void grabsharedmemory(int size)
   // attach to the shared memory segment
   image->data = X_shminfo.shmaddr = shmat(id, 0, 0);
   
-  fprintf(stderr, "shared memory id=%d, addr=0x%x\n", id,
-	  (int) (image->data));
+  fprintf(stderr, "shared memory id=%d, addr=%p\n", id,
+	  (void *) (image->data));
 }
 
 void I_InitGraphics(void)
@@ -941,12 +940,17 @@ void InitExpand2 (void)
 	
     printf ("building exptable2...\n");
     exp = exptable2;
+    // Entry (i<<8)|j expands to four copies of j followed by four of i.
+    // On a little-endian host u[0] is the half stored first, so it has to
+    // carry j, the low byte of the index and the left-hand pixel. The
+    // original assignment was the other way round, which mirrored every
+    // pixel pair on screen.
     for (i=0 ; i<256 ; i++)
     {
-	pixel.u[0] = i | (i<<8) | (i<<16) | (i<<24);
+	pixel.u[1] = i | (i<<8) | (i<<16) | (i<<24);
 	for (j=0 ; j<256 ; j++)
 	{
-	    pixel.u[1] = j | (j<<8) | (j<<16) | (j<<24);
+	    pixel.u[0] = j | (j<<8) | (j<<16) | (j<<24);
 	    *exp++ = pixel.d;
 	}
     }
@@ -986,13 +990,13 @@ Expand4
 	{
 	    fourpixels = lineptr[0];
 			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff0000)>>13) );
+	    dpixel = *(double *)( (intptr_t)exp + ( (fourpixels&0xffff)<<3 ) );
 	    xline[0] = dpixel;
 	    xline[160] = dpixel;
 	    xline[320] = dpixel;
 	    xline[480] = dpixel;
 			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff)<<3 ) );
+	    dpixel = *(double *)( (intptr_t)exp + ( (fourpixels&0xffff0000)>>13) );
 	    xline[1] = dpixel;
 	    xline[161] = dpixel;
 	    xline[321] = dpixel;
@@ -1000,13 +1004,13 @@ Expand4
 
 	    fourpixels = lineptr[1];
 			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff0000)>>13) );
+	    dpixel = *(double *)( (intptr_t)exp + ( (fourpixels&0xffff)<<3 ) );
 	    xline[2] = dpixel;
 	    xline[162] = dpixel;
 	    xline[322] = dpixel;
 	    xline[482] = dpixel;
 			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff)<<3 ) );
+	    dpixel = *(double *)( (intptr_t)exp + ( (fourpixels&0xffff0000)>>13) );
 	    xline[3] = dpixel;
 	    xline[163] = dpixel;
 	    xline[323] = dpixel;
@@ -1014,13 +1018,13 @@ Expand4
 
 	    fourpixels = lineptr[2];
 			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff0000)>>13) );
+	    dpixel = *(double *)( (intptr_t)exp + ( (fourpixels&0xffff)<<3 ) );
 	    xline[4] = dpixel;
 	    xline[164] = dpixel;
 	    xline[324] = dpixel;
 	    xline[484] = dpixel;
 			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff)<<3 ) );
+	    dpixel = *(double *)( (intptr_t)exp + ( (fourpixels&0xffff0000)>>13) );
 	    xline[5] = dpixel;
 	    xline[165] = dpixel;
 	    xline[325] = dpixel;
@@ -1028,13 +1032,13 @@ Expand4
 
 	    fourpixels = lineptr[3];
 			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff0000)>>13) );
+	    dpixel = *(double *)( (intptr_t)exp + ( (fourpixels&0xffff)<<3 ) );
 	    xline[6] = dpixel;
 	    xline[166] = dpixel;
 	    xline[326] = dpixel;
 	    xline[486] = dpixel;
 			
-	    dpixel = *(double *)( (int)exp + ( (fourpixels&0xffff)<<3 ) );
+	    dpixel = *(double *)( (intptr_t)exp + ( (fourpixels&0xffff0000)>>13) );
 	    xline[7] = dpixel;
 	    xline[167] = dpixel;
 	    xline[327] = dpixel;

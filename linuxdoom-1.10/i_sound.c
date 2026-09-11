@@ -27,6 +27,7 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <errno.h>
 
 #include <math.h>
 
@@ -103,7 +104,9 @@ static int flag = 0;
 int 		lengths[NUMSFX];
 
 // The actual output device.
-int	audio_fd;
+// -1 when no OSS device could be opened; the mixer then runs silently
+// instead of aborting, which is the normal case on modern kernels.
+int	audio_fd = -1;
 
 // The global mixing buffer.
 // Basically, samples from all active internal channels
@@ -163,7 +166,6 @@ myioctl
   int*	arg )
 {   
     int		rc;
-    extern int	errno;
     
     rc = ioctl(fd, command, arg);  
     if (rc < 0)
@@ -666,7 +668,9 @@ void
 I_SubmitSound(void)
 {
   // Write it to DSP device.
-  write(audio_fd, mixbuffer, SAMPLECOUNT*BUFMUL);
+  if (audio_fd >= 0
+      && write(audio_fd, mixbuffer, SAMPLECOUNT*BUFMUL) < 0)
+    fprintf(stderr, "I_SubmitSound: write to audio device failed\n");
 }
 
 
@@ -722,7 +726,11 @@ void I_ShutdownSound(void)
 #endif
   
   // Cleaning up -releasing the DSP device.
-  close ( audio_fd );
+  if (audio_fd >= 0)
+  {
+    close ( audio_fd );
+    audio_fd = -1;
+  }
 #endif
 
   // Done.
@@ -769,28 +777,31 @@ I_InitSound()
   
   audio_fd = open("/dev/dsp", O_WRONLY);
   if (audio_fd<0)
-    fprintf(stderr, "Could not open /dev/dsp\n");
-  
-                     
-  i = 11 | (2<<16);                                           
-  myioctl(audio_fd, SNDCTL_DSP_SETFRAGMENT, &i);
-  myioctl(audio_fd, SNDCTL_DSP_RESET, 0);
-  
-  i=SAMPLERATE;
-  
-  myioctl(audio_fd, SNDCTL_DSP_SPEED, &i);
-  
-  i=1;
-  myioctl(audio_fd, SNDCTL_DSP_STEREO, &i);
-  
-  myioctl(audio_fd, SNDCTL_DSP_GETFMTS, &i);
-  
-  if (i&=AFMT_S16_LE)    
-    myioctl(audio_fd, SNDCTL_DSP_SETFMT, &i);
+  {
+    fprintf(stderr, "Could not open /dev/dsp, running without sound\n");
+  }
   else
-    fprintf(stderr, "Could not play signed 16 data\n");
+  {
+    i = 11 | (2<<16);                                           
+    myioctl(audio_fd, SNDCTL_DSP_SETFRAGMENT, &i);
+    myioctl(audio_fd, SNDCTL_DSP_RESET, 0);
+  
+    i=SAMPLERATE;
+  
+    myioctl(audio_fd, SNDCTL_DSP_SPEED, &i);
+  
+    i=1;
+    myioctl(audio_fd, SNDCTL_DSP_STEREO, &i);
+  
+    myioctl(audio_fd, SNDCTL_DSP_GETFMTS, &i);
+  
+    if (i&=AFMT_S16_LE)    
+      myioctl(audio_fd, SNDCTL_DSP_SETFMT, &i);
+    else
+      fprintf(stderr, "Could not play signed 16 data\n");
 
-  fprintf(stderr, " configured audio device\n" );
+    fprintf(stderr, " configured audio device\n" );
+  }
 
     
   // Initialize external data (all sounds) at start, keep static.
@@ -808,7 +819,7 @@ I_InitSound()
     {
       // Previously loaded already?
       S_sfx[i].data = S_sfx[i].link->data;
-      lengths[i] = lengths[(S_sfx[i].link - S_sfx)/sizeof(sfxinfo_t)];
+      lengths[i] = lengths[S_sfx[i].link - S_sfx];
     }
   }
 
@@ -924,7 +935,9 @@ void I_HandleSoundTimer( int ignore )
   {
     // See I_SubmitSound().
     // Write it to DSP device.
-    write(audio_fd, mixbuffer, SAMPLECOUNT*BUFMUL);
+    if (audio_fd >= 0
+	&& write(audio_fd, mixbuffer, SAMPLECOUNT*BUFMUL) < 0)
+      fprintf(stderr, "I_HandleSoundTimer: write to audio device failed\n");
 
     // Reset flag counter.
     flag = 0;

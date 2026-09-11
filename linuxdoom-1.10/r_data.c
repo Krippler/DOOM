@@ -84,13 +84,25 @@ typedef struct
 typedef struct
 {
     char		name[8];
-    boolean		masked;	
+    int32_t		masked;	
     short		width;
     short		height;
-    void		**columndirectory;	// OBSOLETE
+    int32_t		columndirectory;	// OBSOLETE
     short		patchcount;
     mappatch_t	patches[1];
 } maptexture_t;
+
+// These two are read straight out of the WAD, so their layout is the file
+// format, not the host's. The obsolete columndirectory field was declared as
+// a pointer, which on a 64-bit target is 8 bytes instead of the 4 on disk and
+// shifted patchcount and patches out of place.
+_Static_assert (sizeof(mappatch_t) == 10, "mappatch_t must match the WAD layout");
+_Static_assert (offsetof(maptexture_t, masked) == 8, "maptexture_t layout");
+_Static_assert (offsetof(maptexture_t, width) == 12, "maptexture_t layout");
+_Static_assert (offsetof(maptexture_t, height) == 14, "maptexture_t layout");
+_Static_assert (offsetof(maptexture_t, columndirectory) == 16, "maptexture_t layout");
+_Static_assert (offsetof(maptexture_t, patchcount) == 20, "maptexture_t layout");
+_Static_assert (offsetof(maptexture_t, patches) == 22, "maptexture_t layout");
 
 
 // A single patch from a texture definition,
@@ -479,13 +491,13 @@ void R_InitTextures (void)
     }
     numtextures = numtextures1 + numtextures2;
 	
-    textures = Z_Malloc (numtextures*4, PU_STATIC, 0);
-    texturecolumnlump = Z_Malloc (numtextures*4, PU_STATIC, 0);
-    texturecolumnofs = Z_Malloc (numtextures*4, PU_STATIC, 0);
-    texturecomposite = Z_Malloc (numtextures*4, PU_STATIC, 0);
-    texturecompositesize = Z_Malloc (numtextures*4, PU_STATIC, 0);
-    texturewidthmask = Z_Malloc (numtextures*4, PU_STATIC, 0);
-    textureheight = Z_Malloc (numtextures*4, PU_STATIC, 0);
+    textures = Z_Malloc (numtextures*sizeof(*textures), PU_STATIC, 0);
+    texturecolumnlump = Z_Malloc (numtextures*sizeof(*texturecolumnlump), PU_STATIC, 0);
+    texturecolumnofs = Z_Malloc (numtextures*sizeof(*texturecolumnofs), PU_STATIC, 0);
+    texturecomposite = Z_Malloc (numtextures*sizeof(*texturecomposite), PU_STATIC, 0);
+    texturecompositesize = Z_Malloc (numtextures*sizeof(*texturecompositesize), PU_STATIC, 0);
+    texturewidthmask = Z_Malloc (numtextures*sizeof(*texturewidthmask), PU_STATIC, 0);
+    textureheight = Z_Malloc (numtextures*sizeof(*textureheight), PU_STATIC, 0);
 
     totalwidth = 0;
     
@@ -545,8 +557,8 @@ void R_InitTextures (void)
 			 texture->name);
 	    }
 	}		
-	texturecolumnlump[i] = Z_Malloc (texture->width*2, PU_STATIC,0);
-	texturecolumnofs[i] = Z_Malloc (texture->width*2, PU_STATIC,0);
+	texturecolumnlump[i] = Z_Malloc (texture->width*sizeof(**texturecolumnlump), PU_STATIC,0);
+	texturecolumnofs[i] = Z_Malloc (texture->width*sizeof(**texturecolumnofs), PU_STATIC,0);
 
 	j = 1;
 	while (j*2 <= texture->width)
@@ -567,7 +579,7 @@ void R_InitTextures (void)
 	R_GenerateLookup (i);
     
     // Create translation table for global animation.
-    texturetranslation = Z_Malloc ((numtextures+1)*4, PU_STATIC, 0);
+    texturetranslation = Z_Malloc ((numtextures+1)*sizeof(*texturetranslation), PU_STATIC, 0);
     
     for (i=0 ; i<numtextures ; i++)
 	texturetranslation[i] = i;
@@ -587,7 +599,7 @@ void R_InitFlats (void)
     numflats = lastflat - firstflat + 1;
 	
     // Create translation table for global animation.
-    flattranslation = Z_Malloc ((numflats+1)*4, PU_STATIC, 0);
+    flattranslation = Z_Malloc ((numflats+1)*sizeof(*flattranslation), PU_STATIC, 0);
     
     for (i=0 ; i<numflats ; i++)
 	flattranslation[i] = i;
@@ -609,9 +621,9 @@ void R_InitSpriteLumps (void)
     lastspritelump = W_GetNumForName ("S_END") - 1;
     
     numspritelumps = lastspritelump - firstspritelump + 1;
-    spritewidth = Z_Malloc (numspritelumps*4, PU_STATIC, 0);
-    spriteoffset = Z_Malloc (numspritelumps*4, PU_STATIC, 0);
-    spritetopoffset = Z_Malloc (numspritelumps*4, PU_STATIC, 0);
+    spritewidth = Z_Malloc (numspritelumps*sizeof(*spritewidth), PU_STATIC, 0);
+    spriteoffset = Z_Malloc (numspritelumps*sizeof(*spriteoffset), PU_STATIC, 0);
+    spritetopoffset = Z_Malloc (numspritelumps*sizeof(*spritetopoffset), PU_STATIC, 0);
 	
     for (i=0 ; i< numspritelumps ; i++)
     {
@@ -639,7 +651,7 @@ void R_InitColormaps (void)
     lump = W_GetNumForName("COLORMAP"); 
     length = W_LumpLength (lump) + 255; 
     colormaps = Z_Malloc (length, PU_STATIC, 0); 
-    colormaps = (byte *)( ((int)colormaps + 255)&~0xff); 
+    colormaps = (byte *)( ((intptr_t)colormaps + 255)&~0xff); 
     W_ReadLump (lump,colormaps); 
 }
 

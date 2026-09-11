@@ -150,7 +150,7 @@ int 		eventtail;
 void D_PostEvent (event_t* ev)
 {
     events[eventhead] = *ev;
-    eventhead = (++eventhead)&(MAXEVENTS-1);
+    eventhead = (eventhead+1)&(MAXEVENTS-1);
 }
 
 
@@ -167,7 +167,7 @@ void D_ProcessEvents (void)
 	 && (W_CheckNumForName("map01")<0) )
       return;
 	
-    for ( ; eventtail != eventhead ; eventtail = (++eventtail)&(MAXEVENTS-1) )
+    for ( ; eventtail != eventhead ; eventtail = (eventtail+1)&(MAXEVENTS-1) )
     {
 	ev = &events[eventtail];
 	if (M_Responder (ev))
@@ -433,7 +433,10 @@ void D_PageTicker (void)
 //
 void D_PageDrawer (void)
 {
-    V_DrawPatch (0,0, 0, W_CacheLumpName(pagename, PU_CACHE));
+    // No page has been selected yet if we entered GS_DEMOSCREEN before the
+    // first D_DoAdvanceDemo, e.g. after a rejected -playdemo.
+    if (pagename)
+	V_DrawPatch (0,0, 0, W_CacheLumpName(pagename, PU_CACHE));
 }
 
 
@@ -555,6 +558,28 @@ void D_AddFile (char *file)
 }
 
 //
+// WadFileName
+// Joins a directory and a WAD file name into a freshly allocated string.
+// The original code hand-counted each of these lengths, and got
+// "doomu.wad" wrong by one byte.
+//
+static char* WadFileName (char* dir, char* file)
+{
+    size_t	len;
+    char*	path;
+
+    len = strlen(dir) + 1 + strlen(file) + 1;
+    path = malloc(len);
+
+    if (!path)
+	I_Error ("IdentifyVersion: Couldn't allocate WAD file name");
+
+    snprintf (path, len, "%s/%s", dir, file);
+    return path;
+}
+
+
+//
 // IdentifyVersion
 // Checks availability of IWAD files by name,
 // to determine whether registered/commercial features
@@ -580,38 +605,28 @@ void IdentifyVersion (void)
 	doomwaddir = ".";
 
     // Commercial.
-    doom2wad = malloc(strlen(doomwaddir)+1+9+1);
-    sprintf(doom2wad, "%s/doom2.wad", doomwaddir);
+    doom2wad = WadFileName(doomwaddir, "doom2.wad");
 
     // Retail.
-    doomuwad = malloc(strlen(doomwaddir)+1+8+1);
-    sprintf(doomuwad, "%s/doomu.wad", doomwaddir);
-    
+    doomuwad = WadFileName(doomwaddir, "doomu.wad");
+
     // Registered.
-    doomwad = malloc(strlen(doomwaddir)+1+8+1);
-    sprintf(doomwad, "%s/doom.wad", doomwaddir);
-    
+    doomwad = WadFileName(doomwaddir, "doom.wad");
+
     // Shareware.
-    doom1wad = malloc(strlen(doomwaddir)+1+9+1);
-    sprintf(doom1wad, "%s/doom1.wad", doomwaddir);
+    doom1wad = WadFileName(doomwaddir, "doom1.wad");
 
-     // Bug, dear Shawn.
-    // Insufficient malloc, caused spurious realloc errors.
-    plutoniawad = malloc(strlen(doomwaddir)+1+/*9*/12+1);
-    sprintf(plutoniawad, "%s/plutonia.wad", doomwaddir);
+    plutoniawad = WadFileName(doomwaddir, "plutonia.wad");
 
-    tntwad = malloc(strlen(doomwaddir)+1+9+1);
-    sprintf(tntwad, "%s/tnt.wad", doomwaddir);
-
+    tntwad = WadFileName(doomwaddir, "tnt.wad");
 
     // French stuff.
-    doom2fwad = malloc(strlen(doomwaddir)+1+10+1);
-    sprintf(doom2fwad, "%s/doom2f.wad", doomwaddir);
+    doom2fwad = WadFileName(doomwaddir, "doom2f.wad");
 
     home = getenv("HOME");
     if (!home)
       I_Error("Please set $HOME to your home directory");
-    sprintf(basedefault, "%s/.doomrc", home);
+    snprintf(basedefault, sizeof(basedefault), "%s/.doomrc", home);
 #endif
 
     if (M_CheckParm ("-shdev"))
@@ -1119,7 +1134,7 @@ void D_DoomMain (void)
 	// for statistics driver
 	extern  void*	statcopy;                            
 
-	statcopy = (void*)atoi(myargv[p+1]);
+	statcopy = (void*)(intptr_t)atoi(myargv[p+1]);
 	printf ("External statistics registered.\n");
     }
     
