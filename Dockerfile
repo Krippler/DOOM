@@ -49,19 +49,43 @@ RUN make -C sndserv -j"$(nproc)" SNDBACKEND=pulse \
 ##############################################################################
 FROM ubuntu:24.04
 
+# Which General MIDI soundfont to install. FluidR3 is much the better one and
+# is the default; build with --build-arg SOUNDFONT_PACKAGE=timgm6mb-soundfont
+# to trade it for 6 MB instead of 142 MB. The engine finds whichever is there.
+ARG SOUNDFONT_PACKAGE=fluid-soundfont-gm
+
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
         libx11-6 \
         libxext6 \
         libpulse0 \
         libfluidsynth3 \
-        fluid-soundfont-gm \
+        "$SOUNDFONT_PACKAGE" \
         xvfb \
         x11vnc \
-        novnc \
         websockify \
         tini \
- && rm -rf /var/lib/apt/lists/*
+# noVNC is static HTML and JavaScript served to the browser, but the distro
+# package depends on Node and net-tools for tooling this image never runs.
+# Unpack just the files instead; websockify above is what actually serves them.
+ && apt-get download novnc \
+ && dpkg-deb -x novnc_*.deb / \
+ && rm -f novnc_*.deb \
+# Drop what nothing depends on any more, chiefly libxml2 and the 36 MB of
+# ICU behind it. This has to happen before the forced removals below, which
+# leave dpkg with unmet dependencies that apt then refuses to work around.
+ && apt-get autoremove -y --purge \
+# Xvfb is linked against libGL.so.1 so the dispatch library has to stay, but
+# nothing in this image ever renders through GLX and the Mesa driver behind it
+# costs about 180 MB, most of it LLVM. Drop the driver, keep the dispatch.
+ && dpkg --remove --force-depends \
+        libglx-mesa0 mesa-libgallium libllvm20 libgl1-mesa-dri \
+# websockify only uses numpy to unmask client-to-server WebSocket frames.
+# Per RFC 6455 the server never masks what it sends, so for a VNC session
+# that is just the keystrokes, not the video. It warns and carries on.
+ && dpkg --remove --force-depends \
+        python3-numpy liblapack3 libblas3 libgfortran5 \
+ && rm -rf /var/lib/apt/lists/* /usr/share/doc/* /usr/share/man/*
 
 COPY --from=build /src/linuxdoom-1.10/linux/linuxxdoom /usr/local/games/linuxxdoom
 COPY --from=build /src/sndserv/linux/sndserver /usr/local/games/sndserver
@@ -76,11 +100,10 @@ RUN chmod +x /usr/local/bin/doom-entrypoint \
 
 # Savegames (doomsavN.dsg) and the config file (.doomrc) are written to the
 # working directory and $HOME respectively, so both point at the state volume.
-# FluidR3 GM, the good General MIDI soundfont, ships in the image. It is
-# around 140 MB; point DOOM_SOUNDFONT at another file, or pass -soundfont,
-# to use a smaller one.
-ENV DOOM_SOUNDFONT=/usr/share/sounds/sf2/FluidR3_GM.sf2 \
-    DOOM_SCALE=2 \
+# DOOM_SOUNDFONT is deliberately unset: the engine searches for an installed
+# General MIDI soundfont on its own, so whichever SOUNDFONT_PACKAGE was built
+# in gets used. Set it to override with your own file.
+ENV DOOM_SCALE=2 \
     DOOM_WADDIR=/wads \
     DOOM_STATE=/doom/state \
     DOOM_VNC_PORT=5900 \

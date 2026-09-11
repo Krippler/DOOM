@@ -103,15 +103,12 @@ if [ "${DOOM_SOUND:-1}" = "1" ] && [ -x "$SNDSERVER_BIN" ]; then
         log "sound:   -e PULSE_SERVER=unix:/tmp/pulse"
     fi
 
-    # Music is rendered inside the engine by FluidSynth, which needs a
-    # General MIDI soundfont. One ships in the image; DOOM_SOUNDFONT or
-    # -soundfont picks a different one.
-    if [ -n "${DOOM_SOUNDFONT:-}" ]; then
-        if [ -r "$DOOM_SOUNDFONT" ]; then
-            log "music: soundfont $DOOM_SOUNDFONT"
-        else
-            log "music: soundfont $DOOM_SOUNDFONT is not readable, no music"
-        fi
+    # Music is rendered inside the engine by FluidSynth. With no
+    # DOOM_SOUNDFONT set it finds the soundfont installed in the image and
+    # reports its choice on the "using soundfont" line below.
+    if [ -n "${DOOM_SOUNDFONT:-}" ] && [ ! -r "$DOOM_SOUNDFONT" ]; then
+        log "music: DOOM_SOUNDFONT $DOOM_SOUNDFONT is not readable,"
+        log "music: falling back to whichever soundfont is installed"
     fi
 else
     log "sound: disabled"

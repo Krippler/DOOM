@@ -934,7 +934,15 @@ static const char* I_FindSoundFont (void)
     env = getenv ("DOOM_SOUNDFONT");
 
     if (env && *env)
-	return env;
+    {
+	if (!access (env, R_OK))
+	    return env;
+
+	// Fall through to the search rather than losing music entirely
+	// because of one bad path.
+	fprintf (stderr, "I_InitMusic: DOOM_SOUNDFONT [%s] is not readable, "
+		 "looking for another\n", env);
+    }
 
     for (i = 0; soundfont_paths[i]; i++)
     {

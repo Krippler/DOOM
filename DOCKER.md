@@ -177,14 +177,32 @@ music have separate volume sliders under Options → Sound Volume.
 
 ### Soundfont
 
-The image ships FluidR3 GM, which is the good one. It costs about 140 MB of
-image size, but not much else: FluidSynth is told to load sample data as
-instruments are used rather than reading the whole file at startup, so the
-engine reaches the title screen in about a tenth of a second and the extra
-memory is roughly 20 MB over a small soundfont. Reading it up front instead
-would stall startup for ten seconds and cost 140 MB of RSS.
+The image ships FluidR3 GM, which is the good one, and it is the single
+largest thing in the image. FluidSynth is told to load its sample data as
+instruments are used rather than reading the whole file at startup, so it
+costs little at runtime — the engine reaches the title screen in about a
+tenth of a second and uses roughly 20 MB more memory than with a small
+soundfont. Reading it up front instead would stall startup for ten seconds
+and cost 140 MB of RSS.
 
-To use a different one, mount it and point `DOOM_SOUNDFONT` at it:
+Pick a different one at build time with `SOUNDFONT_PACKAGE`:
+
+| Build arg | Soundfont | Installed |
+| --- | --- | --- |
+| `fluid-soundfont-gm` (default) | FluidR3 GM | 142 MB |
+| `fluidr3mono-gm-soundfont` | FluidR3 Mono, Ogg-compressed | 23 MB |
+| `musescore-general-soundfont-small` | MuseScore General, lossy | 39 MB |
+| `timgm6mb-soundfont` | TimGM6mb | 6 MB |
+
+```
+docker build --build-arg SOUNDFONT_PACKAGE=fluidr3mono-gm-soundfont -t doom .
+```
+
+The engine searches for whatever is installed, so nothing else needs changing.
+(TimGM6mb is always present regardless — `libfluidsynth3` depends on it.)
+
+To use a soundfont of your own instead, mount it and point `DOOM_SOUNDFONT`
+at it:
 
 ```
 docker run --rm -p 6080:6080 \
@@ -196,10 +214,9 @@ docker run --rm -p 6080:6080 \
     doom
 ```
 
-`-soundfont <file>` on the command line does the same thing. To trade the
-music quality back for a much smaller image, replace `fluid-soundfont-gm`
-with `timgm6mb-soundfont` in the Dockerfile; the engine finds it on its own.
-If no soundfont can be read the game still runs, without music.
+`-soundfont <file>` on the command line does the same thing. If the path is
+unreadable the engine says so and falls back to an installed soundfont rather
+than losing music; if it finds none at all the game still runs, silently.
 
 ## Troubleshooting
 
