@@ -14,4 +14,9 @@ sersrc/
 doomsav*.dsg
 DOCKER.md
 PORTING-NOTES.md
+PUBLISHING.md
+CHANGELOG.md
 docker-compose.yml
+templates/
+ca_profile.xml
+.github/

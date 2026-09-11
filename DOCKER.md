@@ -236,11 +236,11 @@ than losing music; if it finds none at all the game still runs, silently.
 
 ## Unraid
 
-`unraid/doom.xml` is a Community Applications template, with the icon beside
-it and `unraid/README.md` covering what still has to be done before it can be
-submitted — chiefly publishing the image somewhere CA can pull it from. The
-template can be tried without CA by pasting its raw URL into the *Template*
-field of **Docker → Add Container**.
+`templates/unraid.xml` is a Community Applications template, with the icon
+beside it and `ca_profile.xml` at the repo root for the maintainer card.
+[PUBLISHING.md](PUBLISHING.md) covers how images are built and what is left to
+do before the template can be submitted. It can be tried without CA by pasting
+its raw URL into the *Template* field of **Docker → Add Container**.
 
 ## Troubleshooting
 

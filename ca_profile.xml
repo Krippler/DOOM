@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<!-- Community Applications reads this for the repository's own card: who
+     maintains it, and where to go when something breaks. The submit flow
+     rejects a repository whose Profile is empty. -->
+<CommunityApplications>
+  <Profile>
+    DOOM, from the sources id Software released in 1997, built and run inside
+    the container and played in a browser. The engine only ever supported an
+    8-bit PseudoColor X visual, which no current X server offers, so the
+    container brings its own and exports it over noVNC - nothing is needed on
+    the host.
+
+    Sound effects and music both work where a PulseAudio server is reachable,
+    and the game runs silently where one is not, which is the usual case on a
+    server. Game data is not included: you supply an IWAD, and the freely
+    redistributable shareware DOOM1.WAD is enough to play episode one.
+
+    Issues and questions go to the GitHub tracker linked below.
+  </Profile>
+  <Icon>https://raw.githubusercontent.com/Krippler/DOOM/master/templates/doom-icon.png</Icon>
+  <WebPage>https://github.com/Krippler/DOOM</WebPage>
+</CommunityApplications>

@@ -2,13 +2,16 @@
 <Container version="2">
   <Name>DOOM</Name>
   <Repository>ghcr.io/krippler/doom:latest</Repository>
-  <Registry>https://github.com/krippler/DOOM/pkgs/container/doom</Registry>
+  <Registry>https://github.com/Krippler/DOOM/pkgs/container/doom</Registry>
+  <GitHub>https://github.com/Krippler/DOOM</GitHub>
+  <Project>https://github.com/Krippler/DOOM</Project>
+  <Support>https://github.com/Krippler/DOOM/issues</Support>
+  <ReadmeURL>https://github.com/Krippler/DOOM/blob/master/DOCKER.md</ReadmeURL>
+  <Beta>False</Beta>
   <Network>bridge</Network>
   <MyIP/>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/krippler/DOOM/issues</Support>
-  <Project>https://github.com/krippler/DOOM</Project>
   <Overview>
     The original 1997 linuxdoom-1.10 sources, built from source and playable in a browser.&#13;
     &#13;
@@ -22,9 +25,9 @@
   </Overview>
   <Category>GameServers: Other:</Category>
   <WebUI>http://[IP]:[PORT:6080]/vnc.html?autoconnect=1&amp;resize=scale</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/krippler/DOOM/master/unraid/doom.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/krippler/DOOM/master/unraid/icon.png</Icon>
-  <ExtraParams/>
+  <TemplateURL>https://raw.githubusercontent.com/Krippler/DOOM/master/templates/unraid.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Krippler/DOOM/master/templates/doom-icon.png</Icon>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
   <PostArgs/>
   <CPUset/>
   <DateInstalled/>
@@ -32,8 +35,10 @@
   <DonateLink/>
   <Requires>An IWAD (game data file) must be placed in the WADs folder. The container will stop and tell you so if none is found.</Requires>
   <Changes>
-### 1.10.0&#13;
-- First release. linuxdoom-1.10 repaired to build and run on 64-bit Linux, with sound and music added, served over noVNC.
+### 1.10.0
+- First release. The 1997 linuxdoom-1.10 sources repaired to build and run on
+  64-bit Linux, with sound effects and music added, played in a browser over
+  noVNC. Game data is not included; supply your own IWAD.
   </Changes>
 
   <Config Name="WebUI Port" Target="6080" Default="6080" Mode="tcp"
@@ -52,13 +57,13 @@
           Description="Savegames, the .doomrc config file and the container's logs."
           Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/doom/state</Config>
 
-  <Config Name="PUID" Target="PUID" Default="99"
-          Description="User the game runs as. 99 is Unraid's nobody, which owns appdata."
-          Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+  <Config Name="PUID" Target="PUID" Default="99" Mode=""
+          Description="UID the game runs as. Must be able to write the saves folder. Unraid default: 99 (nobody)."
+          Type="Variable" Display="always" Required="true" Mask="false">99</Config>
 
-  <Config Name="PGID" Target="PGID" Default="100"
-          Description="Group the game runs as. 100 is Unraid's users group."
-          Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+  <Config Name="PGID" Target="PGID" Default="100" Mode=""
+          Description="GID the game runs as. Unraid default: 100 (users)."
+          Type="Variable" Display="always" Required="true" Mask="false">100</Config>
 
   <Config Name="Scale" Target="DOOM_SCALE" Default="2"
           Description="Pixel scale, 1 to 4. The picture is 320x200 multiplied by this, so 2 gives 640x400. Larger values cost more bandwidth to the browser."
