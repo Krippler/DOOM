@@ -67,9 +67,11 @@ COPY --from=build /src/linuxdoom-1.10/linux/linuxxdoom /usr/local/games/linuxxdo
 COPY --from=build /src/sndserv/linux/sndserver /usr/local/games/sndserver
 COPY docker/entrypoint.sh /usr/local/bin/doom-entrypoint
 
+# The directories come first so useradd does not warn about a home it
+# cannot chown yet.
 RUN chmod +x /usr/local/bin/doom-entrypoint \
- && useradd --create-home --home-dir /doom/state --uid 1001 doomer \
  && mkdir -p /wads /doom/state \
+ && useradd --create-home --home-dir /doom/state --uid 1001 doomer \
  && chown -R doomer:doomer /doom
 
 # Savegames (doomsavN.dsg) and the config file (.doomrc) are written to the

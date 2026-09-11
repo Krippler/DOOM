@@ -44,6 +44,15 @@ your own copy of the game.
 If no IWAD is found the container stops immediately and lists what it looked
 for.
 
+## Size
+
+The image is about 330 MB to pull and 1.1 GB unpacked. Most of that is not
+DOOM: the FluidR3 soundfont is 142 MB, `xvfb` pulls in Mesa and LLVM for GLX
+support at around 180 MB, and `novnc` depends on Node and a Python stack. The
+engine and sound server together are under 600 kB. Swapping
+`fluid-soundfont-gm` for `timgm6mb-soundfont` in the Dockerfile is the one
+easy saving, at the cost of music quality.
+
 ## Options
 
 Everything is set through the environment:
@@ -72,12 +81,24 @@ Useful engine flags: `-warp <episode> <map>`, `-skill 1..5`, `-nomonsters`,
 ## Saves and config
 
 `/doom/state` holds `.doomrc` and `doomsavN.dsg`. The Compose file keeps it in
-a named volume so saves survive `docker compose down`. With plain `docker run`,
-mount it yourself if you want saves to persist:
+a named volume so saves survive `docker compose down`, and a named volume with
+plain `docker run` works the same way:
 
 ```
-docker run --rm -p 6080:6080 -v "$PWD/wads:/wads:ro" -v "$PWD/state:/doom/state" doom
+docker run --rm -p 6080:6080 -v "$PWD/wads:/wads:ro" -v doom-state:/doom/state doom
 ```
+
+Bind-mounting a host directory there needs one extra step, because the
+container runs as uid 1001 and a directory you created is owned by you. Run
+the container as yourself:
+
+```
+docker run --rm -p 6080:6080 --user "$(id -u):$(id -g)" \
+    -v "$PWD/wads:/wads:ro" -v "$PWD/state:/doom/state" doom
+```
+
+or hand the directory over with `chown 1001:1001 state`. The container checks
+this at startup and says which to do rather than failing obscurely.
 
 `docker stop` is handled gracefully: the engine gets a SIGINT, which is the
 signal it already treats as "save the config and quit".
@@ -198,6 +219,10 @@ beginning `[doom] sound:`. If it reports a `PULSE_SERVER` but you still hear
 nothing, the sound server prints its own error (`Could not connect to
 PulseAudio (...)`) in the same output — usually the socket is not readable by
 the container user, which `--user "$(id -u):$(id -g)"` fixes.
+
+**"state directory is not writable".** A host directory bind-mounted at
+`/doom/state` is owned by you, not by the container's user. See *Saves and
+config* above; a named volume avoids the problem entirely.
 
 **Diagnostics.** `xvfb.log`, `x11vnc.log` and `websockify.log` are written to
 `/doom/state`.

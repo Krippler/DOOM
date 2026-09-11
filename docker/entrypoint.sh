@@ -28,6 +28,24 @@ WIDTH=$((320 * SCALE))
 HEIGHT=$((200 * SCALE))
 
 ##############################################################################
+# The state directory holds the config file, savegames, logs and the IWAD
+# links, so it has to be writable. A bind-mounted host directory arrives
+# owned by whoever created it, which is usually not the container's user.
+##############################################################################
+if ! mkdir -p "$STATE" 2>/dev/null || [ ! -w "$STATE" ]; then
+    log "state directory '$STATE' is not writable by uid $(id -u)"
+    log ""
+    log "that happens when a host directory is bind-mounted there. Either run"
+    log "the container as yourself:"
+    log "    docker run --user \"\$(id -u):\$(id -g)\" ..."
+    log "or hand the directory to the container's user:"
+    log "    chown $(id -u):$(id -g) <that directory>"
+    log ""
+    log "a named volume, which is what docker-compose.yml uses, needs neither."
+    die "cannot write to $STATE"
+fi
+
+##############################################################################
 # Locate an IWAD.
 #
 # The engine looks for these exact lowercase names in $DOOMWADDIR and nowhere
