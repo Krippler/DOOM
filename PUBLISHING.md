@@ -52,9 +52,23 @@ instead.
 
 Images are signed with cosign on every push.
 
-**The GHCR package is private until you make it public.** Community
-Applications cannot pull a private image, so after the first successful run go
-to the package page and switch it to public.
+The GHCR package inherits this repository's visibility, so on a public repo it
+comes out publicly pullable and Community Applications can fetch it — that is
+how `ghcr.io/krippler/lighthue` and `ghcr.io/krippler/fresharr` behave today.
+It is worth confirming once after the first run rather than assuming, because
+it does not always hold: `ghcr.io/krippler/starr` is private, which is
+invisible until somebody without credentials tries to pull it.
+
+```bash
+# 200 means anyone can pull it; DENIED means the package is private.
+tok=$(curl -s "https://ghcr.io/token?scope=repository:krippler/doom:pull&service=ghcr.io" \
+      | sed -nE 's/.*"token":"([^"]+)".*/\1/p')
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $tok" \
+     https://ghcr.io/v2/krippler/doom/tags/list
+```
+
+If it is private, the package's own settings page has the switch —
+repository visibility does not change it retroactively.
 
 ---
 
