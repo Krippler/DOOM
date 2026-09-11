@@ -6,7 +6,7 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
-## [Unreleased]
+## [1.10.1] — 2026-09-11
 
 ### Added
 - In-game **Options → Setup**, with three pages the 1997 release had no
