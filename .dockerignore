@@ -1,0 +1,14 @@
+# Keep the build context small and make sure no game data is ever baked in.
+.git
+.gitignore
+*.wad
+*.WAD
+wads/
+linuxdoom-1.10/linux/
+linuxdoom-1.10/CVS/
+*.o
+*.pcx
+doomsav*.dsg
+DOCKER.md
+PORTING-NOTES.md
+docker-compose.yml

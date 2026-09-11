@@ -1,0 +1,13 @@
+# Build output
+linuxdoom-1.10/linux/
+*.o
+
+# Game data is not distributed with the source
+*.wad
+*.WAD
+wads/
+
+# Runtime artefacts
+doomsav*.dsg
+DOOM*.pcx
+.doomrc

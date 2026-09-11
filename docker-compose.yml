@@ -1,0 +1,19 @@
+services:
+  doom:
+    build: .
+    image: doom
+    container_name: doom
+    ports:
+      - "6080:6080"      # noVNC, play at http://localhost:6080/vnc.html
+      # - "5900:5900"    # raw VNC, if you would rather use a native client
+    volumes:
+      - ./wads:/wads:ro  # put DOOM1.WAD (or doom.wad, doom2.wad, ...) here
+      - doom-state:/doom/state
+    environment:
+      DOOM_SCALE: "2"    # 1..4; window is 320x200 times this
+      # DOOM_VNC_PASSWORD: "changeme"
+    # Arguments are passed to the engine, e.g. start straight in E1M1:
+    # command: ["-warp", "1", "1", "-skill", "3"]
+
+volumes:
+  doom-state:
