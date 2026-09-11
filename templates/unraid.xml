@@ -39,7 +39,7 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
-### Unreleased
+### 1.10.2
 - The shareware game data ships with the container, so it plays as soon as it
   starts. Your own IWAD still takes precedence when you add one.
 - The mouse is captured in the browser now, so turning no longer stops partway
