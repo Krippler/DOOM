@@ -88,13 +88,19 @@ jobs:
           # metadata-action lowercases this, so Krippler/DOOM becomes
           # ghcr.io/krippler/doom.
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          # Tagging policy:
-          #   • push tag v1.10.0          → 1.10.0, 1.10, 1, latest  (manual flow)
+          # Tagging policy, on top of the branch name and short sha that
+          # every build gets:
+          #   • push tag v1.10.0           → 1.10.0, 1.10, 1, latest
           #   • release-PR merge to master → same, plus edge
           #   • plain merge to master      → edge
           flavor: |
             latest=false
           tags: |
+            # A branch build matches none of the rules below, and
+            # build-push-action fails immediately when handed an empty tag
+            # list. These two guarantee every build is tagged with something.
+            type=ref,event=branch
+            type=sha,format=short
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
