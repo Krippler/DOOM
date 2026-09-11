@@ -91,6 +91,10 @@ COPY --from=build /src/linuxdoom-1.10/linux/linuxxdoom /usr/local/games/linuxxdo
 COPY --from=build /src/sndserv/linux/sndserver /usr/local/games/sndserver
 COPY docker/entrypoint.sh /usr/local/bin/doom-entrypoint
 
+# A client that captures the mouse. Stock noVNC reports absolute pointer
+# positions, which a game cannot use: see the comment at the top of the file.
+COPY docker/play.html /usr/share/novnc/play.html
+
 # The directories come first so useradd does not warn about a home it
 # cannot chown yet.
 RUN chmod +x /usr/local/bin/doom-entrypoint \

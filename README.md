@@ -8,7 +8,7 @@ and packaged as a container you play in a browser.
 docker run --rm -p 6080:6080 -v "$PWD/wads:/wads:ro" ghcr.io/krippler/doom
 ```
 
-Then open **<http://localhost:6080/vnc.html?autoconnect=1&resize=off>**.
+Then open **<http://localhost:6080/play.html>** and click to play.
 
 Nothing is installed on the host — no X server, no display, no audio setup.
 **Game data is not included**: put an IWAD in the directory you mount at
@@ -42,6 +42,10 @@ once it did. Getting from there to a playable game took:
 - **A display the engine will accept.** It only ever supported an 8-bit
   PseudoColor X visual, which no current X server offers, so the container
   brings its own Xvfb at depth 8 and exports it over noVNC.
+- **A browser client that captures the mouse.** noVNC is a remote desktop
+  client and reports where the pointer is; a game needs to know how far it
+  moved. `play.html` locks the pointer instead, so turning never runs out of
+  screen and the cursor cannot wander off into the rest of your desktop.
 
 [`PORTING-NOTES.md`](PORTING-NOTES.md) documents every change, with the
 original code and why it broke.
@@ -52,8 +56,8 @@ Three pages under **Options → Setup**, none of which the 1997 release had any
 equivalent of:
 
 - **Controls** — rebind the ten movement and action keys. Saved to `.doomrc`.
-- **Mouse** — turn the mouse on and off, assign its buttons, and confine the
-  pointer to the window while playing.
+- **Mouse** — turn the mouse on and off, assign its buttons, and capture the
+  pointer so it cannot slide out of the window while you turn.
 - **Load WAD** — list the `.wad` files you mounted, marked `GAME` or `MOD`,
   and load one. The engine builds its textures, sprites and sound cache once
   at startup, so choosing a file restarts it: a couple of seconds back to the

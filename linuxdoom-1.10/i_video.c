@@ -286,6 +286,18 @@ void I_GetEvent(void)
 		D_PostEvent(&event);
 		// fprintf(stderr, "m");
 		mousemoved = false;
+
+		// Recentre straight away rather than once a tic, so every
+		// motion is measured from the middle however many arrive in
+		// between. The warp lands exactly on the centre, which the
+		// test above ignores, so this does not feed itself.
+		if (grabMouse && !menuactive && gamestate == GS_LEVEL)
+		    XWarpPointer( X_display,
+				  None,
+				  X_mainWindow,
+				  0, 0,
+				  0, 0,
+				  X_width/2, X_height/2);
 	    } else
 	    {
 		mousemoved = true;
@@ -341,22 +353,31 @@ void I_StartTic (void)
     while (XPending(X_display))
 	I_GetEvent();
 
-    // Warp the pointer back to the middle of the window
-    //  or it will wander off - that is, the game will
-    //  loose input focus within X11.
-    if (grabMouse)
+    // Put the pointer back in the middle of the window, so there is always
+    // room to move in every direction and the next motion is measured from a
+    // known point.
+    //
+    // Tied to the capture setting, which now defaults on. Without it the
+    // pointer walks to an edge of the screen and stops, taking mouse look
+    // with it -- that was the default before, and is why turning worked until
+    // it suddenly did not.
+    //
+    // It belongs to capture rather than to the mouse generally because it
+    // only makes sense for a client that reports movement: play.html locks
+    // the pointer and sends centre-plus-delta. A plain VNC viewer sends the
+    // cursor's absolute position, and recentring under one of those makes the
+    // view spin whenever the cursor rests away from the middle.
+    //
+    // Only while actually playing: in the menus the pointer stands in for a
+    // cursor, and at the title screen there is nothing to aim.
+    if (grabMouse && !menuactive && gamestate == GS_LEVEL)
     {
-	if (!--doPointerWarp)
-	{
-	    XWarpPointer( X_display,
-			  None,
-			  X_mainWindow,
-			  0, 0,
-			  0, 0,
-			  X_width/2, X_height/2);
-
-	    doPointerWarp = POINTER_WARP_COUNTDOWN;
-	}
+	XWarpPointer( X_display,
+		      None,
+		      X_mainWindow,
+		      0, 0,
+		      0, 0,
+		      X_width/2, X_height/2);
     }
 
     mousemoved = false;
@@ -902,6 +923,13 @@ void I_InitGraphics(void)
 	    oktodraw = 1;
 	}
     }
+
+    // Claim the keyboard. X starts out with the focus set to PointerRoot,
+    // which delivers keystrokes to whatever window the pointer happens to be
+    // over, and it is a window manager's job to set it to something better.
+    // There is no window manager inside the container, so nothing ever did,
+    // and the game's keyboard depended on where the pointer had drifted to.
+    XSetInputFocus (X_display, X_mainWindow, RevertToPointerRoot, CurrentTime);
 
     // grabs the pointer so it is restricted to this window
     if (grabMouse)

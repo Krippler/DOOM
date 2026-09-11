@@ -8,6 +8,25 @@ The version follows the engine this is built from, linuxdoom-1.10.
 
 ## [Unreleased]
 
+### Added
+- `play.html`, a browser client that captures the mouse. noVNC is a remote
+  desktop client and reports where the pointer *is*; a game needs to know how
+  far it *moved*. This page locks the pointer instead and sends movement, so
+  turning never runs out of screen and the cursor cannot slide off into the
+  rest of your desktop. It is what the WebUI and the printed URL now open;
+  plain noVNC is still served at `/vnc.html`.
+
+### Fixed
+- Mouse look stopped partway through a turn. The pointer was only re-centred
+  while the grab was on, and the grab was off by default, so the pointer
+  walked to an edge of the screen and stayed there — measured after one sweep
+  it sat at x=639 of 640. It is now re-centred after every motion the engine
+  acts on, and the grab defaults on.
+- The game never claimed the X input focus. With no window manager in the
+  container, X leaves the focus at `PointerRoot`, which delivers keystrokes to
+  whichever window the pointer is over, so the keyboard depended on where the
+  pointer had drifted to.
+
 ### Changed
 - Added a README. GitHub was showing `README.TXT` as the landing page, which
   is id Software's note from the 1997 source drop: accurate about the code it

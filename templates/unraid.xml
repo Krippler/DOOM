@@ -23,10 +23,12 @@
     &#13;
     Click into the canvas before typing: noVNC only forwards the keyboard once it has focus. Ctrl fires and Alt strafes, which browsers like to intercept, so use the modifier pad in the noVNC toolbar if a key will not reach the game.&#13;
     &#13;
-    Keys and the mouse are set from inside the game, under Options - Setup. The same menu lists the WAD files in the folder below and loads the one you pick, so mods can be dropped in and switched to without touching the container settings.
+    Keys and the mouse are set from inside the game, under Options - Setup. The same menu lists the WAD files in the folder below and loads the one you pick, so mods can be dropped in and switched to without touching the container settings.&#13;
+    &#13;
+    The WebUI opens a client that captures the mouse, so turning does not run out of screen and the cursor stays in the game. Esc hands the cursor back; press it again for the game menu. Plain noVNC is still there at /vnc.html if you would rather it did not grab the pointer.
   </Overview>
   <Category>GameServers: Other:</Category>
-  <WebUI>http://[IP]:[PORT:6080]/vnc.html?autoconnect=1&amp;resize=off</WebUI>
+  <WebUI>http://[IP]:[PORT:6080]/play.html</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/Krippler/DOOM/master/templates/unraid.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/Krippler/DOOM/master/templates/doom-icon.png</Icon>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
@@ -37,6 +39,12 @@
   <DonateLink/>
   <Requires>An IWAD (game data file) must be placed in the WADs folder. The container will stop and tell you so if none is found.</Requires>
   <Changes>
+### Unreleased
+- The mouse is captured in the browser now, so turning no longer stops partway
+  and the cursor cannot slide out of the window.
+- The game claims the keyboard focus for itself instead of relying on where
+  the pointer happens to be.
+
 ### 1.10.1
 - Options - Setup, with three new pages: rebind keys, configure the mouse, and
   pick a WAD from the mounted folder without restarting the container.

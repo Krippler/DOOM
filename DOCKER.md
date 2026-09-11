@@ -17,8 +17,7 @@ docker build -t doom .
 docker run --rm -p 6080:6080 -v "$PWD/wads:/wads:ro" doom
 ```
 
-Then open **<http://localhost:6080/vnc.html?autoconnect=1&resize=off>** and
-click into the canvas to give it the keyboard.
+Then open **<http://localhost:6080/play.html>** and click to play.
 
 With Compose:
 
@@ -54,6 +53,29 @@ for.
 Mods (PWADs) go in the same directory. They are not matched against the table
 above; anything ending in `.wad` shows up in the in-game WAD menu below.
 
+## The browser client
+
+Two pages are served:
+
+| | |
+| --- | --- |
+| `/play.html` | Captures the mouse. Use this to play. |
+| `/vnc.html?autoconnect=1&resize=off` | Stock noVNC, no capture. Useful for looking at the screen without grabbing your pointer. |
+
+`play.html` uses the Pointer Lock API: click once and the cursor disappears
+into the game, so turning never runs out of screen and the pointer cannot
+slide off into the rest of your desktop. **Esc releases the mouse** — that is
+the browser's behaviour and cannot be overridden — so press it once to get
+your cursor back and again for the game's own menu.
+
+If the browser refuses to capture the pointer, the page says so and carries on
+as an ordinary viewer rather than failing.
+
+If you use the plain viewer instead, turn **GRAB POINTER** off under
+Options → Setup → Mouse. With it on the engine keeps pulling the pointer back
+to the middle, which is what makes capture work and what makes an ordinary
+remote-desktop pointer jump around.
+
 ## Controls
 
 Click into the canvas first — the browser only sends keys to a focused canvas.
@@ -75,9 +97,8 @@ choice is written to `.doomrc` in the state directory, so it survives a
 restart.
 
 The mouse turns and moves, and is off until you turn it on under **Options →
-Setup → Mouse**, where the buttons are assignable too. With *grab pointer* on,
-the pointer is confined to the game window while you play; Esc releases it
-along with everything else, since it only holds while the menu is closed.
+Setup → Mouse**, where the buttons are assignable too. *Grab pointer* is on by
+default and is what `play.html` needs; see the section above.
 
 ## Loading WADs from the game
 

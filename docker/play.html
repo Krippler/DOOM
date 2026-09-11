@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<!--
+  A noVNC client that captures the mouse.
+
+  Stock noVNC is a remote desktop client: it reports where the pointer is,
+  in absolute screen coordinates. That is the wrong shape for a game. The
+  pointer walks to an edge of the 320x200 screen and stops, taking mouse
+  look with it, and the real cursor wanders out of the browser window.
+
+  This page uses the Pointer Lock API instead, which hides the cursor,
+  confines it to the canvas and reports relative movement. Each movement is
+  sent as the centre of the screen plus the delta; the engine warps the
+  pointer back to the centre after every motion, so what it measures is the
+  delta and nothing else.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DOOM</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #000;
+    color: #c0c0c0;
+    font: 14px/1.5 system-ui, sans-serif;
+    overflow: hidden;
+  }
+  #screen {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* The engine renders 320x200 and nothing else. Scale by whole numbers to
+     the largest that fits, so pixels stay square and sharp instead of being
+     smeared across an arbitrary window size. */
+  #screen canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+  #overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: rgba(0, 0, 0, 0.72);
+    text-align: center;
+    padding: 24px;
+    cursor: pointer;
+  }
+  #overlay[hidden] { display: none; }
+  #overlay h1 {
+    margin: 0;
+    font-size: 28px;
+    letter-spacing: 0.2em;
+    color: #b33;
+  }
+  #overlay p { margin: 0; max-width: 34em; }
+  #overlay .dim { color: #808080; font-size: 13px; }
+  #status {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    padding: 6px 10px;
+    background: rgba(0, 0, 0, 0.8);
+    font-size: 13px;
+  }
+  #status[hidden] { display: none; }
+</style>
+</head>
+<body>
+<div id="screen"></div>
+
+<div id="overlay">
+  <h1>DOOM</h1>
+  <p>Click to play. The mouse is captured, so it will not slide out of the
+     window while you turn.</p>
+  <p class="dim">Esc releases the mouse — press it again for the game menu.
+     Keys and the mouse are configured in game under Options → Setup.</p>
+</div>
+
+<div id="status" hidden></div>
+
+<script type="module">
+import RFB from './core/rfb.js';
+
+const screenEl  = document.getElementById('screen');
+const overlayEl = document.getElementById('overlay');
+const statusEl  = document.getElementById('status');
+
+function status(text) {
+  statusEl.textContent = text;
+  statusEl.hidden = !text;
+}
+
+const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+const rfb = new RFB(screenEl, `${scheme}://${location.host}`, {
+  wsProtocols: ['binary'],
+});
+
+// The engine has one fixed resolution; never rescale it to the window.
+rfb.scaleViewport = false;
+rfb.clipViewport  = false;
+rfb.focusOnClick  = true;
+
+rfb.addEventListener('connect', () => {
+  status('');
+  overlayEl.hidden = false;
+  fitCanvas();
+  rfb.focus();
+});
+
+rfb.addEventListener('disconnect', (e) => {
+  overlayEl.hidden = true;
+  status(e.detail.clean ? 'Disconnected.' : 'Connection lost. Reload to try again.');
+});
+
+rfb.addEventListener('securityfailure', (e) => {
+  status(`Authentication failed: ${e.detail.reason || 'unknown reason'}`);
+});
+
+rfb.addEventListener('credentialsrequired', () => {
+  const password = prompt('VNC password:');
+  if (password !== null) rfb.sendCredentials({ password });
+});
+
+//
+// Integer scaling.
+//
+// noVNC sizes its canvas to the framebuffer. Scale it up by whole numbers
+// with CSS so a 320x200 picture stays 320x200 pixels, each one square.
+//
+function canvas() {
+  return screenEl.querySelector('canvas');
+}
+
+function fitCanvas() {
+  const c = canvas();
+  if (!c || !c.width || !c.height) return;
+
+  const scale = Math.max(1, Math.floor(Math.min(
+    window.innerWidth  / c.width,
+    window.innerHeight / c.height)));
+
+  c.style.width  = `${c.width  * scale}px`;
+  c.style.height = `${c.height * scale}px`;
+}
+
+window.addEventListener('resize', fitCanvas);
+
+//
+// Pointer capture.
+//
+// While locked the cursor does not exist and mousemove reports movementX and
+// movementY instead of a position. Those go out as centre + delta.
+//
+let buttons = 0;
+
+function locked() {
+  return document.pointerLockElement === canvas();
+}
+
+function sendMouse(dx, dy) {
+  const c = canvas();
+  if (!c) return;
+  // _sendMouse is noVNC's internal pointer path. There is no public
+  // equivalent in this version; if a future noVNC renames it, the page
+  // falls back to being an ordinary viewer rather than breaking.
+  if (typeof rfb._sendMouse !== 'function') return;
+  rfb._sendMouse(Math.round(c.width / 2) + dx,
+                 Math.round(c.height / 2) + dy,
+                 buttons);
+}
+
+overlayEl.addEventListener('click', () => {
+  const c = canvas();
+  if (c && c.requestPointerLock) c.requestPointerLock();
+  rfb.focus();
+});
+
+document.addEventListener('pointerlockchange', () => {
+  overlayEl.hidden = locked();
+  if (locked()) rfb.focus();
+  else buttons = 0;
+});
+
+document.addEventListener('pointerlockerror', () => {
+  status('The browser would not capture the mouse; playing without capture.');
+});
+
+// Capture phase on the window, so these run before noVNC's own handlers on
+// the canvas and can stop them sending absolute positions that are frozen
+// while the pointer is locked.
+window.addEventListener('mousemove', (e) => {
+  if (!locked()) return;
+  e.stopPropagation();
+  sendMouse(e.movementX || 0, e.movementY || 0);
+}, true);
+
+window.addEventListener('mousedown', (e) => {
+  if (!locked()) return;
+  e.stopPropagation();
+  e.preventDefault();
+  buttons |= 1 << e.button;
+  sendMouse(0, 0);
+}, true);
+
+window.addEventListener('mouseup', (e) => {
+  if (!locked()) return;
+  e.stopPropagation();
+  e.preventDefault();
+  buttons &= ~(1 << e.button);
+  sendMouse(0, 0);
+}, true);
+
+window.addEventListener('contextmenu', (e) => {
+  if (locked()) e.preventDefault();
+});
+
+status('Connecting…');
+</script>
+</body>
+</html>

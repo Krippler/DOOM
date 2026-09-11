@@ -278,7 +278,7 @@ default_t	defaults[] =
     {"mouseb_fire",&mousebfire,0},
     {"mouseb_strafe",&mousebstrafe,1},
     {"mouseb_forward",&mousebforward,2},
-    {"grab_mouse",&grabMouse,0},
+    {"grab_mouse",&grabMouse,1},
 
     {"use_joystick",&usejoystick, 0},
     {"joyb_fire",&joybfire,0},

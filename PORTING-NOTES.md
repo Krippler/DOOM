@@ -83,6 +83,15 @@ current gcc and glibc. Behaviour is otherwise left alone.
   row *or* column with the centre of the window, because the filter that
   throws away the engine's own re-centring warp tested both coordinates with
   `&&`. Moving straight across the middle of the screen did nothing.
+- **`i_video.c`** — nothing ever set the X input focus. A window manager would
+  normally do it; there is none in the container, so X left the focus at
+  `PointerRoot` and delivered keystrokes to whichever window the pointer was
+  over. `XSetInputFocus` on the game window now settles it.
+- **`i_video.c`** — the pointer was re-centred only once a tic, and only with
+  the grab on, which was not the default. Ungrabbed, it walked to an edge of
+  the screen and stopped there, and mouse look stopped with it. It is now
+  re-centred immediately after each motion the engine acts on, so every one is
+  measured from the middle however many arrive between tics.
 
 ## Sound server (`sndserv/`)
 
