@@ -213,7 +213,7 @@ websockify --web="$NOVNC_ROOT" "$WEB_PORT" "localhost:$VNC_PORT" \
 WEB_PID=$!
 
 log ""
-log "  play at  http://localhost:$WEB_PORT/vnc.html?autoconnect=1&resize=scale"
+log "  play at  http://localhost:$WEB_PORT/vnc.html?autoconnect=1&resize=off"
 log ""
 
 ##############################################################################

@@ -81,6 +81,10 @@ int		X_shmeventtype;
 // This cannot work properly w/o DGA.
 // Needs an invisible mouse cursor at least.
 boolean		grabMouse;
+
+// Set from the config file and the options menu. The original stored this
+// and never looked at it again.
+extern int	usemouse;
 int		doPointerWarp = POINTER_WARP_COUNTDOWN;
 
 // Blocky mode,
@@ -213,6 +217,8 @@ void I_GetEvent(void)
 	// fprintf(stderr, "ku");
 	break;
       case ButtonPress:
+	if (!usemouse)
+	    break;
 	event.type = ev_mouse;
 	event.data1 =
 	    (X_event.xbutton.state & Button1Mask)
@@ -226,6 +232,8 @@ void I_GetEvent(void)
 	// fprintf(stderr, "b");
 	break;
       case ButtonRelease:
+	if (!usemouse)
+	    break;
 	event.type = ev_mouse;
 	event.data1 =
 	    (X_event.xbutton.state & Button1Mask)
@@ -242,6 +250,8 @@ void I_GetEvent(void)
 	// fprintf(stderr, "bu");
 	break;
       case MotionNotify:
+	if (!usemouse)
+	    break;
 	event.type = ev_mouse;
 	event.data1 =
 	    (X_event.xmotion.state & Button1Mask)
@@ -254,7 +264,11 @@ void I_GetEvent(void)
 	{
 	    lastmousex = X_event.xmotion.x;
 	    lastmousey = X_event.xmotion.y;
-	    if (X_event.xmotion.x != X_width/2 &&
+	    // The event to ignore is the one the warp below generates, which
+	    // lands exactly on the centre. Testing both coordinates with &&
+	    // threw away any motion that merely shared a centre row or
+	    // column, so sliding straight across the middle did nothing.
+	    if (X_event.xmotion.x != X_width/2 ||
 		X_event.xmotion.y != X_height/2)
 	    {
 		D_PostEvent(&event);
@@ -798,7 +812,7 @@ void I_InitGraphics(void)
     attribs.event_mask =
 	KeyPressMask
 	| KeyReleaseMask
-	// | PointerMotionMask | ButtonPressMask | ButtonReleaseMask
+	| PointerMotionMask | ButtonPressMask | ButtonReleaseMask
 	| ExposureMask;
 
     attribs.colormap = X_cmap;

@@ -24,7 +24,7 @@
     Click into the canvas before typing: noVNC only forwards the keyboard once it has focus. Ctrl fires and Alt strafes, which browsers like to intercept, so use the modifier pad in the noVNC toolbar if a key will not reach the game.
   </Overview>
   <Category>GameServers: Other:</Category>
-  <WebUI>http://[IP]:[PORT:6080]/vnc.html?autoconnect=1&amp;resize=scale</WebUI>
+  <WebUI>http://[IP]:[PORT:6080]/vnc.html?autoconnect=1&amp;resize=off</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/Krippler/DOOM/master/templates/unraid.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/Krippler/DOOM/master/templates/doom-icon.png</Icon>
   <ExtraParams>--restart=unless-stopped</ExtraParams>

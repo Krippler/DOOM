@@ -10,7 +10,7 @@ docker build -t doom .
 docker run --rm -p 6080:6080 -v "$PWD/wads:/wads:ro" doom
 ```
 
-Then open **<http://localhost:6080/vnc.html?autoconnect=1&resize=scale>** and
+Then open **<http://localhost:6080/vnc.html?autoconnect=1&resize=off>** and
 click into the canvas to give it the keyboard.
 
 With Compose:
