@@ -889,11 +889,19 @@ static size_t		song_midi_len = 0;
 #define MUSIC_MAX_GAIN	0.6f
 
 // Searched in order when neither -soundfont nor DOOM_SOUNDFONT says
-// otherwise. Best quality first.
+// otherwise.
+//
+// The default-GM links come first because the distribution points them at
+// whichever General MIDI soundfont is installed, which is the answer we
+// want whatever was packaged. The rest are fallbacks, best first. SF3 files
+// are Ogg-compressed soundfonts; FluidSynth reads them directly.
 static const char*	soundfont_paths[] =
 {
-    "/usr/share/sounds/sf2/FluidR3_GM.sf2",
     "/usr/share/sounds/sf2/default-GM.sf2",
+    "/usr/share/sounds/sf3/default-GM.sf3",
+    "/usr/share/sounds/sf2/FluidR3_GM.sf2",
+    "/usr/share/sounds/sf3/FluidR3Mono_GM.sf3",
+    "/usr/share/sounds/sf3/MuseScore_General.sf3",
     "/usr/share/soundfonts/default.sf2",
     "/usr/share/sounds/sf2/TimGM6mb.sf2",
     NULL
