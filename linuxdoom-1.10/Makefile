@@ -12,6 +12,24 @@ LDFLAGS?=
 # -lnsl is gone on modern glibc: those symbols now live in libc itself.
 LIBS=-lXext -lX11 -lm
 
+# Music: "fluidsynth" (default) or "none".
+#
+# The WADs hold music as MUS lumps, which mus2mid.c converts to Standard
+# MIDI and FluidSynth renders against a General MIDI soundfont. "none"
+# restores the silent dummies the original release shipped.
+MUSIC?=fluidsynth
+
+ifeq ($(MUSIC),fluidsynth)
+CFLAGS+=-DMUSIC_FLUIDSYNTH
+MUSIC_OBJ=$(O)/mus2mid.o
+MUSIC_LIBS=-lfluidsynth
+else ifeq ($(MUSIC),none)
+MUSIC_OBJ=
+MUSIC_LIBS=
+else
+$(error MUSIC must be "fluidsynth" or "none", got "$(MUSIC)")
+endif
+
 # subdirectory for objects
 O=linux
 
@@ -77,7 +95,8 @@ OBJS=				\
 		$(O)/s_sound.o		\
 		$(O)/z_zone.o			\
 		$(O)/info.o				\
-		$(O)/sounds.o
+		$(O)/sounds.o			\
+		$(MUSIC_OBJ)
 
 all:	 $(O)/linuxxdoom
 
@@ -90,7 +109,7 @@ clean:
 
 $(O)/linuxxdoom:	$(O) $(OBJS) $(O)/i_main.o
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) $(O)/i_main.o \
-	-o $(O)/linuxxdoom $(LIBS)
+	-o $(O)/linuxxdoom $(LIBS) $(MUSIC_LIBS)
 
 $(O)/%.o:	%.c | $(O)
 	$(CC) $(CFLAGS) -c $< -o $@

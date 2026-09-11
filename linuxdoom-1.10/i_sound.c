@@ -59,6 +59,14 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 
 #include "doomdef.h"
 
+#ifdef MUSIC_FLUIDSYNTH
+#include <fluidsynth.h>
+#include "mus2mid.h"
+
+// Defined with the rest of the music code further down.
+void I_FluidSetGain (int volume);
+#endif
+
 // UNIX hack, to be removed.
 #ifdef SNDSERV
 // Separate sound server process.
@@ -436,13 +444,14 @@ void I_SetSfxVolume(int volume)
   snd_SfxVolume = volume;
 }
 
-// MUSIC API - dummy. Some code from DOS version.
 void I_SetMusicVolume(int volume)
 {
   // Internal state variable.
   snd_MusicVolume = volume;
-  // Now set volume on output device.
-  // Whatever( snd_MusciVolume );
+
+#ifdef MUSIC_FLUIDSYNTH
+  I_FluidSetGain (volume);
+#endif
 }
 
 
@@ -838,6 +847,10 @@ I_InitSound()
   fprintf(stderr, "I_InitSound: sound module ready\n");
     
 #endif
+
+  // Nothing called this in the original release, because every music
+  // function was a dummy. I_Quit already calls I_ShutdownMusic.
+  I_InitMusic ();
 }
 
 
@@ -845,19 +858,389 @@ I_InitSound()
 
 //
 // MUSIC API.
-// Still no music done.
-// Remains. Dummies.
 //
-void I_InitMusic(void)		{ }
-void I_ShutdownMusic(void)	{ }
+// The WADs store music as MUS lumps, a trimmed down MIDI. mus2mid.c turns
+// one into a Standard MIDI File and FluidSynth plays it against a General
+// MIDI soundfont. FluidSynth runs its own audio thread and its own
+// connection to the sound system, so the game loop is not involved and the
+// music is mixed with the sound effects outside the process.
+//
+// Built without MUSIC_FLUIDSYNTH these go back to being the dummies the
+// original release shipped.
+//
 
 static int	looping=0;
 static int	musicdies=-1;
 
-void I_PlaySong(int handle, int looping)
+#ifdef MUSIC_FLUIDSYNTH
+
+static fluid_settings_t*	fl_settings = NULL;
+static fluid_synth_t*		fl_synth = NULL;
+static fluid_audio_driver_t*	fl_driver = NULL;
+static fluid_player_t*		fl_player = NULL;
+
+// DOOM registers one song at a time, so one slot is enough.
+static byte*		song_midi = NULL;
+static size_t		song_midi_len = 0;
+
+// DOOM's own music volume runs 0..15. FluidSynth's gain is a float where
+// 10 is the maximum; this is the gain used at full volume, low enough that
+// a busy score does not clip.
+#define MUSIC_MAX_GAIN	0.6f
+
+static const char*	soundfont_paths[] =
+{
+    "/usr/share/sounds/sf2/TimGM6mb.sf2",
+    "/usr/share/sounds/sf2/FluidR3_GM.sf2",
+    "/usr/share/sounds/sf2/default-GM.sf2",
+    "/usr/share/soundfonts/default.sf2",
+    NULL
+};
+
+
+void I_FluidSetGain (int volume)
+{
+    float	gain;
+
+    if (!fl_synth)
+	return;
+
+    // S_SetMusicVolume pokes 127 through here before setting the real
+    // value; clamp rather than letting it read as many times maximum.
+    if (volume > 15)
+	volume = 15;
+    if (volume < 0)
+	volume = 0;
+
+    gain = (float)volume / 15.0f * MUSIC_MAX_GAIN;
+    fluid_synth_set_gain (fl_synth, gain);
+}
+
+
+static const char* I_FindSoundFont (void)
+{
+    static char		path[512];
+    const char*		env;
+    int			p;
+    int			i;
+
+    p = M_CheckParm ("-soundfont");
+
+    if (p && p < myargc - 1)
+	return myargv[p + 1];
+
+    env = getenv ("DOOM_SOUNDFONT");
+
+    if (env && *env)
+	return env;
+
+    for (i = 0; soundfont_paths[i]; i++)
+    {
+	if (!access (soundfont_paths[i], R_OK))
+	{
+	    snprintf (path, sizeof(path), "%s", soundfont_paths[i]);
+	    return path;
+	}
+    }
+
+    return NULL;
+}
+
+
+void I_InitMusic(void)
+{
+    const char*		soundfont;
+    const char*		driver;
+
+    soundfont = I_FindSoundFont ();
+
+    if (!soundfont)
+    {
+	fprintf (stderr, "I_InitMusic: no soundfont found, no music. "
+		 "Set DOOM_SOUNDFONT or pass -soundfont <file>.\n");
+	return;
+    }
+
+    fl_settings = new_fluid_settings ();
+
+    if (!fl_settings)
+    {
+	fprintf (stderr, "I_InitMusic: could not create synth settings\n");
+	return;
+    }
+
+    driver = getenv ("DOOM_FLUID_AUDIO_DRIVER");
+    fluid_settings_setstr (fl_settings, "audio.driver",
+			   driver && *driver ? driver : "pulseaudio");
+    fluid_settings_setstr (fl_settings, "audio.pulseaudio.media-role", "game");
+    fluid_settings_setnum (fl_settings, "synth.sample-rate", 44100.0);
+    fluid_settings_setint (fl_settings, "synth.midi-channels", 16);
+
+    fl_synth = new_fluid_synth (fl_settings);
+
+    if (!fl_synth)
+    {
+	fprintf (stderr, "I_InitMusic: could not create synth\n");
+	I_ShutdownMusic ();
+	return;
+    }
+
+    if (fluid_synth_sfload (fl_synth, soundfont, 1) == FLUID_FAILED)
+    {
+	fprintf (stderr, "I_InitMusic: could not load soundfont [%s]\n",
+		 soundfont);
+	I_ShutdownMusic ();
+	return;
+    }
+
+    fl_driver = new_fluid_audio_driver (fl_settings, fl_synth);
+
+    if (!fl_driver)
+    {
+	fprintf (stderr, "I_InitMusic: no audio output for music\n");
+	I_ShutdownMusic ();
+	return;
+    }
+
+    I_FluidSetGain (snd_MusicVolume);
+
+    fprintf (stderr, "I_InitMusic: using soundfont [%s]\n", soundfont);
+}
+
+
+void I_ShutdownMusic(void)
+{
+    if (fl_player)
+    {
+	fluid_player_stop (fl_player);
+	delete_fluid_player (fl_player);
+	fl_player = NULL;
+    }
+
+    if (fl_driver)
+    {
+	delete_fluid_audio_driver (fl_driver);
+	fl_driver = NULL;
+    }
+
+    if (fl_synth)
+    {
+	delete_fluid_synth (fl_synth);
+	fl_synth = NULL;
+    }
+
+    if (fl_settings)
+    {
+	delete_fluid_settings (fl_settings);
+	fl_settings = NULL;
+    }
+
+    free (song_midi);
+    song_midi = NULL;
+    song_midi_len = 0;
+}
+
+
+//
+// A lump that is already a Standard MIDI File carries its length in its
+// chunk headers, which is the only way to recover it here: I_RegisterSong
+// is handed a pointer and no size.
+//
+static size_t I_MidiFileLength (const byte* data)
+{
+    size_t	pos = 0;
+    size_t	len;
+    int		ntracks;
+    int		i;
+
+    if (memcmp (data, "MThd", 4))
+	return 0;
+
+    len = ((size_t)data[4] << 24) | ((size_t)data[5] << 16)
+	| ((size_t)data[6] << 8) | data[7];
+
+    if (len < 6)
+	return 0;
+
+    ntracks = (data[10] << 8) | data[11];
+    pos = 8 + len;
+
+    for (i = 0; i < ntracks; i++)
+    {
+	if (memcmp (data + pos, "MTrk", 4))
+	    return 0;
+
+	len = ((size_t)data[pos + 4] << 24) | ((size_t)data[pos + 5] << 16)
+	    | ((size_t)data[pos + 6] << 8) | data[pos + 7];
+	pos += 8 + len;
+    }
+
+    return pos;
+}
+
+
+int I_RegisterSong(void* data)
+{
+    size_t	muslen;
+    size_t	midlen;
+
+    if (!fl_synth || !data)
+	return 1;
+
+    free (song_midi);
+    song_midi = NULL;
+    song_midi_len = 0;
+
+    muslen = MUS_LumpLength (data);
+
+    if (muslen)
+    {
+	if (!mus2mid (data, muslen, &song_midi, &song_midi_len))
+	{
+	    fprintf (stderr, "I_RegisterSong: could not convert MUS\n");
+	    song_midi = NULL;
+	    song_midi_len = 0;
+	}
+    }
+    else
+    {
+	// Some PWADs replace the music with plain MIDI lumps.
+	midlen = I_MidiFileLength ((const byte *) data);
+
+	if (midlen)
+	{
+	    song_midi = malloc (midlen);
+
+	    if (song_midi)
+	    {
+		memcpy (song_midi, data, midlen);
+		song_midi_len = midlen;
+	    }
+	}
+	else
+	{
+	    fprintf (stderr, "I_RegisterSong: unrecognised music lump\n");
+	}
+    }
+
+    return 1;
+}
+
+
+void I_PlaySong(int handle, int loops)
+{
+    handle = 0;
+
+    looping = loops;
+    musicdies = gametic + TICRATE*30;
+
+    if (!fl_synth || !song_midi)
+	return;
+
+    if (fl_player)
+    {
+	fluid_player_stop (fl_player);
+	delete_fluid_player (fl_player);
+	fl_player = NULL;
+    }
+
+    fl_player = new_fluid_player (fl_synth);
+
+    if (!fl_player)
+	return;
+
+    if (fluid_player_add_mem (fl_player, song_midi, song_midi_len)
+	== FLUID_FAILED)
+    {
+	delete_fluid_player (fl_player);
+	fl_player = NULL;
+	fprintf (stderr, "I_PlaySong: synth rejected the song\n");
+	return;
+    }
+
+    fluid_player_set_loop (fl_player, loops ? -1 : 1);
+    fluid_player_play (fl_player);
+}
+
+
+void I_PauseSong (int handle)
+{
+    handle = 0;
+
+    if (!fl_player)
+	return;
+
+    fluid_player_stop (fl_player);
+
+    // Stopping mid-note would otherwise leave it sounding.
+    if (fl_synth)
+	fluid_synth_all_notes_off (fl_synth, -1);
+}
+
+
+void I_ResumeSong (int handle)
+{
+    handle = 0;
+
+    if (!fl_player)
+	return;
+
+    fluid_player_play (fl_player);
+}
+
+
+void I_StopSong(int handle)
+{
+    handle = 0;
+
+    looping = 0;
+    musicdies = 0;
+
+    if (fl_player)
+    {
+	fluid_player_stop (fl_player);
+	delete_fluid_player (fl_player);
+	fl_player = NULL;
+    }
+
+    if (fl_synth)
+    {
+	fluid_synth_all_notes_off (fl_synth, -1);
+	fluid_synth_all_sounds_off (fl_synth, -1);
+    }
+}
+
+
+void I_UnRegisterSong(int handle)
+{
+    handle = 0;
+
+    free (song_midi);
+    song_midi = NULL;
+    song_midi_len = 0;
+}
+
+
+// Is the song playing?
+int I_QrySongPlaying(int handle)
+{
+    handle = 0;
+
+    if (fl_player)
+	return fluid_player_get_status (fl_player) == FLUID_PLAYER_PLAYING;
+
+    return looping || musicdies > gametic;
+}
+
+#else	// !MUSIC_FLUIDSYNTH
+
+void I_InitMusic(void)		{ }
+void I_ShutdownMusic(void)	{ }
+
+void I_PlaySong(int handle, int loops)
 {
   // UNUSED.
-  handle = looping = 0;
+  handle = loops = 0;
   musicdies = gametic + TICRATE*30;
 }
 
@@ -903,6 +1286,8 @@ int I_QrySongPlaying(int handle)
   handle = 0;
   return looping || musicdies > gametic;
 }
+
+#endif	// MUSIC_FLUIDSYNTH
 
 
 

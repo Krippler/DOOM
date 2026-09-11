@@ -24,12 +24,15 @@ RUN apt-get update \
         libx11-dev \
         libxext-dev \
         libpulse-dev \
+        libfluidsynth-dev \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
 COPY linuxdoom-1.10/ ./linuxdoom-1.10/
 COPY sndserv/ ./sndserv/
 
+# Music is built in: mus2mid.c converts the WAD's MUS lumps to Standard MIDI
+# and FluidSynth renders them. Build with MUSIC=none to leave it out.
 RUN make -C linuxdoom-1.10 -j"$(nproc)" \
  && strip linuxdoom-1.10/linux/linuxxdoom \
  && test -x linuxdoom-1.10/linux/linuxxdoom
@@ -51,6 +54,8 @@ RUN apt-get update \
         libx11-6 \
         libxext6 \
         libpulse0 \
+        libfluidsynth3 \
+        timgm6mb-soundfont \
         xvfb \
         x11vnc \
         novnc \
@@ -69,7 +74,10 @@ RUN chmod +x /usr/local/bin/doom-entrypoint \
 
 # Savegames (doomsavN.dsg) and the config file (.doomrc) are written to the
 # working directory and $HOME respectively, so both point at the state volume.
-ENV DOOM_SCALE=2 \
+# A small General MIDI soundfont ships in the image; point DOOM_SOUNDFONT at
+# another file, or pass -soundfont, to use a better one.
+ENV DOOM_SOUNDFONT=/usr/share/sounds/sf2/TimGM6mb.sf2 \
+    DOOM_SCALE=2 \
     DOOM_WADDIR=/wads \
     DOOM_STATE=/doom/state \
     DOOM_VNC_PORT=5900 \

@@ -58,6 +58,7 @@ Everything is set through the environment:
 | `DOOM_VNC_PASSWORD` | unset | If set, the VNC session requires this password. |
 | `DOOM_SOUND` | `1` | Set to `0` to not start the sound server at all. |
 | `PULSE_SERVER` | unset | PulseAudio server for sound, e.g. `unix:/tmp/pulse`. |
+| `DOOM_SOUNDFONT` | bundled | General MIDI soundfont used for music. |
 
 Anything you pass after the image name goes straight to the engine:
 
@@ -115,7 +116,12 @@ to true colour for the VNC client.
 The engine plays effects through a separate `sndserver` process, which is how
 the original release worked. That server has been given a PulseAudio backend
 (`sndserv/pulse.c`), so audio leaves the container over a PulseAudio socket.
-There is no music — linuxdoom never implemented any.
+
+Music works too. linuxdoom shipped every music function as an empty stub, so
+this adds them: `mus2mid.c` converts the WAD's MUS lumps into Standard MIDI
+and FluidSynth renders them against a General MIDI soundfont, on its own
+connection to the same PulseAudio server. Both need the same shared socket,
+so the instructions below cover music as well.
 
 Note on `padsp`: the usual way to feed OSS-era software into PulseAudio no
 longer exists. `padsp` and its `libpulsedsp.so` were removed upstream in
@@ -145,9 +151,26 @@ add `--user "$(id -u):$(id -g)"`.
 Without any of that the container prints how to enable sound and plays
 silently — a missing or unreachable audio server is not fatal.
 
-Set `DOOM_SOUND=0` to skip starting the sound server entirely.
+Set `DOOM_SOUND=0` to skip starting the sound server entirely. Effects and
+music have separate volume sliders under Options → Sound Volume.
 
-Volume is the usual in-game setting, under Options → Sound Volume.
+### Soundfont
+
+The image ships TimGM6mb, a 6 MB General MIDI soundfont, so it stays small.
+Anything larger sounds better; mount one and point `DOOM_SOUNDFONT` at it:
+
+```
+docker run --rm -p 6080:6080 \
+    -v "$PWD/wads:/wads:ro" \
+    -v "$PWD/FluidR3_GM.sf2:/sf/gm.sf2:ro" \
+    -e DOOM_SOUNDFONT=/sf/gm.sf2 \
+    -e PULSE_SERVER=unix:/tmp/pulse \
+    -v "/run/user/$(id -u)/pulse/native:/tmp/pulse:ro" \
+    doom
+```
+
+`-soundfont <file>` on the command line does the same thing. If no soundfont
+can be read the game still runs, without music.
 
 ## Troubleshooting
 

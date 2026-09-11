@@ -84,6 +84,17 @@ if [ "${DOOM_SOUND:-1}" = "1" ] && [ -x "$SNDSERVER_BIN" ]; then
         log "sound:   -v /run/user/\$(id -u)/pulse/native:/tmp/pulse:ro \\"
         log "sound:   -e PULSE_SERVER=unix:/tmp/pulse"
     fi
+
+    # Music is rendered inside the engine by FluidSynth, which needs a
+    # General MIDI soundfont. One ships in the image; DOOM_SOUNDFONT or
+    # -soundfont picks a different one.
+    if [ -n "${DOOM_SOUNDFONT:-}" ]; then
+        if [ -r "$DOOM_SOUNDFONT" ]; then
+            log "music: soundfont $DOOM_SOUNDFONT"
+        else
+            log "music: soundfont $DOOM_SOUNDFONT is not readable, no music"
+        fi
+    fi
 else
     log "sound: disabled"
     rm -f "$LINKDIR/sndserver"

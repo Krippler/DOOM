@@ -111,10 +111,40 @@ the scaling used to be. Measured off a PulseAudio null sink, a pistol shot at
 the default volume setting went from a peak of 1693 to 14114 once the scaling
 was restored.
 
+## Music
+
+Every music function in `i_sound.c` was an empty stub, and nothing ever
+called `I_InitMusic` — there was no reason to, since it did nothing.
+
+The WADs store music as MUS lumps, a trimmed-down MIDI with delays counted in
+140 Hz ticks. `mus2mid.c` converts one into a Standard MIDI File in memory,
+and `i_sound.c` renders it with FluidSynth against a General MIDI soundfont.
+FluidSynth runs its own audio thread and its own connection to the sound
+system, so the game loop is untouched and music mixes with the effects
+outside the process.
+
+Details worth knowing:
+
+- `I_RegisterSong` is handed a pointer with no length. A MUS lump's header
+  carries its own score length, which is what the converter uses. Lumps that
+  are already Standard MIDI — some PWADs replace the music that way — have
+  their length recovered by walking their chunk headers instead.
+- MUS reserves channel 15 for percussion where MIDI uses channel 9, so
+  channels are remapped as they are first used.
+- The MIDI is written with a division of 70 ticks per quarter note and the
+  default tempo of 500000 microseconds per quarter, which is exactly the
+  140 ticks per second MUS counts in.
+- `I_PauseSong` stops the player and sends an all-notes-off, otherwise a note
+  sounding at that moment would hang.
+- Music volume, like effect volume, arrives on DOOM's 0..15 scale;
+  `S_SetMusicVolume` also pokes 127 through before setting the real value, so
+  the value is clamped before being turned into a synth gain.
+
+Build with `make MUSIC=none` to get the original silent stubs back.
+
 ## Not changed
 
 - Networking (`i_net.c`) is untouched and untested here.
-- There is still no music; linuxdoom never implemented any.
 - The `-DUSEASM` assembly paths remain off; they are 32-bit x86 only.
 - `SNDSERV` is still defined by default, as upstream had it, so sound goes
   through the external `sndserver` helper rather than the in-process OSS mixer.
@@ -125,8 +155,11 @@ was restored.
 
 ```
 make -C linuxdoom-1.10
+make -C sndserv
 Xvfb :99 -screen 0 640x400x8 &
 DISPLAY=:99 DOOMWADDIR=/path/to/wads HOME=/tmp linuxdoom-1.10/linux/linuxxdoom -2 -warp 1 1
 ```
 
-The display has to be 8-bit PseudoColor; see `DOCKER.md` for why.
+The display has to be 8-bit PseudoColor; see `DOCKER.md` for why. Sound needs
+a reachable PulseAudio server, the sound server on `$DOOMWADDIR/sndserver`,
+and for music a General MIDI soundfont (`-soundfont` or `DOOM_SOUNDFONT`).
