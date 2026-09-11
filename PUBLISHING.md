@@ -32,23 +32,12 @@ Defined in `.github/workflows/docker-publish.yml`:
 `master`. The workflow also builds `claude/**`, `fix/**` and `feat/**`
 branches, so an image exists to test before anything is merged.
 
-## Registries
+## Registry
 
-GHCR is published to unconditionally — it authenticates with the built-in
-`GITHUB_TOKEN`, so a fork publishes with no setup at all.
-
-Docker Hub is optional and is skipped unless both secrets are present
-(**Settings → Secrets and variables → Actions**):
-
-| Secret | Value |
-|---|---|
-| `DOCKERHUB_USERNAME` | Docker Hub username |
-| `DOCKERHUB_TOKEN` | Docker Hub access token with Read/Write/Delete |
-
-This differs from the other repos here, where a missing Docker Hub secret
-fails the run. If you want Docker Hub to be mandatory, drop the
-`HAS_DOCKERHUB` guard and the template's `<Repository>` can point there
-instead.
+GHCR only, at `ghcr.io/krippler/doom`. Unlike the other repos here, this one
+does not publish to Docker Hub, so there are no secrets to set up: the
+workflow authenticates with the built-in `GITHUB_TOKEN` and a fork publishes
+with no configuration at all.
 
 Images are signed with cosign on every push.
 

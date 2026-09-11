@@ -14,7 +14,6 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  DOCKERHUB_IMAGE: krippler52/doom
 
 jobs:
   build:
@@ -23,10 +22,6 @@ jobs:
       contents: write     # write so the release-on-merge path can create a git tag
       packages: write
       id-token: write
-    env:
-      # Docker Hub is optional here: GHCR needs no secret, so a fork or a
-      # fresh clone still publishes without anyone setting anything up.
-      HAS_DOCKERHUB: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
     outputs:
       release_version: ${{ steps.detect.outputs.version }}
       is_release_merge: ${{ steps.detect.outputs.is_release_merge }}
@@ -69,21 +64,6 @@ jobs:
           echo "major=${VER%%.*}"             >> "$GITHUB_OUTPUT"
           echo "major_minor=${VER%.*}"        >> "$GITHUB_OUTPUT"
 
-      - name: Work out which registries this run can push to
-        id: registries
-        run: |
-          set -euo pipefail
-          {
-            echo "images<<IMAGES_EOF"
-            echo "${REGISTRY}/${IMAGE_NAME,,}"
-            if [ "$HAS_DOCKERHUB" = "true" ]; then
-              echo "${DOCKERHUB_IMAGE}"
-            else
-              echo "DOCKERHUB_USERNAME/DOCKERHUB_TOKEN not set — publishing to GHCR only." >&2
-            fi
-            echo "IMAGES_EOF"
-          } >> "$GITHUB_OUTPUT"
-
       - name: Install cosign
         if: github.event_name != 'pull_request'
         uses: sigstore/cosign-installer@59acb6260d9c0ba8f4a2f9d9b48431a222b68e20 # v3.5.0
@@ -101,18 +81,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Log into Docker Hub
-        if: github.event_name != 'pull_request' && env.HAS_DOCKERHUB == 'true'
-        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@96383f45573cb7f253c731d3b3ab81c87ef81934 # v5.0.0
         with:
-          images: ${{ steps.registries.outputs.images }}
+          # metadata-action lowercases this, so Krippler/DOOM becomes
+          # ghcr.io/krippler/doom.
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           # Tagging policy:
           #   • push tag v1.10.0          → 1.10.0, 1.10, 1, latest  (manual flow)
           #   • release-PR merge to master → same, plus edge
