@@ -6,6 +6,25 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Changed
+- **The backquote key (`` ` ``) now opens the menu**, everywhere, out of the
+  box. Escape still does whenever the browser lets it through — this only adds
+  a key — but in a window, and on Firefox and Safari in any mode, the browser
+  keeps Escape for releasing the pointer and it never reaches the game. The
+  binding was already there under Options → Setup → Controls; it just
+  defaulted to Escape, which made it do nothing until somebody found it. A
+  config written by an older build is promoted on load, so this needs no
+  editing.
+- **Every menu is drawn at one size.** SETUP was the odd one out under
+  Options: the original menus are built from graphic lumps 15 pixels tall, and
+  there is no lump for a word id never shipped, so the added item was drawn in
+  the small font next to nine large ones. Rather than leave the mismatch, the
+  five original menus are now text too, and every menu moved to 13-pixel rows
+  from 16. Everything matches, and the added pages have room for the options
+  they needed.
+
 ## [1.10.13] — 2026-09-12
 
 ### Added

@@ -159,9 +159,10 @@ int		key_speed;
 
 // A second key that opens the menu, for when Escape cannot be used.
 // Browsers hand Escape to themselves while the pointer is captured, so
-// pressing it lets the mouse go instead of reaching the game. Defaults to
-// Escape, which makes it a no-op until somebody binds it to something.
-int		key_menu = KEY_ESCAPE;
+// pressing it lets the mouse go instead of reaching the game. Backquote is
+// the default because nothing else in the game uses it and no browser claims
+// it; Escape is still read directly, so this only ever adds a key.
+int		key_menu = '`';
 
 // Whether pushing the mouse forward walks the player forward.
 //

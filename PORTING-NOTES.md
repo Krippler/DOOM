@@ -221,7 +221,7 @@ Build with `make MUSIC=none` to get the original silent stubs back.
 Three things the 1997 release had no way to do, all reachable from
 **Options → Setup**:
 
-- **Controls** (`m_menu.c`) rebinds the ten movement and action keys. The
+- **Controls** (`m_menu.c`) rebinds the eleven movement, action and menu keys. The
   engine already kept them in the `key_*` globals that `M_LoadDefaults`
   reads and writes, so a binding survives a restart with no new plumbing.
 - **Mouse** (`m_menu.c`) turns the mouse on and off, assigns its buttons, and
@@ -231,9 +231,12 @@ Three things the 1997 release had no way to do, all reachable from
 - **A second menu key** (`m_menu.c`, `g_game.c`, `m_misc.c`). The menu key is
   hardcoded as Escape throughout, which is awkward in a browser: pointer lock
   gives Escape to the browser. `key_menu` is a saved binding that defaults to
-  Escape, and `M_Responder` turns it into Escape early enough that every test
-  for Escape downstream keeps working unchanged -- but late enough that typing
-  a savegame name is unaffected.
+  backquote -- the game uses that key for nothing and no browser claims it --
+  and `M_Responder` turns it into Escape early enough that every test for
+  Escape downstream keeps working unchanged, but late enough that typing a
+  savegame name is unaffected. Escape is still read directly, so this only
+  ever adds a key. A config written before the default changed carries the
+  old no-op value of Escape; `M_Init` promotes that to backquote.
 - **Load WAD** (`m_menu.c`) lists the `.wad` files in `$DOOM_WADPATH`
   (or `$DOOMWADDIR`, or the current directory) and loads the one you pick,
   reading the four byte signature to tell an IWAD from a PWAD.
@@ -245,10 +248,22 @@ Three things the 1997 release had no way to do, all reachable from
   no equivalent of: it searched fixed filenames in `$DOOMWADDIR` and took
   whichever it found first.
 
-The menu structure grew a per-menu line height. The original's three menus all
-use 16-pixel rows drawn from graphic lumps; these pages are text and need to
-fit ten rows above a status bar that only redraws when it is marked dirty, so
-anything drawn below y=168 smears and stays there.
+The menu structure grew two fields: a per-menu line height, and an optional
+`text` string on each item.
+
+The original draws every menu item from a graphic lump 15 pixels tall on
+16-pixel rows, and there are no lumps for words it never shipped. The added
+pages are therefore drawn with `M_WriteText` in the 7-pixel `hu_font`, which
+left SETUP a visibly different size from the items above it on the same page.
+`M_Drawer` now draws `text` when an item has it and falls back to the lump
+otherwise, so a menu can be either; the original five were converted, and all
+of them moved to 13-pixel rows.
+
+That is also what makes the added pages fit: they need eleven rows above a
+status bar that only redraws when it is marked dirty, so anything drawn below
+y=168 smears and stays there. The skull cursor is 19 pixels tall against a
+7-pixel row, so on a text menu it is centred on the row rather than hung at
+the lump's -5 offset.
 
 - **`g_game.c`** — `forward += mousey` is vanilla: the mouse's Y axis walked
   the player, since the engine has no vertical aiming to spend it on. It is

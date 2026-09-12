@@ -60,7 +60,8 @@ original code and why it broke.
 Three pages under **Options → Setup**, none of which the 1997 release had any
 equivalent of:
 
-- **Controls** — rebind the ten movement and action keys. Saved to `.doomrc`.
+- **Controls** — rebind the eleven movement, action and menu keys. Saved to
+  `.doomrc`.
 - **Mouse** — turn the mouse on and off, assign its buttons, and capture the
   pointer so it cannot slide out of the window while you turn.
 - **Load WAD** — list the `.wad` files you mounted, marked `GAME` or `MOD`,

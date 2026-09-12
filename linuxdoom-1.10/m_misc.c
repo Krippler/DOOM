@@ -262,7 +262,7 @@ default_t	defaults[] =
     {"key_use",&key_use, ' '},
     {"key_strafe",&key_strafe, KEY_RALT},
     {"key_speed",&key_speed, KEY_RSHIFT},
-    {"key_menu",&key_menu, KEY_ESCAPE},
+    {"key_menu",&key_menu, '`'},
 
 // UNIX hack, to be removed. 
 #ifdef SNDSERV

@@ -132,6 +132,14 @@ boolean			menuactive;
 #define SKULLXOFF		-32
 #define LINEHEIGHT		16
 
+// Rows for menus drawn in the small font.
+//
+// The item graphics are 15 pixels tall, so the original menus need 16. Text is
+// 7, and the tallest thing that shares a row is the slider at 13 -- so 13 is
+// as tight as this can go while everything still fits, and it buys three
+// pixels a row over the old spacing.
+#define SMALLLINEHEIGHT		13
+
 extern boolean		sendpause;
 char			savegamestrings[10][SAVESTRINGSIZE];
 
@@ -155,6 +163,12 @@ typedef struct
     
     // hotkey in menu
     char	alphaKey;			
+
+    // Drawn in the small font instead of the graphic above, when set. The
+    // graphics are one per phrase, baked into the WAD, so anything the 1997
+    // menus did not already say cannot be drawn that way -- which is why the
+    // one item added to Options stood out from the rest of the page.
+    char*	text;
 } menuitem_t;
 
 
@@ -273,13 +287,13 @@ enum
 
 menuitem_t MainMenu[]=
 {
-    {1,"M_NGAME",M_NewGame,'n'},
-    {1,"M_OPTION",M_Options,'o'},
-    {1,"M_LOADG",M_LoadGame,'l'},
-    {1,"M_SAVEG",M_SaveGame,'s'},
+    {1,"",M_NewGame,'n',"NEW GAME"},
+    {1,"",M_Options,'o',"OPTIONS"},
+    {1,"",M_LoadGame,'l',"LOAD GAME"},
+    {1,"",M_SaveGame,'s',"SAVE GAME"},
     // Another hickup with Special edition.
-    {1,"M_RDTHIS",M_ReadThis,'r'},
-    {1,"M_QUITG",M_QuitDOOM,'q'}
+    {1,"",M_ReadThis,'r',"READ THIS!"},
+    {1,"",M_QuitDOOM,'q',"QUIT GAME"}
 };
 
 menu_t  MainDef =
@@ -288,8 +302,9 @@ menu_t  MainDef =
     NULL,
     MainMenu,
     M_DrawMainMenu,
-    97,64,
-    0
+    97,72,
+    0,
+    SMALLLINEHEIGHT
 };
 
 
@@ -307,10 +322,10 @@ enum
 
 menuitem_t EpisodeMenu[]=
 {
-    {1,"M_EPI1", M_Episode,'k'},
-    {1,"M_EPI2", M_Episode,'t'},
-    {1,"M_EPI3", M_Episode,'i'},
-    {1,"M_EPI4", M_Episode,'t'}
+    {1,"", M_Episode,'k',"KNEE-DEEP IN THE DEAD"},
+    {1,"", M_Episode,'t',"THE SHORES OF HELL"},
+    {1,"", M_Episode,'i',"INFERNO"},
+    {1,"", M_Episode,'t',"THY FLESH CONSUMED"}
 };
 
 menu_t  EpiDef =
@@ -319,8 +334,9 @@ menu_t  EpiDef =
     &MainDef,		// previous menu
     EpisodeMenu,	// menuitem_t ->
     M_DrawEpisode,	// drawing routine ->
-    48,63,              // x,y
-    ep1			// lastOn
+    48,68,              // x,y
+    ep1,		// lastOn
+    SMALLLINEHEIGHT
 };
 
 //
@@ -338,11 +354,11 @@ enum
 
 menuitem_t NewGameMenu[]=
 {
-    {1,"M_JKILL",	M_ChooseSkill, 'i'},
-    {1,"M_ROUGH",	M_ChooseSkill, 'h'},
-    {1,"M_HURT",	M_ChooseSkill, 'h'},
-    {1,"M_ULTRA",	M_ChooseSkill, 'u'},
-    {1,"M_NMARE",	M_ChooseSkill, 'n'}
+    {1,"",	M_ChooseSkill, 'i',"I'M TOO YOUNG TO DIE"},
+    {1,"",	M_ChooseSkill, 'h',"HEY, NOT TOO ROUGH"},
+    {1,"",	M_ChooseSkill, 'h',"HURT ME PLENTY"},
+    {1,"",	M_ChooseSkill, 'u',"ULTRA-VIOLENCE"},
+    {1,"",	M_ChooseSkill, 'n',"NIGHTMARE!"}
 };
 
 menu_t  NewDef =
@@ -351,8 +367,9 @@ menu_t  NewDef =
     &EpiDef,		// previous menu
     NewGameMenu,	// menuitem_t ->
     M_DrawNewGame,	// drawing routine ->
-    48,63,              // x,y
-    hurtme		// lastOn
+    48,68,              // x,y
+    hurtme,		// lastOn
+    SMALLLINEHEIGHT
 };
 
 
@@ -376,17 +393,15 @@ enum
 
 menuitem_t OptionsMenu[]=
 {
-    {1,"M_ENDGAM",	M_EndGame,'e'},
-    {1,"M_MESSG",	M_ChangeMessages,'m'},
-    {1,"M_DETAIL",	M_ChangeDetail,'g'},
-    {2,"M_SCRNSZ",	M_SizeDisplay,'s'},
-    {-1,"",0},
-    {2,"M_MSENS",	M_ChangeSensitivity,'m'},
-    {-1,"",0},
-    {1,"M_SVOL",	M_Sound,'s'},
-    // No graphic lump exists for this, and an item with an empty name is
-    // skipped by M_Drawer, so M_DrawOptions writes the label as text.
-    {1,"",		M_Setup,'t'}
+    {1,"",	M_EndGame,'e',"END GAME"},
+    {1,"",	M_ChangeMessages,'m',"MESSAGES"},
+    {1,"",	M_ChangeDetail,'g',"GRAPHIC DETAIL"},
+    {2,"",	M_SizeDisplay,'s',"SCREEN SIZE"},
+    {-1,"",0,0,""},
+    {2,"",	M_ChangeSensitivity,'m',"MOUSE SENSITIVITY"},
+    {-1,"",0,0,""},
+    {1,"",	M_Sound,'s',"SOUND VOLUME"},
+    {1,"",	M_Setup,'t',"SETUP"}
 };
 
 menu_t  OptionsDef =
@@ -395,8 +410,9 @@ menu_t  OptionsDef =
     &MainDef,
     OptionsMenu,
     M_DrawOptions,
-    60,30,
-    0
+    60,40,
+    0,
+    SMALLLINEHEIGHT
 };
 
 //
@@ -458,10 +474,10 @@ enum
 
 menuitem_t SoundMenu[]=
 {
-    {2,"M_SFXVOL",M_SfxVol,'s'},
-    {-1,"",0},
-    {2,"M_MUSVOL",M_MusicVol,'m'},
-    {-1,"",0}
+    {2,"",M_SfxVol,'s',"SFX VOLUME"},
+    {-1,"",0,0,""},
+    {2,"",M_MusicVol,'m',"MUSIC VOLUME"},
+    {-1,"",0,0,""}
 };
 
 menu_t  SoundDef =
@@ -471,7 +487,8 @@ menu_t  SoundDef =
     SoundMenu,
     M_DrawSound,
     80,64,
-    0
+    0,
+    SMALLLINEHEIGHT
 };
 
 //
@@ -829,10 +846,10 @@ void M_DrawSound(void)
 {
     V_DrawPatchDirect (60,38,0,W_CacheLumpName("M_SVOL",PU_CACHE));
 
-    M_DrawThermo(SoundDef.x,SoundDef.y+LINEHEIGHT*(sfx_vol+1),
+    M_DrawThermo(SoundDef.x,SoundDef.y+SoundDef.lineheight*(sfx_vol+1),
 		 16,snd_SfxVolume);
 
-    M_DrawThermo(SoundDef.x,SoundDef.y+LINEHEIGHT*(music_vol+1),
+    M_DrawThermo(SoundDef.x,SoundDef.y+SoundDef.lineheight*(music_vol+1),
 		 16,snd_MusicVolume);
 }
 
@@ -1100,9 +1117,9 @@ enum
 
 menuitem_t SetupMenu[] =
 {
-    {1,"",M_Controls,'c'},
-    {1,"",M_MouseOptions,'m'},
-    {1,"",M_WadSelect,'w'}
+    {1,"",M_Controls,'c',"CONTROLS"},
+    {1,"",M_MouseOptions,'m',"MOUSE"},
+    {1,"",M_WadSelect,'w',"LOAD WAD"}
 };
 
 menu_t SetupDef =
@@ -1113,7 +1130,7 @@ menu_t SetupDef =
     M_DrawSetup,
     60,64,
     0,
-    0
+    SMALLLINEHEIGHT
 };
 
 
@@ -1127,9 +1144,6 @@ void M_Setup (int choice)
 void M_DrawSetup (void)
 {
     M_WriteText (60, 40, "SETUP");
-    M_WriteText (SetupDef.x, SetupDef.y + LINEHEIGHT*setup_controls, "CONTROLS");
-    M_WriteText (SetupDef.x, SetupDef.y + LINEHEIGHT*setup_mouse,    "MOUSE");
-    M_WriteText (SetupDef.x, SetupDef.y + LINEHEIGHT*setup_wads,     "LOAD WAD");
 }
 
 
@@ -1149,9 +1163,9 @@ menu_t ControlsDef =
     &SetupDef,
     ControlsMenu,
     M_DrawControls,
-    56,34,
+    56,25,
     0,
-    12
+    SMALLLINEHEIGHT
 };
 
 
@@ -1228,7 +1242,7 @@ menu_t MouseDef =
     M_DrawMouseOptions,
     56,48,
     0,
-    16
+    SMALLLINEHEIGHT
 };
 
 
@@ -1294,30 +1308,30 @@ void M_DrawMouseOptions (void)
 
     M_WriteText (MouseDef.x, y, "ENABLE MOUSE");
     M_WriteText (MouseDef.x + 148, y, usemouse ? "ON" : "OFF");
-    y += LINEHEIGHT;
+    y += MouseDef.lineheight;
 
     M_WriteText (MouseDef.x, y, "GRAB POINTER");
     M_WriteText (MouseDef.x + 148, y, grabMouse ? "ON" : "OFF");
-    y += LINEHEIGHT;
+    y += MouseDef.lineheight;
 
     M_WriteText (MouseDef.x, y, "MOVE WITH MOUSE");
     M_WriteText (MouseDef.x + 148, y, novert ? "OFF" : "ON");
-    y += LINEHEIGHT;
+    y += MouseDef.lineheight;
 
     snprintf (buf, sizeof(buf), "BUTTON %d", mousebfire + 1);
     M_WriteText (MouseDef.x, y, "FIRE");
     M_WriteText (MouseDef.x + 148, y, buf);
-    y += LINEHEIGHT;
+    y += MouseDef.lineheight;
 
     snprintf (buf, sizeof(buf), "BUTTON %d", mousebstrafe + 1);
     M_WriteText (MouseDef.x, y, "STRAFE");
     M_WriteText (MouseDef.x + 148, y, buf);
-    y += LINEHEIGHT;
+    y += MouseDef.lineheight;
 
     snprintf (buf, sizeof(buf), "BUTTON %d", mousebforward + 1);
     M_WriteText (MouseDef.x, y, "FORWARD");
     M_WriteText (MouseDef.x + 148, y, buf);
-    y += LINEHEIGHT;
+    y += MouseDef.lineheight;
 
     M_WriteText (56, 140, "SENSITIVITY IS UNDER OPTIONS");
 }
@@ -1483,9 +1497,9 @@ menu_t WadDef =
     &SetupDef,
     WadMenu,
     M_DrawWadSelect,
-    40,44,
+    40,38,
     0,
-    12
+    SMALLLINEHEIGHT
 };
 
 
@@ -1555,22 +1569,24 @@ char	msgNames[2][9]		= {"M_MSGOFF","M_MSGON"};
 
 void M_DrawOptions(void)
 {
+    int		lh = OptionsDef.lineheight;
+    int		ty = (lh - SHORT(hu_font[0]->height))/2;
+
     V_DrawPatchDirect (108,15,0,W_CacheLumpName("M_OPTTTL",PU_CACHE));
-	
-    V_DrawPatchDirect (OptionsDef.x + 175,OptionsDef.y+LINEHEIGHT*detail,0,
-		       W_CacheLumpName(detailNames[detailLevel],PU_CACHE));
 
-    V_DrawPatchDirect (OptionsDef.x + 120,OptionsDef.y+LINEHEIGHT*messages,0,
-		       W_CacheLumpName(msgNames[showMessages],PU_CACHE));
+    // The values as text too. They were graphics -- M_GDHIGH, M_MSGON and so
+    // on -- which stood a head taller than the small labels beside them now.
+    M_WriteText (OptionsDef.x + 148, OptionsDef.y + lh*detail + ty,
+		 detailLevel ? "LOW" : "HIGH");
 
-    M_DrawThermo(OptionsDef.x,OptionsDef.y+LINEHEIGHT*(mousesens+1),
+    M_WriteText (OptionsDef.x + 148, OptionsDef.y + lh*messages + ty,
+		 showMessages ? "ON" : "OFF");
+
+    M_DrawThermo(OptionsDef.x,OptionsDef.y+lh*(mousesens+1),
 		 10,mouseSensitivity);
 	
-    M_DrawThermo(OptionsDef.x,OptionsDef.y+LINEHEIGHT*(scrnsize+1),
+    M_DrawThermo(OptionsDef.x,OptionsDef.y+lh*(scrnsize+1),
 		 9,screenSize);
-
-    // This one has no graphic lump of its own.
-    M_WriteText(OptionsDef.x,OptionsDef.y+LINEHEIGHT*opt_setup,"SETUP");
 }
 
 void M_Options(int choice)
@@ -2386,6 +2402,7 @@ void M_Drawer (void)
     short		i;
     short		max;
     short		lh;
+    boolean		textmenu;
     char		string[40];
     int			start;
 
@@ -2434,9 +2451,15 @@ void M_Drawer (void)
     max = currentMenu->numitems;
     lh = currentMenu->lineheight ? currentMenu->lineheight : LINEHEIGHT;
 
+    // A menu is drawn one way or the other, not both; item zero decides.
+    textmenu = max > 0 && currentMenu->menuitems[0].text != NULL;
+
     for (i=0;i<max;i++)
     {
-	if (currentMenu->menuitems[i].name[0])
+	if (currentMenu->menuitems[i].text)
+	    M_WriteText (x, y + (lh - SHORT(hu_font[0]->height))/2,
+			 currentMenu->menuitems[i].text);
+	else if (currentMenu->menuitems[i].name[0])
 	    V_DrawPatchDirect (x,y,0,
 			       W_CacheLumpName(currentMenu->menuitems[i].name ,PU_CACHE));
 	y += lh;
@@ -2444,7 +2467,13 @@ void M_Drawer (void)
 
     
     // DRAW SKULL
-    V_DrawPatchDirect(x + SKULLXOFF,currentMenu->y - 5 + itemOn*lh, 0,
+    //
+    // Centred on the row for a text menu, where the rows are shorter than the
+    // 19 pixel skull. The original -5 is tuned for 16 pixel rows of graphics
+    // and is kept for those.
+    V_DrawPatchDirect(x + SKULLXOFF,
+		      currentMenu->y + (textmenu ? (lh - 19)/2 : -5) + itemOn*lh,
+		      0,
 		      W_CacheLumpName(skullName[whichSkull],PU_CACHE));
 
 }
@@ -2506,6 +2535,12 @@ void M_Init (void)
 
     // Older builds could save this as 1; see M_ChangeDetail.
     detailLevel = 0;
+
+    // Configs written before backquote became the default carry the old
+    // no-op value. Escape is read directly either way, so promoting it
+    // costs nothing and gives those players the browser-safe key too.
+    if (key_menu == KEY_ESCAPE)
+	key_menu = '`';
 
     screenSize = screenblocks - 3;
     messageToPrint = 0;

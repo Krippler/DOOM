@@ -84,7 +84,7 @@ screen and the pointer cannot slide off into the rest of your desktop:
 | | |
 | --- | --- |
 | **Play fullscreen** | Fills the screen, and keeps Escape for the game (below). |
-| **Play in this window** | Same capture, no fullscreen. Escape releases the mouse. |
+| **Play in this window** | Same capture, no fullscreen. Escape releases the mouse, so use `` ` `` for the menu. |
 
 Once the capture is released, clicking the picture resumes it the same way you
 started, so Escape then click will not drop you into fullscreen unexpectedly.
@@ -103,14 +103,16 @@ advantage fullscreen has. **Hold** Escape to actually leave; browsers guarantee
 that way out and it cannot be taken away.
 
 Playing in the window, Escape always releases the mouse — nothing can change
-that — so press it once for your cursor and again for the game's menu, or give
-the menu a second key under Options → Setup → Controls.
+that. This is why backquote (`` ` ``) opens the menu too, in every mode: the
+game uses that key for nothing else and no browser claims it, so it reaches
+DOOM whatever the pointer lock is doing.
 
-Keyboard Lock is a Chromium feature, so on Firefox and Safari Escape still
-ends the capture. The page says so when that is the case, and the fix is to
-give the menu a second key: **Options → Setup → Controls → MENU**, bound to
-whatever you like (backquote is a good choice, since DOOM uses it for nothing).
-It is saved with the rest of your controls.
+Keyboard Lock is a Chromium feature, so on Firefox and Safari Escape ends the
+capture even in fullscreen. The page says so when that is the case; backquote
+still works. To move the menu somewhere else, **Options → Setup → Controls →
+MENU** binds it to whatever you like, saved with the rest of your controls.
+Escape is read directly and always opens the menu when the browser lets it
+through, so this only ever adds a key.
 
 If the browser refuses to capture the pointer, the page says so and carries on
 as an ordinary viewer rather than failing.
@@ -134,10 +136,10 @@ Click into the canvas first — the browser only sends keys to a focused canvas.
 | Open, use | Space |
 | Weapons | `1`–`7` |
 | Map | Tab |
-| Menu | Esc, or the MENU key you bind |
+| Menu | `` ` ``, or Esc when the browser lets it through |
 
-All of these can be changed from the game: **Esc → Options → Setup →
-Controls**, including a second key for the menu itself. Pick a line, press Return, then press the key you want. The
+All of these can be changed from the game: **` → Options → Setup →
+Controls**, the menu key included. Pick a line, press Return, then press the key you want. The
 choice is written to `.doomrc` in the state directory, so it survives a
 restart.
 

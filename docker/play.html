@@ -70,6 +70,8 @@
   }
   #overlay p { margin: 0; max-width: 34em; }
   #overlay .dim { color: #808080; font-size: 13px; }
+  #overlay kbd { font: inherit; color: #d0d0d0; border: 1px solid #555;
+                 border-radius: 3px; padding: 0 4px; }
   #choices {
     display: flex;
     flex-wrap: wrap;
@@ -109,8 +111,8 @@
     <button id="play-fullscreen" type="button">Play fullscreen</button>
     <button id="play-windowed" type="button">Play in this window</button>
   </div>
-  <p class="dim" id="esc-note">Keys and the mouse are configured in game under
-     Options → Setup.</p>
+  <p class="dim" id="esc-note">The <kbd>`</kbd> key opens the game menu. Keys and
+     the mouse are configured there, under Options → Setup.</p>
 </div>
 
 <div id="status" hidden></div>
@@ -411,17 +413,18 @@ function updateEscNote() {
   if (!note) return;
   if (keyboardLocked) {
     note.textContent =
-      'Esc opens the game menu. Hold Esc to release the mouse and leave fullscreen.';
+      'Esc or ` opens the game menu. Hold Esc to release the mouse and leave'
+      + ' fullscreen.';
   } else if (locked() && !document.fullscreenElement) {
     note.textContent =
-      'Playing in the window, so Esc releases the mouse — press it again for'
-      + ' the game menu. Options → Setup → Controls can put the menu on a'
-      + ' second key. Fullscreen keeps Esc for the game.';
+      'Playing in the window, so Esc releases the mouse. Press ` for the game'
+      + ' menu — Options → Setup → Controls moves it to another key.'
+      + ' Fullscreen keeps Esc for the game.';
   } else {
     note.textContent =
-      'This browser will not let the page keep Esc, so Esc releases the mouse —'
-      + ' press it again for the game menu. Options → Setup → Controls can put'
-      + ' the menu on a second key.';
+      'This browser will not let the page keep Esc, so Esc releases the mouse.'
+      + ' Press ` for the game menu — Options → Setup → Controls moves it'
+      + ' to another key.';
   }
 }
 
