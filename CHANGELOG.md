@@ -6,6 +6,17 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **Holding a mouse button did not repeat the action, and releasing it did not
+  always stop.** A 1997 bug: `Button1Mask` is `1<<8`, and the engine used it
+  raw where buttons two and three are correctly turned into bits 1 and 2. So a
+  release reported `256 ^ 1` = 257, whose bit 0 is still set — the game never
+  saw the button come up and kept firing — while any mouse movement made while
+  the button was held reported 256, whose bit 0 is clear, switching fire back
+  off. Holding still stuck; holding and moving stopped. Both now report 1.
+
 ## [1.10.7] — 2026-09-12
 
 ### Fixed

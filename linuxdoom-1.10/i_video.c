@@ -233,7 +233,11 @@ void I_GetEvent(void)
 	    break;
 	event.type = ev_mouse;
 	event.data1 =
-	    (X_event.xbutton.state & Button1Mask)
+	    // Button1Mask is 1<<8, so this has to be turned into bit 0 the way
+	    // the two below already are. Left as the raw mask it made the
+	    // release report 256^1 = 257, whose bit 0 is still set: the game
+	    // never saw the button come up and kept firing.
+	    (X_event.xbutton.state & Button1Mask ? 1 : 0)
 	    | (X_event.xbutton.state & Button2Mask ? 2 : 0)
 	    | (X_event.xbutton.state & Button3Mask ? 4 : 0)
 	    | (X_event.xbutton.button == Button1)
@@ -248,7 +252,11 @@ void I_GetEvent(void)
 	    break;
 	event.type = ev_mouse;
 	event.data1 =
-	    (X_event.xbutton.state & Button1Mask)
+	    // Button1Mask is 1<<8, so this has to be turned into bit 0 the way
+	    // the two below already are. Left as the raw mask it made the
+	    // release report 256^1 = 257, whose bit 0 is still set: the game
+	    // never saw the button come up and kept firing.
+	    (X_event.xbutton.state & Button1Mask ? 1 : 0)
 	    | (X_event.xbutton.state & Button2Mask ? 2 : 0)
 	    | (X_event.xbutton.state & Button3Mask ? 4 : 0);
 	// suggest parentheses around arithmetic in operand of |
@@ -266,7 +274,10 @@ void I_GetEvent(void)
 	    break;
 	event.type = ev_mouse;
 	event.data1 =
-	    (X_event.xmotion.state & Button1Mask)
+	    // Same again: unconverted, every motion while button one was held
+	    // reported 256, whose bit 0 is clear, so moving the mouse switched
+	    // fire back off.
+	    (X_event.xmotion.state & Button1Mask ? 1 : 0)
 	    | (X_event.xmotion.state & Button2Mask ? 2 : 0)
 	    | (X_event.xmotion.state & Button3Mask ? 4 : 0);
 	event.data2 = (X_event.xmotion.x - lastmousex) << 2;

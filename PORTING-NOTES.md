@@ -83,6 +83,14 @@ current gcc and glibc. Behaviour is otherwise left alone.
   row *or* column with the centre of the window, because the filter that
   throws away the engine's own re-centring warp tested both coordinates with
   `&&`. Moving straight across the middle of the screen did nothing.
+- **`i_video.c`** — `Button1Mask` is `1<<8`, and all three input handlers used
+  it raw while buttons two and three were correctly converted to bits 1 and 2.
+  The release path computed `(state & Button1Mask) ^ 1` = 257, whose bit 0 is
+  still set, so `mousebuttons[0]` stayed true and the weapon kept firing after
+  the button came up; the motion path reported a bare 256, whose bit 0 is
+  clear, so moving the mouse while holding fire turned it off. Holding still
+  stuck on, holding and moving stopped: the two complaints were the same bug
+  seen from opposite ends.
 - **`i_video.c`** — nothing ever set the X input focus. A window manager would
   normally do it; there is none in the container, so X left the focus at
   `PointerRoot` and delivered keystrokes to whichever window the pointer was
