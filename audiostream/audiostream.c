@@ -45,9 +45,9 @@
 // a reloading page unable to get back in until the old socket timed out.
 #define MAXCLIENTS	4
 
-// Frames per period. At 22050 Hz this is 23 ms, which is the granularity of
+// Frames per period. At 22050 Hz this is 12 ms, which is the granularity of
 // everything downstream: it bounds the added latency and the mixing cost.
-#define PERIOD		512
+#define PERIOD		256
 
 #define NSEC_PER_SEC	1000000000L
 
@@ -289,10 +289,13 @@ main
 
     upsample = out_rate / SFX_RATE;
 
-    // A period of output needs this many frames in, and both pipes hold about
-    // 93 ms of their own stream.
+    // Everything a pipe holds is delay, so they hold as little as they can:
+    // 4096 bytes is 93 ms of 11025 Hz stereo, and one page is the smallest a
+    // pipe can be. The music pipe is sized for its own byte rate to come to
+    // the same figure -- it used to be four times that, which is where a third
+    // of a second of delay on the music was hiding.
     OpenSource (&sfx, sfxpath, 4096);
-    OpenSource (&music, musicpath, 4096 * upsample * 4);
+    OpenSource (&music, musicpath, 4096 * upsample);
 
     signal (SIGPIPE, SIG_IGN);
 

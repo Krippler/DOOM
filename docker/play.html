@@ -371,20 +371,28 @@ const AUDIO_MAGIC = 'DOOMAUD1';
 // How much sound to keep ahead of the speakers. Enough to ride out a network
 // hiccup, little enough that a gunshot is not late: this is added to what the
 // pipes in the container already hold.
-const AUDIO_TARGET_MS = 80;
-const AUDIO_MAX_MS    = 300;
+// What the ring buffer starts with and what it will grow to if that turns out
+// not to be enough. Every millisecond here is a millisecond between pulling
+// the trigger and hearing it, so it starts small and earns more only when it
+// actually runs dry -- see doom-ring.js.
+const AUDIO_TARGET_MS     = 40;
+const AUDIO_MAX_TARGET_MS = 250;
+const AUDIO_MAX_MS        = 400;
 
 // The fallback runs on the main thread, alongside noVNC decoding and blitting
-// every frame the game draws, so it needs more in hand before a hiccup in
-// that work becomes a hole in the sound.
-const AUDIO_FALLBACK_TARGET_MS = 140;
-const AUDIO_FALLBACK_BUFFER    = 4096;
+// every frame the game draws, so it starts with a little more in hand. Its
+// own buffer is the bigger cost: a ScriptProcessorNode is handed to the page
+// roughly two buffers ahead of when it is heard, so 4096 frames was about
+// 190 ms of delay on its own, and 1024 is a quarter of that.
+const AUDIO_FALLBACK_TARGET_MS = 40;
+const AUDIO_FALLBACK_BUFFER    = 1024;
 
 
 let audioCtx = null;
 let audioSocket = null;
 let audioNode = null;
 let audioPush = null;
+let audioRing = null;      // the fallback's, for the note; the worklet has its own
 let audioWanted = true;
 let audioFrames = 0;
 let audioSrcRate = 0;
@@ -401,6 +409,9 @@ window.__audio = () => ({
   srcRate: audioSrcRate,
   node: !!audioNode,
   frames: audioFrames,
+  heldMs: audioRing ? Math.round(audioRing.heldMs()) : null,
+  targetMs: audioRing ? Math.round(audioRing.target * 1000 / audioRing.srcRate) : null,
+  underruns: audioRing ? audioRing.underruns : null,
   reason: audioReason,
 });
 
@@ -443,6 +454,7 @@ function audioNote() {
   else
     text = `Sound: on — ${audioSrcRate} Hz in, ${Math.round(audioCtx.sampleRate)}`
          + ` Hz out, ${(audioFrames / (audioSrcRate || 1)).toFixed(1)} s received`
+         + (audioRing ? `, holding ${Math.round(audioRing.heldMs())} ms` : '')
          + (audioVia === 'worklet' ? '' : ', via the fallback')
          + (audioCtx.state === 'running' ? '.' : `, context ${audioCtx.state}.`);
 
@@ -579,6 +591,7 @@ async function startAudio() {
             processorOptions: {
               srcRate,
               targetMs: AUDIO_TARGET_MS,
+              maxTargetMs: AUDIO_MAX_TARGET_MS,
               maxMs: AUDIO_MAX_MS,
             },
           });
@@ -586,7 +599,9 @@ async function startAudio() {
           audioPush = (f) => audioNode.port.postMessage(f, [f.buffer]);
         } else {
           const ring = new DoomRing(srcRate, ctx.sampleRate,
-                                    AUDIO_FALLBACK_TARGET_MS, AUDIO_MAX_MS);
+                                    AUDIO_FALLBACK_TARGET_MS,
+                                    AUDIO_MAX_TARGET_MS, AUDIO_MAX_MS);
+          audioRing = ring;
 
           // One input channel, not none: a node with no inputs at all is not
           // pulled by every implementation, and this one is never connected
@@ -667,6 +682,7 @@ function stopAudio() {
     audioNode = null;
   }
   audioPush = null;
+  audioRing = null;
   if (audioCtx)    { audioCtx.close().catch(() => {}); audioCtx = null; }
 }
 

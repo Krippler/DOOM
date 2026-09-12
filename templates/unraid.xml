@@ -39,6 +39,10 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.10.19
+- The sound arrives about 220 ms sooner. Most of what remains is the picture
+  itself, which takes about the same time to come back over VNC.
+
 ### 1.10.18
 - Fixes sound not working at all. It was played through a browser feature only
   offered over HTTPS or localhost, which a container reached at

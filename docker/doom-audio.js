@@ -10,7 +10,8 @@ class DoomAudio extends AudioWorkletProcessor {
   constructor(options) {
     const o = options.processorOptions;
     super();
-    this.ring = new DoomRing(o.srcRate, sampleRate, o.targetMs, o.maxMs);
+    this.ring = new DoomRing(o.srcRate, sampleRate,
+                             o.targetMs, o.maxTargetMs, o.maxMs);
     this.port.onmessage = (e) => this.ring.push(e.data);
   }
 

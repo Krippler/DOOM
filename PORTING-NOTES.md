@@ -227,6 +227,13 @@ to read it:
   whatever rate the `AudioContext` turns out to be. Scheduling a queue of
   buffers instead would drift until it stuttered or fell behind.
 
+  How much it holds is adaptive, because how much a machine needs depends on
+  the machine, the browser and what else the page is doing. It starts at 40 ms
+  and grows by 30 ms whenever it runs dry, giving 10 ms back after every eight
+  seconds that do not. Everything it holds is delay between pulling a trigger
+  and hearing it, and a fixed figure is either too much for everyone or too
+  little for somebody.
+
   Two things drive that buffer. An `AudioWorklet` (`doom-audio.js`) where the
   browser has one, and a `ScriptProcessorNode` where it does not -- which is
   most of the time, because `AudioWorklet` is gated on a secure context and

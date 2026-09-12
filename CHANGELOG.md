@@ -6,6 +6,40 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.19] — 2026-09-12
+
+### Changed
+- **The sound is about 220 ms quicker off the mark.** Measured from the
+  keypress to the first sample of the gunshot leaving the browser: 542 ms
+  before, 324 ms now. Of what is left, 168 ms is the picture — the muzzle
+  flash arrives that long after the key too, which is VNC and the input path,
+  not the audio — so the sound now sits about 146 ms behind what you see,
+  where it was well over twice that.
+
+  Four things, found by measuring each stage rather than guessing at them:
+
+  - **The music pipe was four times the size it was meant to be**, holding
+    371 ms instead of the 93 ms the comment beside it claimed. An arithmetic
+    slip: it was sized in frames where the rate was in bytes.
+  - **The mixer's period was halved**, 512 frames to 256, which is 23 ms to
+    12 ms of granularity for everything downstream.
+  - **The browser's buffer is adaptive now** instead of a fixed 140 ms guess.
+    It starts at 40 ms and asks for more only when it actually runs dry,
+    giving the cushion back after eight quiet seconds. How much a machine
+    needs depends on the machine, the browser and what else the page is
+    doing, none of which can be known from here — a fixed figure is either
+    too much for everyone or too little for somebody.
+  - **The fallback's own buffer came down** from 4096 frames to 1024. A
+    `ScriptProcessorNode` is handed its work roughly two buffers ahead of
+    when it is heard, so that alone was about 190 ms.
+
+  Verified over 32 seconds of walking, shooting and menus on both paths: no
+  dropouts, no underruns, and the buffer never had to grow past its starting
+  40 ms.
+
+  The start screen now shows how much sound is being held, which is the same
+  thing as how far behind it is.
+
 ## [1.10.18] — 2026-09-12
 
 ### Fixed

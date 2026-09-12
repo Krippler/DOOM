@@ -342,6 +342,21 @@ checks that between them cover everything:
 | --- | --- |
 | Page build older than the log's | The browser is running a cached client. Reload with Ctrl+Shift+R. |
 | `Sound: … via the fallback` | Normal over plain HTTP — see above. Not a fault. |
+| `Sound: … holding N ms` | How far behind the sound is running. It starts near 40 ms and rises only if this machine cannot keep up. |
+
+### Delay
+
+Measured from the keypress to the gunshot leaving the browser: about 320 ms,
+of which roughly 170 ms is the picture — the muzzle flash takes that long to
+arrive too, because the input goes out over a WebSocket and the frame comes
+back over VNC. The sound itself runs about 150 ms behind what you see, spread
+across the sound server's buffer, the mixer, the browser's ring buffer and
+your own audio device.
+
+Most of what is left is not adjustable from here, but two things are: a
+smaller `DOOM_AUDIO_RATE` moves less data, and serving the page over HTTPS
+gets the `AudioWorklet` path, which runs on the audio thread rather than
+competing with noVNC for the main one.
 | `sound: to PulseAudio` in the log | It went to a host audio server rather than to you. Unset `PULSE_SERVER`. |
 | `Sound: on … N s received` and still silent | It is arriving and being played, so the problem is past the browser: a muted tab, or the machine's output device. |
 
