@@ -172,9 +172,16 @@ function sendMouse(dx, dy) {
   // equivalent in this version; if a future noVNC renames it, the page
   // falls back to being an ordinary viewer rather than breaking.
   if (typeof rfb._sendMouse !== 'function') return;
-  rfb._sendMouse(Math.round(c.width / 2) + dx,
-                 Math.round(c.height / 2) + dy,
-                 buttons);
+
+  // Clamp to the framebuffer. A fast flick can report a movement larger than
+  // the whole screen, and the X server would clamp it anyway; doing it here
+  // keeps what is sent inside the picture.
+  const cx = Math.round(c.width / 2);
+  const cy = Math.round(c.height / 2);
+  const x = Math.max(0, Math.min(c.width - 1, cx + dx));
+  const y = Math.max(0, Math.min(c.height - 1, cy + dy));
+
+  rfb._sendMouse(x, y, buttons);
 }
 
 //

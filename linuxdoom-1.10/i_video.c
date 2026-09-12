@@ -292,12 +292,27 @@ void I_GetEvent(void)
 		// between. The warp lands exactly on the centre, which the
 		// test above ignores, so this does not feed itself.
 		if (grabMouse && !menuactive && gamestate == GS_LEVEL)
+		{
 		    XWarpPointer( X_display,
 				  None,
 				  X_mainWindow,
 				  0, 0,
 				  0, 0,
 				  X_width/2, X_height/2);
+
+		    // The pointer is at the centre from here on, so say so now
+		    // instead of waiting for the warp's own event to arrive.
+		    //
+		    // That event is queued behind whatever has already come in,
+		    // and a client reporting absolute positions -- which is
+		    // every VNC client -- gets several in per tic. Each one
+		    // after the first was being measured against the previous
+		    // report rather than the centre, so a steady drag came out
+		    // as a run of near-cancelling deltas: a jitter that went
+		    // nowhere rather than a turn.
+		    lastmousex = X_width/2;
+		    lastmousey = X_height/2;
+		}
 	    } else
 	    {
 		mousemoved = true;

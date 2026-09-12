@@ -6,6 +6,19 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **Mouse look jittered instead of turning.** With the pointer captured the
+  browser reports several positions inside one 28 ms tic, and only the first
+  was measured from the centre of the screen: the rest were measured against
+  the previous report, so a steady drag became a run of near-cancelling
+  deltas. The engine re-centres the pointer after each motion but was waiting
+  for the warp's own event to say so, and that event is queued behind
+  everything already received. It now records the centre at the moment it
+  warps. Measured on the player's facing over an identical drag: 1.1 degrees
+  before, 22.7 after.
+
 ## [1.10.4] — 2026-09-12
 
 ### Fixed

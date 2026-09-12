@@ -87,6 +87,13 @@ current gcc and glibc. Behaviour is otherwise left alone.
   normally do it; there is none in the container, so X left the focus at
   `PointerRoot` and delivered keystrokes to whichever window the pointer was
   over. `XSetInputFocus` on the game window now settles it.
+- **`i_video.c`** — after re-centring the pointer the engine left `lastmousex`
+  and `lastmousey` pointing at where the last event landed, and corrected them
+  only when the warp's own motion event came back. That event is queued behind
+  anything already received, and a client reporting absolute positions gets
+  several in per tic, so every report after the first was measured against the
+  previous report rather than the centre. A steady drag arrived as a run of
+  near-cancelling deltas. It records the centre when it warps now.
 - **`i_video.c`** — the pointer was re-centred only once a tic, and only with
   the grab on, which was not the default. Ungrabbed, it walked to an edge of
   the screen and stopped there, and mouse look stopped with it. It is now
