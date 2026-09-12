@@ -120,8 +120,9 @@ jobs:
           set -euo pipefail
           VER="${{ steps.detect.outputs.version }}"
           if [ -z "$VER" ]; then
+            # No branch name here: it identifies nothing the sha does not, and
+            # this project's branches have slashes in them.
             VER="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"
-            VER="${VER}-$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo detached)"
           fi
           echo "version=${VER}" >> "$GITHUB_OUTPUT"
           echo "build stamp: ${VER}"

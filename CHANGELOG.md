@@ -6,6 +6,20 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **Branch builds failed on the version stamp 1.10.17 added.** It was
+  substituted with `sed s/…/…/`, and the stamp for a non-release build carries
+  the branch name — which in this repository contains a slash, ending the
+  substitution early. Released images were never affected, since a release
+  stamp is just the version, but every other build broke.
+
+  The substitution is a literal replace now rather than a regular expression,
+  and the value is narrowed to characters that cannot escape the HTML text or
+  the JavaScript string it lands in. The branch name is gone from the stamp as
+  well: it identified nothing the commit did not.
+
 ## [1.10.17] — 2026-09-12
 
 ### Added

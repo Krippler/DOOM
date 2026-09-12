@@ -127,8 +127,12 @@ COPY docker/play.html /usr/share/novnc/play.html
 COPY docker/doom-audio.js /usr/share/novnc/doom-audio.js
 COPY docker/index.html /usr/share/novnc/index.html
 
-RUN sed -i "s/__DOOM_VERSION__/${DOOM_VERSION}/g" /usr/share/novnc/play.html \
- && ! grep -q __DOOM_VERSION__ /usr/share/novnc/play.html
+# Not sed: the stamp is whatever the build was told, and a branch name with a
+# slash in it ends the s/// early -- which is exactly how this broke first
+# time. Python replaces the placeholder literally, and narrows the value to
+# characters that cannot escape either the HTML text or the JavaScript string
+# literal it lands in.
+RUN python3 -c 'import os,re,pathlib; p=pathlib.Path("/usr/share/novnc/play.html"); v=re.sub(r"[^A-Za-z0-9._+-]","-",os.environ.get("DOOM_VERSION") or "dev"); s=p.read_text().replace("__DOOM_VERSION__",v); p.write_text(s); assert "__DOOM_VERSION__" not in s, "version placeholder left in the client"'
 
 # The shareware IWAD, so the container is playable with nothing mounted.
 # id distributes it freely; see shareware/README.md. A mounted IWAD still
