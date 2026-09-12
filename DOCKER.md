@@ -311,6 +311,12 @@ play — browsers will not play audio without one.
 | `DOOM_AUDIO_PORT` | `5901`, internal only. Nothing to publish; the sound shares the web port. |
 | `DOOM_SOUND=0` | No sound server, no mixer, no audio socket. |
 
+If it is silent, the page says why at the bottom of the screen — a refused
+connection, a worklet the browser would not load, or a container sending
+nothing. The container's own log says which way it sent the sound, on a line
+beginning `sound:`; `sound: to PulseAudio` means it went to a host audio
+server rather than to you, which is what setting `PULSE_SERVER` asks for.
+
 Effects and music have separate volume sliders under Options → Sound Volume.
 
 ### Sending it to the host's speakers instead

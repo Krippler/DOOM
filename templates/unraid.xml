@@ -39,6 +39,12 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.10.16
+- Fixes 1.10.15's sound not arriving in some browsers: the page was being
+  served from the browser cache, from before the sound existed. No more hard
+  reloads after an update.
+- When there is no sound, the page now says why instead of staying quiet.
+
 ### 1.10.15
 - Sound comes out of the browser. Effects and music are mixed in the container
   and sent to the same page as the picture, over the WebUI port you already

@@ -124,9 +124,26 @@ const screenEl  = document.getElementById('screen');
 const overlayEl = document.getElementById('overlay');
 const statusEl  = document.getElementById('status');
 
-function status(text) {
+// Two things report through this line -- the mouse capture and the sound --
+// and either can have something to say while the other does not, so each gets
+// its own slot rather than overwriting the other's message.
+let statusMain = '';
+let statusAudio = '';
+
+function renderStatus() {
+  const text = [statusMain, statusAudio].filter(Boolean).join(' ');
   statusEl.textContent = text;
   statusEl.hidden = !text;
+}
+
+function status(text) {
+  statusMain = text;
+  renderStatus();
+}
+
+function audioStatus(text) {
+  statusAudio = text;
+  renderStatus();
 }
 
 const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -350,88 +367,13 @@ const AUDIO_MAGIC = 'DOOMAUD1';
 const AUDIO_TARGET_MS = 80;
 const AUDIO_MAX_MS    = 300;
 
-const audioWorkletSource = `
-class DoomAudio extends AudioWorkletProcessor {
-  constructor(options) {
-    super();
-    const o = options.processorOptions;
-    this.ratio  = o.srcRate / sampleRate;   // source frames per output frame
-    this.max    = Math.ceil(o.maxMs * o.srcRate / 1000);
-    this.target = Math.ceil(o.targetMs * o.srcRate / 1000);
-    this.left   = new Float32Array(this.max * 2);
-    this.right  = new Float32Array(this.max * 2);
-    this.size   = this.left.length;
-    this.head   = 0;     // next write position
-    this.tail   = 0;     // read position, fractional
-    this.count  = 0;     // frames available
-    this.started = false;
-    this.port.onmessage = (e) => this.push(e.data);
-  }
-
-  push(frames) {
-    // frames: interleaved Float32, left/right.
-    const n = frames.length >> 1;
-    for (let i = 0; i < n; i++) {
-      if (this.count >= this.max) {
-        // Running long: drop the oldest frame rather than the newest, so the
-        // delay shrinks instead of the sound tearing at the end.
-        this.tail = (this.tail + 1) % this.size;
-        this.count--;
-      }
-      this.left[this.head]  = frames[i*2];
-      this.right[this.head] = frames[i*2 + 1];
-      this.head = (this.head + 1) % this.size;
-      this.count++;
-    }
-  }
-
-  process(inputs, outputs) {
-    const out = outputs[0];
-    const l = out[0];
-    const r = out.length > 1 ? out[1] : out[0];
-    const n = l.length;
-
-    // Wait for a cushion before starting, or the first note underruns
-    // immediately and clicks.
-    if (!this.started) {
-      if (this.count < this.target) { l.fill(0); if (r !== l) r.fill(0); return true; }
-      this.started = true;
-    }
-
-    for (let i = 0; i < n; i++) {
-      if (this.count < 2) {
-        // Dry. Silence is the honest answer; repeating the last frame buzzes.
-        l[i] = 0; if (r !== l) r[i] = 0;
-        this.started = false;
-        continue;
-      }
-
-      const idx  = Math.floor(this.tail);
-      const frac = this.tail - idx;
-      const a = idx % this.size;
-      const b = (idx + 1) % this.size;
-
-      l[i] = this.left[a]  + (this.left[b]  - this.left[a])  * frac;
-      if (r !== l) r[i] = this.right[a] + (this.right[b] - this.right[a]) * frac;
-
-      const step = this.ratio;
-      this.tail += step;
-      const used = Math.floor(this.tail) - idx;
-      if (used) { this.count -= used; }
-      if (this.tail >= this.size) this.tail -= this.size;
-    }
-
-    return true;
-  }
-}
-registerProcessor('doom-audio', DoomAudio);
-`;
 
 let audioCtx = null;
 let audioSocket = null;
 let audioNode = null;
 let audioWanted = true;
 let audioFrames = 0;
+let audioWatchdog = null;
 
 // For automated checks; harmless otherwise, like __rfb above.
 window.__audio = () => ({
@@ -440,6 +382,18 @@ window.__audio = () => ({
   node: !!audioNode,
   frames: audioFrames,
 });
+
+// Sound that does not arrive used to arrive as nothing at all: no message, no
+// way to tell a container sending silence from a page that never connected.
+// Whatever goes wrong now says so, once, in the status line.
+let audioComplained = false;
+
+function audioFailed(why) {
+  if (audioComplained) return;
+  audioComplained = true;
+  audioStatus('No sound: ' + why + ' The game is unaffected; the picture and '
+            + 'the controls do not depend on it.');
+}
 
 function audioURL() {
   return `${scheme}://${location.host}/websockify?token=audio`;
@@ -451,23 +405,50 @@ function audioURL() {
 //
 async function startAudio() {
   if (!audioWanted || audioCtx) return;
-  if (!window.AudioContext) return;
+
+  if (!window.AudioContext || !window.AudioWorkletNode) {
+    audioFailed('this browser has no Web Audio.');
+    return;
+  }
 
   let ctx;
+
   try {
     ctx = new AudioContext({ latencyHint: 'interactive' });
-    await ctx.audioWorklet.addModule(
-      URL.createObjectURL(new Blob([audioWorkletSource],
-                                   { type: 'application/javascript' })));
   } catch (e) {
-    return;   // No Web Audio, or no worklets. The game is still playable.
+    audioFailed('the browser would not start an audio context.');
+    return;
   }
 
   audioCtx = ctx;
 
-  const sock = new WebSocket(audioURL(), 'binary');
+  try {
+    await ctx.audioWorklet.addModule('doom-audio.js');
+  } catch (e) {
+    audioFailed('the browser would not load the audio worklet (' + e + ').');
+    return;
+  }
+
+  let sock;
+
+  try {
+    sock = new WebSocket(audioURL(), 'binary');
+  } catch (e) {
+    audioFailed('the audio connection could not be opened.');
+    return;
+  }
+
   sock.binaryType = 'arraybuffer';
   audioSocket = sock;
+
+  // Nothing below reports a stream that connects and then says nothing --
+  // a container built before the sound existed, or one told to send its audio
+  // to PulseAudio instead -- so time it.
+  audioWatchdog = setTimeout(() => {
+    if (!audioFrames)
+      audioFailed('the container is not sending any. Check its log for a '
+                + '"sound:" line, and that PULSE_SERVER is unset.');
+  }, 4000);
 
   // A WebSocket message is whatever came out of the socket, which is not the
   // same as whatever went in: the header can arrive split and a message can
@@ -497,21 +478,32 @@ async function startAudio() {
       let magic = '';
       for (let i = 0; i < 8; i++) magic += String.fromCharCode(bytes[off + i]);
 
-      if (magic !== AUDIO_MAGIC) { sock.close(); return; }
+      if (magic !== AUDIO_MAGIC) {
+        audioFailed('what arrived on the audio connection was not sound.');
+        sock.close();
+        return;
+      }
 
       const srcRate = bytes[off+8] | (bytes[off+9] << 8)
                     | (bytes[off+10] << 16) | (bytes[off+11] << 24);
       off += 16;
       haveHeader = true;
 
-      audioNode = new AudioWorkletNode(ctx, 'doom-audio', {
-        outputChannelCount: [2],
-        processorOptions: {
-          srcRate,
-          targetMs: AUDIO_TARGET_MS,
-          maxMs: AUDIO_MAX_MS,
-        },
-      });
+      try {
+        audioNode = new AudioWorkletNode(ctx, 'doom-audio', {
+          outputChannelCount: [2],
+          processorOptions: {
+            srcRate,
+            targetMs: AUDIO_TARGET_MS,
+            maxMs: AUDIO_MAX_MS,
+          },
+        });
+      } catch (err) {
+        audioFailed('the audio worklet would not start (' + err + ').');
+        sock.close();
+        return;
+      }
+
       audioNode.connect(ctx.destination);
     }
 
@@ -526,19 +518,45 @@ async function startAudio() {
 
     for (let i = 0; i < f.length; i++) f[i] = view.getInt16(i * 2, true) / 32768;
 
+    if (!audioFrames && audioWatchdog) {
+      clearTimeout(audioWatchdog);
+      audioWatchdog = null;
+      audioComplained = false;
+      audioStatus('');
+    }
+
     audioFrames += whole >> 2;
     audioNode.port.postMessage(f, [f.buffer]);
   };
 
-  sock.onclose = () => { audioSocket = null; };
-  sock.onerror = () => { /* no sound; the game is unaffected */ };
+  sock.onclose = () => {
+    audioSocket = null;
+    if (!audioFrames)
+      audioFailed('the container refused the audio connection. It is probably '
+                + 'older than the sound support -- pull the current image.');
+  };
+
+  sock.onerror = () => {
+    if (!audioFrames)
+      audioFailed('the audio connection failed.');
+  };
 
   // Autoplay policy: a context made inside a click is running, but one made
   // just before the page was interacted with is not.
-  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+  if (ctx.state === 'suspended') {
+    ctx.resume().catch(() => {});
+
+    // resume() is a promise, and a browser that refuses it does so quietly.
+    setTimeout(() => {
+      if (audioCtx && audioCtx.state === 'suspended')
+        audioFailed('the browser is holding the sound until you interact with '
+                  + 'the page. Click the picture.');
+    }, 1500);
+  }
 }
 
 function stopAudio() {
+  if (audioWatchdog) { clearTimeout(audioWatchdog); audioWatchdog = null; }
   if (audioSocket) { audioSocket.close(); audioSocket = null; }
   if (audioNode)   { audioNode.disconnect(); audioNode = null; }
   if (audioCtx)    { audioCtx.close().catch(() => {}); audioCtx = null; }

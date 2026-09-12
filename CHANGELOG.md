@@ -6,6 +6,38 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.16] — 2026-09-12
+
+### Fixed
+- **1.10.15's sound never reached some browsers, and said nothing about it.**
+  The container was mixing audio and serving it correctly; the page asking for
+  it was the one from the release before, still in the browser cache.
+  websockify serves the client with Python's `SimpleHTTPRequestHandler`, which
+  sends `Last-Modified` and nothing else — no `Cache-Control`, no `ETag`. Given
+  no freshness, a browser is entitled to guess one and reuse what it has
+  without asking, so a tab could go on running a client from two releases back
+  while the image underneath it was current. Nothing in the container's log
+  looks wrong in that state, because nothing in the container is wrong.
+
+  The client is now served `Cache-Control: no-cache`, which means ask first,
+  not do not store: the ordinary answer is a 304 and the same traffic as
+  before. This applies to every future release, not just this one — a hard
+  reload is no longer needed after an update.
+
+### Changed
+- **Sound that does not work now says why.** It used to fail silently in every
+  case — no Web Audio, a worklet the browser would not load, a refused
+  connection, a container sending nothing — which left no way to tell a silent
+  game from a broken one. Each of those now puts a line at the bottom of the
+  page saying which it was. The audio watchdog also catches the case where the
+  connection opens and nothing ever comes down it.
+- The mouse-capture and sound messages no longer overwrite each other; they
+  have a slot each.
+- The audio worklet is served as a file rather than built from a `blob:` URL.
+  Both are legal and the blob worked everywhere it was tried, but a worklet
+  that fails to load takes the sound with it, and a plain URL has fewer ways
+  to be refused.
+
 ## [1.10.15] — 2026-09-12
 
 ### Added

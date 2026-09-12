@@ -209,8 +209,16 @@ to read it:
 - **`docker/doom-wsproxy.py`** is websockify with the sound alongside the
   picture on the one port, so no second port has to be published. websockify
   can already route by a token in the query string but refuses a connection
-  without one, which would break stock `/vnc.html`; the only change is that a
+  without one, which would break stock `/vnc.html`; the first change is that a
   missing token means the screen.
+
+  The second is `Cache-Control: no-cache` on everything it serves. websockify
+  hands the client to `SimpleHTTPRequestHandler`, which sends `Last-Modified`
+  and nothing else, and a browser given no freshness may pick one itself --
+  so an updated image could be serving a client the browser had decided not to
+  ask about. That is invisible from inside: the container's log shows a healthy
+  server talking to nobody. `no-cache` means revalidate, not do not store, so
+  the usual answer is a 304.
 
 - **`docker/play.html`** plays the stream through an `AudioWorklet` feeding a
   ring buffer. The container sends at its own real-time rate and the sound

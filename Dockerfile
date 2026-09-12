@@ -118,6 +118,7 @@ COPY docker/doom-wsproxy.py /usr/local/bin/doom-wsproxy
 # A client that captures the mouse. Stock noVNC reports absolute pointer
 # positions, which a game cannot use: see the comment at the top of the file.
 COPY docker/play.html /usr/share/novnc/play.html
+COPY docker/doom-audio.js /usr/share/novnc/doom-audio.js
 COPY docker/index.html /usr/share/novnc/index.html
 
 # The shareware IWAD, so the container is playable with nothing mounted.
