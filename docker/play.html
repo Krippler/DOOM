@@ -455,6 +455,11 @@ function audioNote() {
     text = `Sound: on — ${audioSrcRate} Hz in, ${Math.round(audioCtx.sampleRate)}`
          + ` Hz out, ${(audioFrames / (audioSrcRate || 1)).toFixed(1)} s received`
          + (audioRing ? `, holding ${Math.round(audioRing.heldMs())} ms` : '')
+         + (audioRing && audioRing.underruns
+              ? ` (grown from ${Math.round(audioRing.minTarget*1000/audioRing.srcRate)}`
+                + ` after ${audioRing.underruns} underrun`
+                + (audioRing.underruns === 1 ? ')' : 's)')
+              : '')
          + (audioVia === 'worklet' ? '' : ', via the fallback')
          + (audioCtx.state === 'running' ? '.' : `, context ${audioCtx.state}.`);
 

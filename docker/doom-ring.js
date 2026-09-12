@@ -33,10 +33,34 @@ globalThis.DoomRing = class DoomRing {
     // What one underrun costs, and how long it has to behave before the
     // cushion is given back: grow fast, shrink slowly, or a single hiccup
     // starts an oscillation.
-    this.grow  = Math.ceil(0.03 * srcRate);   // 30 ms
+    this.grow  = Math.ceil(0.02 * srcRate);   // 20 ms
     this.shrink = Math.ceil(0.01 * srcRate);  // 10 ms
     this.cleanFor = 0;
     this.cleanNeeded = 8 * srcRate;           // 8 seconds
+
+    // Growth and decay have to be unequal or the target never settles: at
+    // 20 ms up per underrun against 10 ms down every four seconds, a machine
+    // that underruns every ten seconds sits exactly still, underrunning for
+    // ever. Decaying half as fast lets it climb until they stop, then drift
+    // back down to whatever this machine actually needs.
+
+    // The two clocks do not agree, and nothing makes them. The container sends
+    // on its own schedule, this machine plays on its sound card's, and every
+    // block the browser is too busy to fetch leaves more sound sitting here
+    // than was asked for -- permanently, since the only other thing that ever
+    // removes any is the hard ceiling far above. Measured over half a minute,
+    // that walked 35 ms of delay up to 195.
+    //
+    // So playback is nudged instead: run a fraction fast while there is too
+    // much in hand, a fraction slow while there is too little. A couple of
+    // per cent is inaudible on gunfire and door mechanisms -- far less
+    // audible than dropping the frames outright, which clicks -- and it
+    // corrects about 20 ms a second, which is faster than the drift arrives.
+    this.maxDrift = 0.02;
+
+    // How hard to push for a given error. The target itself sets the scale:
+    // being 40 ms out matters more when 40 ms is all there is.
+    this.driftGain = 8;
 
     this.left   = new Float32Array(this.max * 2);
     this.right  = new Float32Array(this.max * 2);
@@ -88,6 +112,14 @@ globalThis.DoomRing = class DoomRing {
       this.started = true;
     }
 
+    // How far from the target, as a fraction of it, turned into a playback
+    // rate a little either side of true.
+    let drift = (this.count - this.target) / (this.target * this.driftGain);
+    if (drift >  this.maxDrift) drift =  this.maxDrift;
+    if (drift < -this.maxDrift) drift = -this.maxDrift;
+    const step = this.ratio * (1 + drift);
+    this.drift = drift;
+
     for (let i = 0; i < n; i++) {
       if (this.count < 2) {
         // Dry. Silence is the honest answer; repeating the last frame buzzes.
@@ -105,7 +137,7 @@ globalThis.DoomRing = class DoomRing {
       l[i] = this.left[a] + (this.left[b] - this.left[a]) * frac;
       if (r !== l) r[i] = this.right[a] + (this.right[b] - this.right[a]) * frac;
 
-      this.tail += this.ratio;
+      this.tail += step;
       const used = Math.floor(this.tail) - idx;
       if (used) this.count -= used;
       if (this.tail >= this.size) this.tail -= this.size;

@@ -6,6 +6,36 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.20] — 2026-09-12
+
+### Fixed
+- **The sound got later the longer you played.** 1.10.19 made the browser's
+  buffer adaptive but gave it no way to give anything back except a hard
+  ceiling far above, so every block the browser was too busy to fetch left
+  more sound sitting in it — permanently. Measured over 55 seconds of play,
+  the delay walked from 35 ms up to 195 and kept going. Reported from the
+  field at 80–85 ms and climbing, which is what sent me looking.
+
+  Two clocks are involved and nothing makes them agree: the container sends
+  on its own schedule and the browser plays on its sound card's. So playback
+  is now nudged instead — a fraction fast while there is too much in hand, a
+  fraction slow while there is too little, never more than two per cent. That
+  is inaudible on gunfire and door mechanisms, and far less audible than
+  dropping the frames outright, which clicks. It corrects about 20 ms a
+  second, comfortably faster than the drift arrives.
+
+  Over the same 55 seconds it now holds a median of 38 ms and never passes 80,
+  with no audible gap. The same measurement on 1.10.19 gave a median of 93 and
+  no upper bound at all.
+
+- **The buffer's target could sit still while underrunning for ever.** Growth
+  on an underrun and decay over time were set to exactly cancel for a machine
+  that stumbles every ten seconds. Decay is now half as fast, so the target
+  climbs until the underruns stop and only then drifts back down to whatever
+  that machine actually needs. Same run: five underruns before, two after.
+
+  When it has grown, the start screen says so and why.
+
 ## [1.10.19] — 2026-09-12
 
 ### Changed

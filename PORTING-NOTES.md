@@ -229,10 +229,21 @@ to read it:
 
   How much it holds is adaptive, because how much a machine needs depends on
   the machine, the browser and what else the page is doing. It starts at 40 ms
-  and grows by 30 ms whenever it runs dry, giving 10 ms back after every eight
+  and grows by 20 ms whenever it runs dry, giving 10 ms back after every eight
   seconds that do not. Everything it holds is delay between pulling a trigger
   and hearing it, and a fixed figure is either too much for everyone or too
-  little for somebody.
+  little for somebody. The two rates have to be unequal or the target never
+  settles: set to cancel exactly, a machine that stumbles every ten seconds
+  sits still and underruns for ever.
+
+  Holding the buffer *at* that target is a separate problem, because the two
+  clocks do not agree -- the container sends on its own schedule, the browser
+  plays on its sound card's -- and every block the browser is too busy to
+  fetch leaves more sound in hand than was asked for. With nothing to remove
+  it, that walked 35 ms of delay up to 195 over less than a minute. So the
+  playback rate is nudged a fraction either side of true, up to two per cent,
+  which corrects about 20 ms a second and cannot be heard on this material.
+  Dropping the frames outright would be quicker and would click.
 
   Two things drive that buffer. An `AudioWorklet` (`doom-audio.js`) where the
   browser has one, and a `ScriptProcessorNode` where it does not -- which is
