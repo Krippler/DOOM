@@ -709,6 +709,9 @@ void R_ExecuteSetViewSize (void)
     }
     
     detailshift = setdetail;
+
+    printf ("R_SetViewSize: blocks %i, detail %i -> view %ix%i\n",
+	    setblocks, setdetail, scaledviewwidth, viewheight);
     viewwidth = scaledviewwidth>>detailshift;
 	
     centery = viewheight/2;

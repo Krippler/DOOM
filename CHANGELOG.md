@@ -6,6 +6,19 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Changed
+- The renderer's range checks no longer end the game. They are 1997 debug
+  asserts that call `I_Error`, so one bad frame became a crash loop in a
+  container that restarts. The offending column or span is skipped instead —
+  nothing is written outside the framebuffer either way — and it is reported,
+  up to eight times, with the view geometry that caused it.
+- Startup logs the view size: `R_SetViewSize: blocks 11, detail 0 -> view
+  320x200`. `blocks` above 11 is what breaks the renderer, so this line says
+  immediately whether that is the problem — and whether a build with the
+  clamp is running, since a clamped one can never print more than 11.
+
 ## [1.10.10] — 2026-09-12
 
 ### Fixed

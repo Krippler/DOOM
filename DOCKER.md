@@ -353,8 +353,19 @@ its raw URL into the *Template* field of **Docker → Add Container**.
 ## Troubleshooting
 
 **It starts, crashes immediately and keeps restarting.** Almost always a bad
-value in `.doomrc` in the state directory. Delete that file and it will be
-recreated with defaults; you lose your settings, not your savegames.
+`screenblocks` in `.doomrc` in the state directory: the view size is computed
+from it, and above 11 the view is larger than the screen, so the renderer
+draws off the end of it. Delete that file and it will be recreated with
+defaults; you lose your settings, not your savegames.
+
+The startup log says which view size is in use:
+
+```
+R_SetViewSize: blocks 11, detail 0 -> view 320x200
+```
+
+`blocks` is clamped to 3–11, so anything higher in that line means an old
+image — pull again.
 
 **The browser shows a black canvas.** Click it first; noVNC only forwards
 keyboard input once the canvas has focus.

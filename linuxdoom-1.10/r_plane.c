@@ -37,6 +37,8 @@ rcsid[] = "$Id: r_plane.c,v 1.4 1997/02/03 16:47:55 b1 Exp $";
 #include "doomstat.h"
 
 #include "r_local.h"
+
+void R_ReportOutOfRange (char* where, int a, int b, int c);
 #include "r_sky.h"
 
 
@@ -134,7 +136,10 @@ R_MapPlane
 	|| x2>=viewwidth
 	|| (unsigned)y>viewheight)
     {
-	I_Error ("R_MapPlane: %i, %i at %i",x1,x2,y);
+	// Not fatal, for the reason given in r_draw.c: skipping the span is
+	// safe, ending the game is not.
+	R_ReportOutOfRange ("R_MapPlane", x1, x2, y);
+	return;
     }
 #endif
 

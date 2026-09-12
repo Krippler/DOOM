@@ -95,6 +95,46 @@ byte*			dc_source;
 // just for profiling 
 int			dccount;
 
+
+//
+// A drawing routine asked to work outside the screen.
+//
+// These are 1997's RANGECHECK asserts, and they call I_Error, which ends the
+// game. In a container that restarts, that turns one bad frame into a crash
+// loop, which is worse than the glitch it is reporting. Skipping the offending
+// column or span is safe -- nothing is written outside the framebuffer -- and
+// the game carries on.
+//
+// Reported with the view geometry, and only a few times, because "206 to 219
+// at 178" on its own says nothing about how it got that way.
+//
+extern int	setblocks;
+
+void
+R_ReportOutOfRange
+( char*		where,
+  int		a,
+  int		b,
+  int		c )
+{
+    static int	reported = 0;
+
+    if (reported++ >= 8)
+	return;
+
+    fprintf (stderr,
+	     "%s: %i to %i at %i -- skipped "
+	     "(view %ix%i at %i,%i, blocks %i, detail %i)\n",
+	     where, a, b, c,
+	     viewwidth, viewheight, viewwindowx, viewwindowy,
+	     setblocks, detailshift);
+    fflush (stderr);
+
+    if (reported == 8)
+	fprintf (stderr, "(further out of range drawing not reported)\n");
+}
+
+
 //
 // A column is a vertical slice/span from a wall texture that,
 //  given the DOOM style restrictions on the view orientation,
@@ -119,7 +159,10 @@ void R_DrawColumn (void)
     if ((unsigned)dc_x >= SCREENWIDTH
 	|| dc_yl < 0
 	|| dc_yh >= SCREENHEIGHT) 
-	I_Error ("R_DrawColumn: %i to %i at %i", dc_yl, dc_yh, dc_x); 
+    {
+	R_ReportOutOfRange ("R_DrawColumn", dc_yl, dc_yh, dc_x);
+	return;
+    }
 #endif 
 
     // Framebuffer destination address.
@@ -227,8 +270,8 @@ void R_DrawColumnLow (void)
 	|| dc_yl < 0
 	|| dc_yh >= SCREENHEIGHT)
     {
-	
-	I_Error ("R_DrawColumn: %i to %i at %i", dc_yl, dc_yh, dc_x);
+	R_ReportOutOfRange ("R_DrawColumnLow", dc_yl, dc_yh, dc_x);
+	return;
     }
     //	dccount++; 
 #endif 
@@ -308,8 +351,8 @@ void R_DrawFuzzColumn (void)
     if ((unsigned)dc_x >= SCREENWIDTH
 	|| dc_yl < 0 || dc_yh >= SCREENHEIGHT)
     {
-	I_Error ("R_DrawFuzzColumn: %i to %i at %i",
-		 dc_yl, dc_yh, dc_x);
+	R_ReportOutOfRange ("R_DrawFuzzColumn", dc_yl, dc_yh, dc_x);
+	return;
     }
 #endif
 
@@ -398,8 +441,8 @@ void R_DrawTranslatedColumn (void)
 	|| dc_yl < 0
 	|| dc_yh >= SCREENHEIGHT)
     {
-	I_Error ( "R_DrawColumn: %i to %i at %i",
-		  dc_yl, dc_yh, dc_x);
+	R_ReportOutOfRange ("R_DrawTranslatedColumn", dc_yl, dc_yh, dc_x);
+	return;
     }
     
 #endif 
@@ -531,8 +574,8 @@ void R_DrawSpan (void)
 	|| ds_x2>=SCREENWIDTH  
 	|| (unsigned)ds_y>SCREENHEIGHT)
     {
-	I_Error( "R_DrawSpan: %i to %i at %i",
-		 ds_x1,ds_x2,ds_y);
+	R_ReportOutOfRange ("R_DrawSpan", ds_x1, ds_x2, ds_y);
+	return;
     }
 //	dscount++; 
 #endif 
@@ -654,8 +697,8 @@ void R_DrawSpanLow (void)
 	|| ds_x2>=SCREENWIDTH  
 	|| (unsigned)ds_y>SCREENHEIGHT)
     {
-	I_Error( "R_DrawSpan: %i to %i at %i",
-		 ds_x1,ds_x2,ds_y);
+	R_ReportOutOfRange ("R_DrawSpan", ds_x1, ds_x2, ds_y);
+	return;
     }
 //	dscount++; 
 #endif 
