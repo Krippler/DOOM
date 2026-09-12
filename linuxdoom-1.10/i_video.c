@@ -48,6 +48,8 @@ int XShmGetEventBase( Display* dpy ); // problems with g++?
 #include <netinet/in.h>
 #include <errno.h>
 #include <signal.h>
+#include <fcntl.h>
+#include <string.h>
 
 #include "doomstat.h"
 #include "i_system.h"
@@ -420,6 +422,136 @@ void I_UpdateNoBlit (void)
 }
 
 //
+// Streaming the picture out directly.
+//
+// The container's video path was VNC: the engine drew into an X window, x11vnc
+// polled that window, converted 8-bit to 24, encoded it and answered the
+// browser's requests for updates. Measured, that cost about 140 ms between
+// pressing a key and seeing it, and none of x11vnc's timing options moved it,
+// because the cost is the shape of the protocol rather than any setting --
+// VNC sends a frame only once the client has asked for the next one.
+//
+// So the frame goes straight out instead: the same indexed 320x200 buffer the
+// engine has already drawn, with its palette, written to a pipe. videostream
+// turns that into changed tiles and sends them down the WebSocket the sound
+// already uses, and the browser applies the palette itself.
+//
+// Nothing here blocks the game. A frame that cannot be written in full is
+// abandoned -- dropping a frame is invisible at 35 a second, and stalling the
+// loop to deliver one is not.
+//
+#define VIDEO_MAGIC	0xd0
+
+static int	video_fd = -1;
+static byte	video_palette[768];
+static int	video_palette_dirty = 0;
+
+// At most one record in flight. A pipe write of this size is not atomic, so a
+// partial write has to be finished before anything else is sent or the reader
+// would see one frame spliced into another.
+static byte	video_pending[8 + 768 + SCREENWIDTH*SCREENHEIGHT];
+static size_t	video_pending_len = 0;
+static size_t	video_pending_off = 0;
+
+
+static void I_InitVideoStream (void)
+{
+    const char*	path = getenv ("DOOM_VIDEO_PIPE");
+
+    if (!path || !*path)
+	return;
+
+    // The reader holds a write end of its own, so this does not wait for one.
+    video_fd = open (path, O_WRONLY | O_NONBLOCK);
+
+    if (video_fd < 0)
+    {
+	fprintf (stderr, "I_InitGraphics: could not open %s (%s), "
+		 "no video stream\n", path, strerror (errno));
+	return;
+    }
+
+    // A reader going away is not a reason to take the game down.
+    signal (SIGPIPE, SIG_IGN);
+
+    fprintf (stderr, "video stream to %s: %dx%d indexed\n",
+	     path, SCREENWIDTH, SCREENHEIGHT);
+}
+
+
+//
+// Pushes out whatever is left of the last record. Returns true when the pipe
+// is clear and something new may be written.
+//
+static boolean I_VideoFlush (void)
+{
+    while (video_pending_off < video_pending_len)
+    {
+	ssize_t	n = write (video_fd, video_pending + video_pending_off,
+			   video_pending_len - video_pending_off);
+
+	if (n > 0)
+	{
+	    video_pending_off += (size_t) n;
+	    continue;
+	}
+
+	if (n < 0 && errno == EINTR)
+	    continue;
+
+	if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+	    return false;
+
+	fprintf (stderr, "I_FinishUpdate: video stream closed (%s)\n",
+		 strerror (errno));
+	close (video_fd);
+	video_fd = -1;
+	video_pending_len = video_pending_off = 0;
+	return false;
+    }
+
+    video_pending_len = video_pending_off = 0;
+    return true;
+}
+
+
+static void I_VideoSendFrame (void)
+{
+    byte*	p = video_pending;
+    int		withpal = video_palette_dirty;
+
+    if (video_fd < 0)
+	return;
+
+    // Still shifting the last one: this frame is the one to lose.
+    if (!I_VideoFlush ())
+	return;
+
+    *p++ = VIDEO_MAGIC;
+    *p++ = withpal ? 1 : 0;
+    *p++ = SCREENWIDTH & 0xff;
+    *p++ = (SCREENWIDTH >> 8) & 0xff;
+    *p++ = SCREENHEIGHT & 0xff;
+    *p++ = (SCREENHEIGHT >> 8) & 0xff;
+
+    if (withpal)
+    {
+	memcpy (p, video_palette, sizeof(video_palette));
+	p += sizeof(video_palette);
+	video_palette_dirty = 0;
+    }
+
+    memcpy (p, screens[0], SCREENWIDTH*SCREENHEIGHT);
+    p += SCREENWIDTH*SCREENHEIGHT;
+
+    video_pending_len = (size_t) (p - video_pending);
+    video_pending_off = 0;
+
+    I_VideoFlush ();
+}
+
+
+//
 // I_FinishUpdate
 //
 void I_FinishUpdate (void)
@@ -445,6 +577,10 @@ void I_FinishUpdate (void)
 	    screens[0][ (SCREENHEIGHT-1)*SCREENWIDTH + i] = 0x0;
     
     }
+
+    // Out to the browser first: what follows is the X path, which only x11vnc
+    // reads, and with the stream running it is told not to look.
+    I_VideoSendFrame ();
 
     // scales the screen size before blitting it
     if (multiply == 2)
@@ -654,6 +790,15 @@ void UploadNewPalette(Colormap cmap, byte *palette)
 //
 void I_SetPalette (byte* palette)
 {
+    if (video_fd >= 0)
+    {
+	// The engine hands over a whole new palette for every tint -- damage,
+	// a picked-up item, the radiation suit -- so this changes often, and
+	// the frame it belongs to has to carry it.
+	memcpy (video_palette, palette, sizeof(video_palette));
+	video_palette_dirty = 1;
+    }
+
     UploadNewPalette(X_cmap, palette);
 }
 
@@ -963,6 +1108,10 @@ void I_InitGraphics(void)
 		     ButtonPressMask|ButtonReleaseMask|PointerMotionMask,
 		     GrabModeAsync, GrabModeAsync,
 		     X_mainWindow, None, CurrentTime);
+
+    // The X window above is still what the keyboard and the mouse arrive
+    // through. Only the picture leaves by another road.
+    I_InitVideoStream ();
 
     if (doShm)
     {

@@ -19,6 +19,9 @@ AUDIOSTREAM_BIN="${DOOM_AUDIOSTREAM_BIN:-/usr/local/games/audiostream}"
 WSPROXY_BIN="${DOOM_WSPROXY_BIN:-/usr/local/bin/doom-wsproxy}"
 AUDIO_PORT="${DOOM_AUDIO_PORT:-5901}"
 AUDIO_RATE="${DOOM_AUDIO_RATE:-22050}"
+VIDEOSTREAM_BIN="${DOOM_VIDEOSTREAM_BIN:-/usr/local/games/videostream}"
+VIDEO_PORT="${DOOM_VIDEO_PORT:-5902}"
+VIDEO_MODE="${DOOM_VIDEO:-stream}"
 NOVNC_ROOT="${DOOM_NOVNC_ROOT:-/usr/share/novnc}"
 
 log() { printf '[doom] %s\n' "$*" >&2; }
@@ -267,12 +270,38 @@ if [ "${DOOM_SOUND:-1}" = "1" ]; then
 fi
 
 ##############################################################################
+# Video.
+#
+# By default the engine's own frames go straight to the browser: see
+# videostream/videostream.c. VNC is left carrying the keyboard and the mouse
+# and nothing else, which is what -nofb means, so nothing polls the screen,
+# converts its colours or waits to be asked for it.
+#
+# DOOM_VIDEO=vnc puts the picture back on VNC, which is how every release up
+# to 1.10.21 worked.
+##############################################################################
+VIDEO_TO_BROWSER=0
+
+if [ "$VIDEO_MODE" = "stream" ] && [ -x "$VIDEOSTREAM_BIN" ]; then
+    VIDEO_TO_BROWSER=1
+    VIDEO_PIPE="$STATE/video"
+    export DOOM_VIDEO_PIPE="$VIDEO_PIPE"
+    log "video: to the browser, 320x200 indexed"
+elif [ "$VIDEO_MODE" = "stream" ]; then
+    log "video: videostream is missing, falling back to VNC"
+    VIDEO_MODE=vnc
+else
+    log "video: over VNC"
+fi
+
+##############################################################################
 # Background services. Everything is torn down together.
 ##############################################################################
 XVFB_PID=""
 VNC_PID=""
 WEB_PID=""
 AUDIO_PID=""
+VIDEO_PID=""
 DOOM_PID=""
 
 cleanup() {
@@ -290,7 +319,7 @@ cleanup() {
         kill -TERM "$DOOM_PID" 2>/dev/null || true
     fi
 
-    for pid in "$WEB_PID" "$AUDIO_PID" "$VNC_PID" "$XVFB_PID"; do
+    for pid in "$WEB_PID" "$AUDIO_PID" "$VIDEO_PID" "$VNC_PID" "$XVFB_PID"; do
         if [ -n "$pid" ]; then
             kill "$pid" 2>/dev/null || true
         fi
@@ -341,12 +370,39 @@ fi
 # PORTING-NOTES.md.
 log "starting x11vnc on port $VNC_PORT"
 # shellcheck disable=SC2086
+if [ "$VIDEO_TO_BROWSER" = "1" ]; then
+    # Keyboard and pointer only. Nothing polls the screen, nothing converts
+    # 8-bit colour to 24, and nothing waits to be asked for a frame.
+    vnc_fb="-nofb"
+else
+    vnc_fb="-8to24"
+fi
+
+# shellcheck disable=SC2086
 x11vnc -display "$DISP" -rfbport "$VNC_PORT" -forever -shared -quiet \
-       -8to24 \
+       $vnc_fb \
        -nonap -wait "${DOOM_VNC_WAIT:-5}" -defer "${DOOM_VNC_DEFER:-5}" \
        ${DOOM_VNC_ARGS:-} \
        $vnc_auth >"$STATE/x11vnc.log" 2>&1 &
 VNC_PID=$!
+
+# videostream has to be up before the engine for the same reason as
+# audiostream: the engine opens the pipe at startup and the reader is what
+# creates it.
+if [ "$VIDEO_TO_BROWSER" = "1" ]; then
+    log "starting videostream on port $VIDEO_PORT"
+    "$VIDEOSTREAM_BIN" --pipe "$VIDEO_PIPE" --port "$VIDEO_PORT" \
+        >"$STATE/videostream.log" 2>&1 &
+    VIDEO_PID=$!
+
+    i=0
+    while [ ! -p "$VIDEO_PIPE" ]; do
+        i=$((i + 1))
+        [ "$i" -gt 100 ] && die "videostream failed to start; see $STATE/videostream.log"
+        kill -0 "$VIDEO_PID" 2>/dev/null || die "videostream exited; see $STATE/videostream.log"
+        sleep 0.1
+    done
+fi
 
 # audiostream has to be up before the engine, because the engine and its sound
 # server open these pipes at startup and the reader is what creates them.
@@ -372,6 +428,7 @@ fi
 {
     printf 'vnc: localhost:%s\n' "$VNC_PORT"
     [ "$AUDIO_TO_BROWSER" = "1" ] && printf 'audio: localhost:%s\n' "$AUDIO_PORT"
+    [ "$VIDEO_TO_BROWSER" = "1" ] && printf 'video: localhost:%s\n' "$VIDEO_PORT"
 } > "$STATE/ws-targets"
 
 log "starting noVNC on port $WEB_PORT"

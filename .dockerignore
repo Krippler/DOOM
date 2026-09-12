@@ -12,6 +12,7 @@ linuxdoom-1.10/linux/
 linuxdoom-1.10/CVS/
 sndserv/linux/
 audiostream/linux/
+videostream/linux/
 ipx/
 sersrc/
 *.o

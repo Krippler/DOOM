@@ -353,6 +353,214 @@ function releaseButtons() {
 }
 
 //
+// The picture.
+//
+// Not VNC. VNC is a request/response protocol -- a frame goes out only once
+// the client has asked for the next one, which it does after decoding the
+// last -- and x11vnc had to poll an X window and convert 8-bit colour to 24
+// before any of that. Measured, pressing a key and seeing it cost about
+// 140 ms, and none of x11vnc's timing options moved it, because the cost was
+// the shape of the arrangement rather than a setting in it.
+//
+// So the engine's own frames arrive here instead, on a WebSocket beside the
+// sound: indexed 320x200, the palette sent with the frame that changed it,
+// and only the tiles that differ from the frame before.
+//
+// They are drawn into noVNC's canvas rather than one of our own. VNC is still
+// carrying the keyboard and the mouse, so that canvas is still what holds the
+// pointer lock and still defines the coordinate space every mouse event is
+// reported in -- and with x11vnc in -nofb mode it never draws into it itself.
+// Borrowing it means none of the capture code below has to know any of this
+// happened.
+//
+const VIDEO_MAGIC = 'DOOMVID1';
+const VIDEO_TILE_W = 16;
+const VIDEO_TILE_H = 10;
+
+let videoSocket = null;
+let videoW = 0, videoH = 0;
+let videoIndexed = null;     // one byte a pixel, as the engine drew it
+let videoPalette = null;     // Uint32Array, palette entry -> packed RGBA
+let videoImage = null;       // ImageData at the engine's size
+let videoBuf = null;         // the ImageData's pixels as Uint32
+let videoOff = null;         // offscreen canvas at the engine's size
+let videoFrames = 0;
+let videoDirty = false;
+let videoRAF = 0;
+
+function videoURL() {
+  return `${scheme}://${location.host}/websockify?token=video`;
+}
+
+function videoSetSize(w, h) {
+  videoW = w; videoH = h;
+  videoIndexed = new Uint8Array(w * h);
+  videoOff = document.createElement('canvas');
+  videoOff.width = w; videoOff.height = h;
+  const g = videoOff.getContext('2d');
+  videoImage = g.createImageData(w, h);
+  videoBuf = new Uint32Array(videoImage.data.buffer);
+  videoPalette = new Uint32Array(256);
+}
+
+// Little-endian byte order in the Uint32 view is ABGR, which is what the
+// canvas wants when written a word at a time.
+function videoSetPalette(bytes, off) {
+  for (let i = 0; i < 256; i++) {
+    const r = bytes[off + i*3], g = bytes[off + i*3 + 1], b = bytes[off + i*3 + 2];
+    videoPalette[i] = (255 << 24) | (b << 16) | (g << 8) | r;
+  }
+  // Every pixel's colour just changed, so the whole picture has to be redone
+  // from the indexed copy rather than only the tiles that moved.
+  for (let i = 0; i < videoIndexed.length; i++)
+    videoBuf[i] = videoPalette[videoIndexed[i]];
+}
+
+function videoPaintTile(idx) {
+  const tilesw = videoW / VIDEO_TILE_W;
+  const tx = (idx % tilesw) * VIDEO_TILE_W;
+  const ty = ((idx / tilesw) | 0) * VIDEO_TILE_H;
+
+  for (let row = 0; row < VIDEO_TILE_H; row++) {
+    let p = (ty + row) * videoW + tx;
+    for (let col = 0; col < VIDEO_TILE_W; col++, p++)
+      videoBuf[p] = videoPalette[videoIndexed[p]];
+  }
+}
+
+//
+// Drawing happens once a frame rather than once a message, so a burst of
+// updates costs one blit.
+//
+function videoSchedule() {
+  if (videoRAF) return;
+  videoRAF = requestAnimationFrame(() => {
+    videoRAF = 0;
+    if (!videoDirty) return;
+    videoDirty = false;
+
+    const c = canvas();
+    if (!c) return;
+
+    videoOff.getContext('2d').putImageData(videoImage, 0, 0);
+
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(videoOff, 0, 0, c.width, c.height);
+  });
+}
+
+function startVideo() {
+  if (videoSocket) return;
+
+  let sock;
+  try {
+    sock = new WebSocket(videoURL(), 'binary');
+  } catch (e) {
+    return;   // no stream: noVNC carries the picture as it always did
+  }
+
+  sock.binaryType = 'arraybuffer';
+  videoSocket = sock;
+
+  // Same reframing as the sound: what comes out of the socket is not what
+  // went in, so a message is length-prefixed and anything short waits here.
+  let carry = new Uint8Array(0);
+  let haveHello = false;
+
+  sock.onmessage = (e) => {
+    const chunk = new Uint8Array(e.data);
+    let bytes;
+
+    if (carry.length) {
+      bytes = new Uint8Array(carry.length + chunk.length);
+      bytes.set(carry, 0);
+      bytes.set(chunk, carry.length);
+    } else {
+      bytes = chunk;
+    }
+
+    let off = 0;
+
+    if (!haveHello) {
+      if (bytes.length < 12) { carry = bytes; return; }
+
+      let magic = '';
+      for (let i = 0; i < 8; i++) magic += String.fromCharCode(bytes[i]);
+
+      if (magic !== VIDEO_MAGIC) { sock.close(); return; }
+
+      videoSetSize(bytes[8] | (bytes[9] << 8), bytes[10] | (bytes[11] << 8));
+      off = 12;
+      haveHello = true;
+    }
+
+    for (;;) {
+      if (bytes.length - off < 5) break;
+
+      const type = bytes[off];
+      const len  = (bytes[off+1] | (bytes[off+2] << 8)
+                 | (bytes[off+3] << 16) | (bytes[off+4] << 24)) >>> 0;
+
+      if (bytes.length - off - 5 < len) break;
+
+      const body = off + 5;
+
+      if (type === 1) {                          // palette
+        videoSetPalette(bytes, body);
+        videoDirty = true;
+      } else if (type === 2) {                   // whole frame
+        videoIndexed.set(bytes.subarray(body, body + len));
+        for (let i = 0; i < videoIndexed.length; i++)
+          videoBuf[i] = videoPalette[videoIndexed[i]];
+        videoFrames++;
+        videoDirty = true;
+      } else if (type === 3) {                   // the tiles that moved
+        const count = bytes[body] | (bytes[body+1] << 8);
+        const tilesw = videoW / VIDEO_TILE_W;
+        let p = body + 2;
+
+        for (let t = 0; t < count; t++) {
+          const idx = bytes[p] | (bytes[p+1] << 8);
+          p += 2;
+
+          const tx = (idx % tilesw) * VIDEO_TILE_W;
+          const ty = ((idx / tilesw) | 0) * VIDEO_TILE_H;
+
+          for (let row = 0; row < VIDEO_TILE_H; row++) {
+            const dst = (ty + row) * videoW + tx;
+            videoIndexed.set(bytes.subarray(p, p + VIDEO_TILE_W), dst);
+            p += VIDEO_TILE_W;
+          }
+
+          videoPaintTile(idx);
+        }
+
+        videoFrames++;
+        videoDirty = true;
+      }
+
+      off = body + len;
+    }
+
+    carry = bytes.slice(off);
+    if (videoDirty) videoSchedule();
+  };
+
+  sock.onclose = () => { videoSocket = null; };
+  sock.onerror = () => {};
+}
+
+// For automated checks, like __rfb and __audio.
+window.__video = () => ({
+  connected: !!videoSocket,
+  size: videoW ? `${videoW}x${videoH}` : null,
+  frames: videoFrames,
+});
+
+startVideo();
+
+//
 // Sound.
 //
 // VNC carries a picture and nothing else, so the game's audio arrives on a

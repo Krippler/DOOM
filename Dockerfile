@@ -31,6 +31,7 @@ WORKDIR /src
 COPY linuxdoom-1.10/ ./linuxdoom-1.10/
 COPY sndserv/ ./sndserv/
 COPY audiostream/ ./audiostream/
+COPY videostream/ ./videostream/
 
 # Music is built in: mus2mid.c converts the WAD's MUS lumps to Standard MIDI
 # and FluidSynth renders them. Build with MUSIC=none to leave it out.
@@ -62,6 +63,13 @@ RUN make -C sndserv -j"$(nproc)" SNDBACKEND=pulse \
 RUN make -C audiostream -j"$(nproc)" \
  && strip audiostream/linux/audiostream \
  && test -x audiostream/linux/audiostream
+
+# Sends the engine's frames to the browser in place of VNC, which polled an X
+# window, converted its colours and waited to be asked. See
+# videostream/videostream.c.
+RUN make -C videostream -j"$(nproc)" \
+ && strip videostream/linux/videostream \
+ && test -x videostream/linux/videostream
 
 ##############################################################################
 # Runtime stage: the engine plus a private 8-bit X server and a web client.
@@ -110,6 +118,7 @@ COPY --from=build /src/linuxdoom-1.10/linux/linuxxdoom /usr/local/games/linuxxdo
 COPY --from=build /src/sndserv/linux/sndserver /usr/local/games/sndserver
 COPY --from=build /tmp/sndserver-stream /usr/local/games/sndserver-stream
 COPY --from=build /src/audiostream/linux/audiostream /usr/local/games/audiostream
+COPY --from=build /src/videostream/linux/videostream /usr/local/games/videostream
 COPY docker/entrypoint.sh /usr/local/bin/doom-entrypoint
 
 # websockify, taught to carry the sound alongside the picture on one port.
@@ -158,6 +167,7 @@ ENV DOOM_VERSION=${DOOM_VERSION} \
     DOOM_STATE=/doom/state \
     DOOM_VNC_PORT=5900 \
     DOOM_AUDIO_PORT=5901 \
+    DOOM_VIDEO_PORT=5902 \
     DOOM_WEB_PORT=6080 \
     DOOM_DISPLAY=:99 \
     HOME=/doom/state
