@@ -582,8 +582,17 @@ boolean G_Responder (event_t* ev)
 	mousebuttons[0] = ev->data1 & 1; 
 	mousebuttons[1] = ev->data1 & 2; 
 	mousebuttons[2] = ev->data1 & 4; 
-	mousex = ev->data2*(mouseSensitivity+5)/10; 
-	mousey = ev->data3*(mouseSensitivity+5)/10; 
+	// Accumulate, do not assign. Every mouse event that arrives inside one
+	// tic contributes; the pair is zeroed in G_BuildTiccmd once it has been
+	// turned into a command.
+	//
+	// Assigning meant only the last event of the tic counted and the rest
+	// were dropped. A mouse reporting faster than the 35Hz tic -- which is
+	// all of them, and especially a pointer-locked browser sending one
+	// event per report -- had most of its movement thrown away, leaving a
+	// twitch in place of a turn.
+	mousex += ev->data2*(mouseSensitivity+5)/10; 
+	mousey += ev->data3*(mouseSensitivity+5)/10; 
 	return true;    // eat events 
  
       case ev_joystick: 

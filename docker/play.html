@@ -34,9 +34,9 @@
     align-items: center;
     justify-content: center;
   }
-  /* The engine renders 320x200 and nothing else. Scale by whole numbers to
-     the largest that fits, so pixels stay square and sharp instead of being
-     smeared across an arbitrary window size. */
+  /* The engine renders one fixed size. The canvas is scaled up to fill the
+     window, by the same factor in both directions so the picture keeps its
+     shape -- the black bars are whatever is left over on the other axis. */
   #screen canvas {
     image-rendering: pixelated;
     image-rendering: crisp-edges;
@@ -104,6 +104,7 @@ const rfb = new RFB(screenEl, `${scheme}://${location.host}`, {
 });
 
 // The engine has one fixed resolution; never rescale it to the window.
+window.__rfb = rfb;   // for automated checks; harmless otherwise
 rfb.scaleViewport = false;
 rfb.clipViewport  = false;
 rfb.focusOnClick  = true;
@@ -143,13 +144,19 @@ function fitCanvas() {
   const c = canvas();
   if (!c || !c.width || !c.height) return;
 
-  const scale = Math.max(1, Math.floor(Math.min(
-    window.innerWidth  / c.width,
-    window.innerHeight / c.height)));
+  // The smaller of the two ratios, so the picture fits in both directions;
+  // applying it to both axes is what keeps it from being stretched. Whole
+  // numbers were sharper but wasted most of a large screen -- a 640x400
+  // picture on a 2560x1440 display could only manage 3x.
+  const scale = Math.min(window.innerWidth  / c.width,
+                         window.innerHeight / c.height);
 
-  c.style.width  = `${c.width  * scale}px`;
-  c.style.height = `${c.height * scale}px`;
+  c.style.width  = `${Math.round(c.width  * scale)}px`;
+  c.style.height = `${Math.round(c.height * scale)}px`;
 }
+
+// Fullscreen resizes the window after the event, so refit on both.
+document.addEventListener('fullscreenchange', fitCanvas);
 
 window.addEventListener('resize', fitCanvas);
 
@@ -160,6 +167,11 @@ window.addEventListener('resize', fitCanvas);
 // movementY instead of a position. Those go out as centre + delta.
 //
 let buttons = 0;
+
+// Movement seen since the last thing actually sent.
+let pendingX = 0;
+let pendingY = 0;
+let flushQueued = false;
 
 function locked() {
   return document.pointerLockElement === canvas();
@@ -173,15 +185,73 @@ function sendMouse(dx, dy) {
   // falls back to being an ordinary viewer rather than breaking.
   if (typeof rfb._sendMouse !== 'function') return;
 
-  // Clamp to the framebuffer. A fast flick can report a movement larger than
-  // the whole screen, and the X server would clamp it anyway; doing it here
-  // keeps what is sent inside the picture.
+  // The offset has to land inside the framebuffer, so a movement bigger than
+  // half the screen cannot be expressed in one report. Send as much as fits
+  // and keep the rest for the next one, rather than dropping it: a fast flick
+  // should turn further, not mysteriously turn less.
   const cx = Math.round(c.width / 2);
   const cy = Math.round(c.height / 2);
-  const x = Math.max(0, Math.min(c.width - 1, cx + dx));
-  const y = Math.max(0, Math.min(c.height - 1, cy + dy));
+  const limX = cx - 1;
+  const limY = cy - 1;
 
-  rfb._sendMouse(x, y, buttons);
+  const useX = Math.max(-limX, Math.min(limX, dx));
+  const useY = Math.max(-limY, Math.min(limY, dy));
+
+  pendingX = dx - useX;
+  pendingY = dy - useY;
+
+  rfb._sendMouse(cx + useX, cy + useY, buttons);
+}
+
+//
+// One report per frame, not one per mouse event.
+//
+// A gaming mouse reports several hundred times a second. Sending each one
+// straight out floods the VNC link with pointer events, and the button state
+// rides along on those same events -- so a release could sit behind a queue of
+// movement, or be coalesced away, and the game would keep firing. Batching the
+// movement into one report per frame keeps the link quiet, and button changes
+// are sent immediately and on their own.
+//
+function flushMouse() {
+  flushQueued = false;
+  if (!locked()) return;
+  if (pendingX === 0 && pendingY === 0) return;
+
+  const dx = pendingX;
+  const dy = pendingY;
+  pendingX = 0;
+  pendingY = 0;
+  sendMouse(dx, dy);
+
+  // sendMouse may have left a remainder from a very fast flick.
+  if (pendingX !== 0 || pendingY !== 0) queueFlush();
+}
+
+function queueFlush() {
+  if (flushQueued) return;
+  flushQueued = true;
+  requestAnimationFrame(flushMouse);
+}
+
+// A button change on its own, at the centre, leaving pending movement alone.
+function sendButtons() {
+  const c = canvas();
+  if (!c || typeof rfb._sendMouse !== 'function') return;
+  rfb._sendMouse(Math.round(c.width / 2), Math.round(c.height / 2), buttons);
+}
+
+// Let go of everything. Losing the capture with a button held would otherwise
+// leave the game holding it down for ever -- firing, in DOOM's case.
+function releaseButtons() {
+  if (buttons === 0) return;
+  buttons = 0;
+  pendingX = 0;
+  pendingY = 0;
+  const c = canvas();
+  if (c && typeof rfb._sendMouse === 'function') {
+    rfb._sendMouse(Math.round(c.width / 2), Math.round(c.height / 2), 0);
+  }
 }
 
 //
@@ -246,7 +316,13 @@ document.addEventListener('fullscreenchange', () => {
 document.addEventListener('pointerlockchange', () => {
   overlayEl.hidden = locked();
   if (locked()) rfb.focus();
-  else buttons = 0;
+  else releaseButtons();
+});
+
+// A button held while the window goes away is the other way to get stuck.
+window.addEventListener('blur', releaseButtons);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) releaseButtons();
 });
 
 document.addEventListener('pointerlockerror', () => {
@@ -259,7 +335,9 @@ document.addEventListener('pointerlockerror', () => {
 window.addEventListener('mousemove', (e) => {
   if (!locked()) return;
   e.stopPropagation();
-  sendMouse(e.movementX || 0, e.movementY || 0);
+  pendingX += e.movementX || 0;
+  pendingY += e.movementY || 0;
+  queueFlush();
 }, true);
 
 window.addEventListener('mousedown', (e) => {
@@ -267,7 +345,10 @@ window.addEventListener('mousedown', (e) => {
   e.stopPropagation();
   e.preventDefault();
   buttons |= 1 << e.button;
-  sendMouse(0, 0);
+  // Send the movement that is already waiting, then the press on its own, so
+  // it cannot sit behind a frame's worth of queued motion.
+  flushMouse();
+  sendButtons();
 }, true);
 
 window.addEventListener('mouseup', (e) => {
@@ -275,7 +356,8 @@ window.addEventListener('mouseup', (e) => {
   e.stopPropagation();
   e.preventDefault();
   buttons &= ~(1 << e.button);
-  sendMouse(0, 0);
+  flushMouse();
+  sendButtons();
 }, true);
 
 window.addEventListener('contextmenu', (e) => {

@@ -81,6 +81,12 @@ Two pages are served:
 cursor disappears into the game, so turning never runs out of screen and the
 pointer cannot slide off into the rest of your desktop.
 
+The picture is scaled up to fill the window, by the same factor in both
+directions, so it keeps its shape — black bars on whichever axis has room
+left over rather than a stretched image. `DOOM_SCALE` sets how many pixels the
+engine actually renders; the page then scales that to whatever size the window
+is, so raise it if the result looks soft on a large screen.
+
 **Escape stays DOOM's.** Pointer lock normally gives Escape to the browser,
 which cancels the capture — no use at all when Escape is the game's menu key.
 The page also takes a Keyboard Lock on Escape, which hands it back to the game.

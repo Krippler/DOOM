@@ -87,6 +87,11 @@ current gcc and glibc. Behaviour is otherwise left alone.
   normally do it; there is none in the container, so X left the focus at
   `PointerRoot` and delivered keystrokes to whichever window the pointer was
   over. `XSetInputFocus` on the game window now settles it.
+- **`g_game.c`** — `G_Responder` assigned each mouse event's movement to
+  `mousex`/`mousey` rather than adding it, so of all the mouse events arriving
+  inside one 35 Hz tic only the last was used. Every mouse reports faster than
+  the tic rate, so most movement was silently dropped; it is summed now, and
+  `G_BuildTiccmd` still zeroes the pair once it has built the command.
 - **`i_video.c`** — after re-centring the pointer the engine left `lastmousex`
   and `lastmousey` pointing at where the last event landed, and corrected them
   only when the warp's own motion event came back. That event is queued behind

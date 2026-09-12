@@ -6,6 +6,32 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **Mouse look still jittered**, and this was the real cause rather than the
+  one fixed in 1.10.5. `G_Responder` *assigned* each mouse event's movement to
+  `mousex` instead of adding it, so only the last event of each 35 Hz tic
+  counted and every earlier one was discarded. Any mouse reports faster than
+  that — all of them, and a pointer-locked browser sends one event per report —
+  so most of the movement never reached the game. Measured on the player's
+  facing over an identical drag: 1.1° in 1.10.4, 22.3° in 1.10.5, 147.7° now.
+- **Mouse buttons could stick on.** Losing the capture with a button held —
+  pressing Esc, switching window — left the game holding it down for ever,
+  which in DOOM means firing for ever. The page now releases every button when
+  the capture, the focus or the tab goes away. Button changes are also sent on
+  their own and immediately, rather than riding along on a movement report that
+  could be queued behind a frame's worth of motion.
+- **Fullscreen did not fill the screen.** The picture was scaled by whole
+  numbers only, so a 640×400 render could manage just 3× on a 2560×1440
+  display and left a wide border. It is scaled to fit the window now, by the
+  same factor on both axes so the shape is kept.
+
+### Changed
+- The page sends one pointer report per animation frame with the movement
+  since the last one, instead of one per mouse event. A gaming mouse reporting
+  several hundred times a second was flooding the VNC link.
+
 ## [1.10.5] — 2026-09-12
 
 ### Fixed
