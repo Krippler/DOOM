@@ -39,6 +39,12 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.10.4
+- Escape opens the game menu again while the mouse is captured, instead of
+  letting the mouse go. Hold Escape to release it and leave fullscreen.
+- The menu can be put on a second key of your choosing, under
+  Options - Setup - Controls, for browsers that will not give Escape up.
+
 ### 1.10.3
 - The Ultimate Doom is recognised properly. Re-releases install it as DOOM.WAD,
   which the engine read as three-episode Doom, so Thy Flesh Consumed could not
