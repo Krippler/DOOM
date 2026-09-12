@@ -39,6 +39,11 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.10.9
+- The mouse turns you without also walking you forward and back. Options -
+  Setup - Mouse - MOVE WITH MOUSE restores the original behaviour.
+- PUID=0 starts instead of looping.
+
 ### 1.10.8
 - Holding a mouse button repeats the action, and releasing it stops.
 
