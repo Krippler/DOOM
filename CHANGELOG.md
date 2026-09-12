@@ -6,7 +6,7 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
-## [Unreleased]
+## [1.10.6] — 2026-09-12
 
 ### Fixed
 - **Mouse look still jittered**, and this was the real cause rather than the
