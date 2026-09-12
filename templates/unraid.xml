@@ -39,6 +39,12 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.10.7
+- Mouse look actually works. Most of the movement was being discarded before
+  it reached the game.
+- The picture fills the window instead of sitting small in the corner.
+- The mouse capture no longer fails silently when you click to play.
+
 ### 1.10.6
 - Mouse look turns properly. Most of the movement was being discarded before
   it reached the game.
