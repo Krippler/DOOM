@@ -39,6 +39,9 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.10.13
+- You can now play in the window instead of fullscreen; both capture the mouse.
+
 ### 1.10.12
 - Fixes a crash loop caused by the Graphic Detail option in the game's own
   Options menu. An affected config repairs itself; nothing to edit.
