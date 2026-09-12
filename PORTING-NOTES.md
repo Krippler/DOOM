@@ -250,6 +250,11 @@ use 16-pixel rows drawn from graphic lumps; these pages are text and need to
 fit ten rows above a status bar that only redraws when it is marked dirty, so
 anything drawn below y=168 smears and stays there.
 
+- **`g_game.c`** — `forward += mousey` is vanilla: the mouse's Y axis walked
+  the player, since the engine has no vertical aiming to spend it on. It is
+  behind `novert`, defaulting to off, the way later ports settled the same
+  question.
+
 ## Not changed
 
 - Networking (`i_net.c`) is untouched and untested here.

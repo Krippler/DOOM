@@ -235,6 +235,7 @@ void M_WadSelect(int choice);
 void M_ChangeBinding(int choice);
 void M_ToggleMouse(int choice);
 void M_ToggleMouseGrab(int choice);
+void M_ToggleMouseMove(int choice);
 void M_ChangeMouseFire(int choice);
 void M_ChangeMouseStrafe(int choice);
 void M_ChangeMouseForward(int choice);
@@ -991,6 +992,7 @@ extern int	key_use;
 extern int	key_strafe;
 extern int	key_speed;
 extern int	key_menu;
+extern int	novert;
 
 extern int	usemouse;
 extern int	mousebfire;
@@ -1201,6 +1203,7 @@ enum
 {
     mouse_on,
     mouse_grab,
+    mouse_move,
     mouse_firebtn,
     mouse_strafebtn,
     mouse_fwdbtn,
@@ -1211,6 +1214,7 @@ menuitem_t MouseMenu[] =
 {
     {1,"",M_ToggleMouse,'m'},
     {1,"",M_ToggleMouseGrab,'g'},
+    {1,"",M_ToggleMouseMove,'v'},
     {2,"",M_ChangeMouseFire,'f'},
     {2,"",M_ChangeMouseStrafe,'s'},
     {2,"",M_ChangeMouseForward,'w'}
@@ -1222,7 +1226,7 @@ menu_t MouseDef =
     &SetupDef,
     MouseMenu,
     M_DrawMouseOptions,
-    56,56,
+    56,48,
     0,
     16
 };
@@ -1239,6 +1243,17 @@ void M_ToggleMouse (int choice)
 {
     choice = 0;
     usemouse = !usemouse;
+    S_StartSound (NULL, sfx_pistol);
+}
+
+
+void M_ToggleMouseMove (int choice)
+{
+    choice = 0;
+    // Stored the other way round: the config key is novert, as everywhere
+    // else, but a menu reading "MOVE WITH MOUSE: OFF" is easier to follow
+    // than one reading "NO VERTICAL: ON".
+    novert = !novert;
     S_StartSound (NULL, sfx_pistol);
 }
 
@@ -1283,6 +1298,10 @@ void M_DrawMouseOptions (void)
 
     M_WriteText (MouseDef.x, y, "GRAB POINTER");
     M_WriteText (MouseDef.x + 148, y, grabMouse ? "ON" : "OFF");
+    y += LINEHEIGHT;
+
+    M_WriteText (MouseDef.x, y, "MOVE WITH MOUSE");
+    M_WriteText (MouseDef.x + 148, y, novert ? "OFF" : "ON");
     y += LINEHEIGHT;
 
     snprintf (buf, sizeof(buf), "BUTTON %d", mousebfire + 1);

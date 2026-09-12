@@ -129,8 +129,11 @@ Controls**, including a second key for the menu itself. Pick a line, press Retur
 choice is written to `.doomrc` in the state directory, so it survives a
 restart.
 
-The mouse turns and moves, and is off until you turn it on under **Options →
-Setup → Mouse**, where the buttons are assignable too. *Grab pointer* is on by
+The mouse turns you. It does **not** walk you forward and back — the original
+used the mouse's Y axis for movement, since there was nothing to aim
+vertically at, and with a modern hand on the mouse that mostly walks you
+about by accident. **Options → Setup → Mouse → MOVE WITH MOUSE** turns the
+original behaviour back on. The buttons are assignable on the same page. *Grab pointer* is on by
 default and is what `play.html` needs; see the section above.
 
 ## Loading WADs from the game

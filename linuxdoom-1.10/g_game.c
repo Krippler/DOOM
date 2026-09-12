@@ -162,6 +162,14 @@ int		key_speed;
 // pressing it lets the mouse go instead of reaching the game. Defaults to
 // Escape, which makes it a no-op until somebody binds it to something.
 int		key_menu = KEY_ESCAPE;
+
+// Whether pushing the mouse forward walks the player forward.
+//
+// The original used the mouse's Y axis for movement, because there was
+// nothing to aim vertically at. Every later port made that optional and
+// most default it off: with mouse look for turning, the same hand moving
+// up and down walks you about by accident.
+int		novert = 1;
  
 int             mousebfire; 
 int             mousebstrafe; 
@@ -408,7 +416,8 @@ void G_BuildTiccmd (ticcmd_t* cmd)
 	} 
     } 
  
-    forward += mousey; 
+    if (!novert) 
+	forward += mousey; 
     if (strafe) 
 	side += mousex*2; 
     else 

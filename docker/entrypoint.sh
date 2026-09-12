@@ -41,8 +41,14 @@ if [ "$(id -u)" = "0" ]; then
     mkdir -p "$STATE" 2>/dev/null || true
     chown "$PUID:$PGID" "$STATE" 2>/dev/null || true
 
-    log "running as ${PUID}:${PGID}"
-    exec setpriv --reuid "$PUID" --regid "$PGID" --clear-groups "$0" "$@"
+    if [ "$PUID" = "0" ] && [ "$PGID" = "0" ]; then
+        # Asking to stay root. Dropping to root is not a drop, and re-executing
+        # would arrive back here as root and do it again, for ever.
+        log "running as root (PUID=0)"
+    else
+        log "running as ${PUID}:${PGID}"
+        exec setpriv --reuid "$PUID" --regid "$PGID" --clear-groups "$0" "$@"
+    fi
 fi
 
 case "$SCALE" in

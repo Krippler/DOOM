@@ -6,6 +6,18 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **The mouse no longer walks you forward and back.** The original used its Y
+  axis for movement, because there was nothing to aim at vertically; with the
+  same hand turning you, it mostly moves you about by accident. Turning is
+  unchanged. **Options → Setup → Mouse → MOVE WITH MOUSE** puts the original
+  behaviour back, and the choice is saved as `novert` in `.doomrc`.
+- `PUID=0` looped forever instead of starting. The entrypoint re-executes
+  itself to drop privileges whenever it is root, and dropping to root left it
+  root, so it did it again. It now stays root and says so.
+
 ## [1.10.8] — 2026-09-12
 
 ### Fixed
