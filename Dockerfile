@@ -30,6 +30,7 @@ RUN apt-get update \
 WORKDIR /src
 COPY linuxdoom-1.10/ ./linuxdoom-1.10/
 COPY sndserv/ ./sndserv/
+COPY audiostream/ ./audiostream/
 
 # Music is built in: mus2mid.c converts the WAD's MUS lumps to Standard MIDI
 # and FluidSynth renders them. Build with MUSIC=none to leave it out.
@@ -39,10 +40,28 @@ RUN make -C linuxdoom-1.10 -j"$(nproc)" \
 
 # The engine drives sound through this separate process, which is how the
 # original release worked and, per its own README, the arrangement that
-# sounds best. It talks to PulseAudio directly; see sndserv/pulse.c.
+# sounds best. Built twice: once talking to PulseAudio (sndserv/pulse.c), for
+# when the host's audio socket is shared with the container, and once writing
+# raw PCM to a pipe (sndserv/stream.c), for when there is no audio system at
+# all and the sound is going to the browser. The entrypoint picks.
 RUN make -C sndserv -j"$(nproc)" SNDBACKEND=pulse \
  && strip sndserv/linux/sndserver \
- && test -x sndserv/linux/sndserver
+ && test -x sndserv/linux/sndserver \
+ && mv sndserv/linux/sndserver /tmp/sndserver-pulse \
+ && make -C sndserv clean \
+ && make -C sndserv -j"$(nproc)" SNDBACKEND=stream \
+ && strip sndserv/linux/sndserver \
+ && test -x sndserv/linux/sndserver \
+ && mv sndserv/linux/sndserver /tmp/sndserver-stream \
+ && mv /tmp/sndserver-pulse sndserv/linux/sndserver
+
+# Mixes the sound server's effects with the engine's music and serves the
+# result to the browser, because the container has no sound card and cannot
+# be given one: the only packaged PulseAudio brings systemd, GStreamer and a
+# set of video codecs with it. See audiostream/audiostream.c.
+RUN make -C audiostream -j"$(nproc)" \
+ && strip audiostream/linux/audiostream \
+ && test -x audiostream/linux/audiostream
 
 ##############################################################################
 # Runtime stage: the engine plus a private 8-bit X server and a web client.
@@ -89,7 +108,12 @@ RUN apt-get update \
 
 COPY --from=build /src/linuxdoom-1.10/linux/linuxxdoom /usr/local/games/linuxxdoom
 COPY --from=build /src/sndserv/linux/sndserver /usr/local/games/sndserver
+COPY --from=build /tmp/sndserver-stream /usr/local/games/sndserver-stream
+COPY --from=build /src/audiostream/linux/audiostream /usr/local/games/audiostream
 COPY docker/entrypoint.sh /usr/local/bin/doom-entrypoint
+
+# websockify, taught to carry the sound alongside the picture on one port.
+COPY docker/doom-wsproxy.py /usr/local/bin/doom-wsproxy
 
 # A client that captures the mouse. Stock noVNC reports absolute pointer
 # positions, which a game cannot use: see the comment at the top of the file.
@@ -103,7 +127,7 @@ COPY shareware/doom1.wad /usr/share/doom/doom1.wad
 
 # The directories come first so useradd does not warn about a home it
 # cannot chown yet.
-RUN chmod +x /usr/local/bin/doom-entrypoint \
+RUN chmod +x /usr/local/bin/doom-entrypoint /usr/local/bin/doom-wsproxy \
  && mkdir -p /wads /doom/state \
  && useradd --create-home --home-dir /doom/state --uid 1001 doomer \
  && chown -R doomer:doomer /doom
@@ -117,6 +141,7 @@ ENV DOOM_SCALE=2 \
     DOOM_WADDIR=/wads \
     DOOM_STATE=/doom/state \
     DOOM_VNC_PORT=5900 \
+    DOOM_AUDIO_PORT=5901 \
     DOOM_WEB_PORT=6080 \
     DOOM_DISPLAY=:99 \
     HOME=/doom/state

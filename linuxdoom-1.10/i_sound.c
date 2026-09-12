@@ -48,6 +48,7 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 // Timer stuff. Experimental.
 #include <time.h>
 #include <signal.h>
+#include <pthread.h>
 
 #include "z_zone.h"
 
@@ -861,9 +862,10 @@ I_InitSound()
 //
 // The WADs store music as MUS lumps, a trimmed down MIDI. mus2mid.c turns
 // one into a Standard MIDI File and FluidSynth plays it against a General
-// MIDI soundfont. FluidSynth runs its own audio thread and its own
-// connection to the sound system, so the game loop is not involved and the
-// music is mixed with the sound effects outside the process.
+// MIDI soundfont. Rendering happens on a thread of its own -- FluidSynth's
+// when it has an audio device to drive, ours when DOOM_MUSIC_PIPE says there
+// is none -- so the game loop is not involved and the music is mixed with the
+// sound effects outside the process.
 //
 // Built without MUSIC_FLUIDSYNTH these go back to being the dummies the
 // original release shipped.
@@ -878,6 +880,24 @@ static fluid_settings_t*	fl_settings = NULL;
 static fluid_synth_t*		fl_synth = NULL;
 static fluid_audio_driver_t*	fl_driver = NULL;
 static fluid_player_t*		fl_player = NULL;
+
+// Rendering into a pipe instead of to an audio device.
+//
+// FluidSynth's audio drivers all want a sound system to talk to, and the
+// container has none: what it has is audiostream, reading this pipe and the
+// sound server's on a real-time schedule and sending the sum to the browser.
+// So when DOOM_MUSIC_PIPE names one, the synth is pulled by a thread of our
+// own rather than pushed by a driver.
+//
+// The blocking write is what keeps that thread in time. It is also what
+// advances the music: FluidSynth's player is clocked by the samples the synth
+// renders, not by a wall clock, so a thread that renders only as fast as the
+// pipe drains plays at exactly the right speed.
+#define MUSIC_PIPE_FRAMES	512
+
+static int		fl_pipe_fd = -1;
+static pthread_t	fl_pipe_thread;
+static volatile int	fl_pipe_running = 0;
 
 // DOOM registers one song at a time, so one slot is enough.
 static byte*		song_midi = NULL;
@@ -965,10 +985,68 @@ static const char* I_FindSoundFont (void)
 }
 
 
+//
+// Renders music until told to stop, at the speed the far end reads it.
+//
+static void*
+I_FluidPipeThread (void* unused)
+{
+    short	buf[MUSIC_PIPE_FRAMES * 2];
+
+    (void) unused;
+
+    while (fl_pipe_running)
+    {
+	const char*	p = (const char*) buf;
+	size_t		left = sizeof(buf);
+
+	// Interleaved stereo: left in the even shorts, right in the odd ones.
+	fluid_synth_write_s16 (fl_synth, MUSIC_PIPE_FRAMES,
+			       buf, 0, 2, buf, 1, 2);
+
+	while (left && fl_pipe_running)
+	{
+	    ssize_t	n = write (fl_pipe_fd, p, left);
+
+	    if (n > 0)
+	    {
+		p += n;
+		left -= (size_t) n;
+		continue;
+	    }
+
+	    if (n < 0 && errno == EINTR)
+		continue;
+
+	    fprintf (stderr, "I_InitMusic: music pipe closed (%s), "
+		     "no more music\n", strerror (errno));
+	    fl_pipe_running = 0;
+	}
+    }
+
+    return NULL;
+}
+
+
+//
+// The rate everything downstream is mixed at. audiostream sets this so the
+// synth renders at the output rate and nothing has to resample music.
+//
+static double
+I_MusicSampleRate (void)
+{
+    const char*	rate = getenv ("DOOM_AUDIO_RATE");
+    int		hz = rate && *rate ? atoi (rate) : 0;
+
+    return hz >= 8000 && hz <= 48000 ? (double) hz : 44100.0;
+}
+
+
 void I_InitMusic(void)
 {
     const char*		soundfont;
     const char*		driver;
+    const char*		pipepath;
 
     soundfont = I_FindSoundFont ();
 
@@ -991,7 +1069,8 @@ void I_InitMusic(void)
     fluid_settings_setstr (fl_settings, "audio.driver",
 			   driver && *driver ? driver : "pulseaudio");
     fluid_settings_setstr (fl_settings, "audio.pulseaudio.media-role", "game");
-    fluid_settings_setnum (fl_settings, "synth.sample-rate", 44100.0);
+    fluid_settings_setnum (fl_settings, "synth.sample-rate",
+			   I_MusicSampleRate ());
     fluid_settings_setint (fl_settings, "synth.midi-channels", 16);
 
     // Load sample data as instruments are actually used. A full General MIDI
@@ -1016,13 +1095,47 @@ void I_InitMusic(void)
 	return;
     }
 
-    fl_driver = new_fluid_audio_driver (fl_settings, fl_synth);
+    pipepath = getenv ("DOOM_MUSIC_PIPE");
 
-    if (!fl_driver)
+    if (pipepath && *pipepath)
     {
-	fprintf (stderr, "I_InitMusic: no audio output for music\n");
-	I_ShutdownMusic ();
-	return;
+	// The reader holds a write end of its own, so this does not wait for
+	// one to appear.
+	fl_pipe_fd = open (pipepath, O_WRONLY);
+
+	if (fl_pipe_fd < 0)
+	{
+	    fprintf (stderr, "I_InitMusic: could not open %s (%s), "
+		     "no music\n", pipepath, strerror (errno));
+	    I_ShutdownMusic ();
+	    return;
+	}
+
+	// A listener closing the far end is not a reason to take the game
+	// down with it; the write reports it instead.
+	signal (SIGPIPE, SIG_IGN);
+
+	fl_pipe_running = 1;
+
+	if (pthread_create (&fl_pipe_thread, NULL, I_FluidPipeThread, NULL))
+	{
+	    fprintf (stderr, "I_InitMusic: could not start the music thread "
+		     "(%s), no music\n", strerror (errno));
+	    fl_pipe_running = 0;
+	    I_ShutdownMusic ();
+	    return;
+	}
+    }
+    else
+    {
+	fl_driver = new_fluid_audio_driver (fl_settings, fl_synth);
+
+	if (!fl_driver)
+	{
+	    fprintf (stderr, "I_InitMusic: no audio output for music\n");
+	    I_ShutdownMusic ();
+	    return;
+	}
     }
 
     I_FluidSetGain (snd_MusicVolume);
@@ -1038,6 +1151,20 @@ void I_ShutdownMusic(void)
 	fluid_player_stop (fl_player);
 	delete_fluid_player (fl_player);
 	fl_player = NULL;
+    }
+
+    if (fl_pipe_running)
+    {
+	// The reader keeps draining, so a thread blocked in write returns
+	// within a period rather than holding up the exit.
+	fl_pipe_running = 0;
+	pthread_join (fl_pipe_thread, NULL);
+    }
+
+    if (fl_pipe_fd >= 0)
+    {
+	close (fl_pipe_fd);
+	fl_pipe_fd = -1;
     }
 
     if (fl_driver)

@@ -169,6 +169,56 @@ by default. Like the OSS version its write blocks until the server accepts
 more audio, which is what paces the sound server's main loop. The original
 backend is still there: `make -C sndserv SNDBACKEND=oss`.
 
+### PCM output, and getting the sound out of the container
+
+A PulseAudio backend only helps if there is a PulseAudio server to talk to.
+The container has none, and cannot practically be given one: the only packaged
+`pulseaudio` pulls in systemd, GStreamer, cairo, ffmpeg's codecs and ICU --
+172 packages, most of what the image goes out of its way to strip -- to do a
+job that is, here, adding two streams together. Nor does the picture's own
+transport help, because VNC carries a framebuffer and nothing else.
+
+So there is a third backend, `sndserv/stream.c` (`SNDBACKEND=stream`), which
+writes the mixed effects as raw PCM to a pipe, and a small program of its own
+to read it:
+
+- **`audiostream/audiostream.c`** reads the effects pipe at 11025 Hz and the
+  engine's music pipe at the output rate, resamples the effects up by the
+  whole-number factor between them, sums the two with clipping, and writes
+  16-bit stereo PCM to whoever has connected, after a short header naming the
+  rate. It works to an absolute schedule off `CLOCK_MONOTONIC`, one 512-frame
+  period at a time.
+
+  That schedule is also the pacing for everything upstream. Both producers
+  write blocking into pipes sized to hold about 93 ms, so neither can run
+  ahead of a reader that only takes a period at a time -- exactly the job the
+  blocking write to `/dev/dsp` did in 1997. The pipes are read whether or not
+  anyone is listening, because a sound server blocked on a full pipe would
+  block the engine behind it.
+
+- **`i_sound.c`** grew a matching path for music. With `DOOM_MUSIC_PIPE` set
+  it creates no FluidSynth audio driver at all and pulls the synth from a
+  thread of its own with `fluid_synth_write_s16`, writing into the pipe. The
+  blocking write keeps that thread in time, and also keeps the *music* in
+  time: FluidSynth's player is clocked by the samples the synth renders rather
+  than by a wall clock, so a thread that renders only as fast as the pipe
+  drains plays at exactly the right speed. Without the variable it creates a
+  driver as before, so sharing the host's PulseAudio socket still works
+  unchanged.
+
+- **`docker/doom-wsproxy.py`** is websockify with the sound alongside the
+  picture on the one port, so no second port has to be published. websockify
+  can already route by a token in the query string but refuses a connection
+  without one, which would break stock `/vnc.html`; the only change is that a
+  missing token means the screen.
+
+- **`docker/play.html`** plays the stream through an `AudioWorklet` feeding a
+  ring buffer. The container sends at its own real-time rate and the sound
+  card consumes at its own, which are never quite the same, so the worklet
+  pads when it runs dry and drops when it runs long, and resamples to whatever
+  rate the `AudioContext` turns out to be. Scheduling a queue of buffers
+  instead would drift until it stuttered or fell behind.
+
 ### Effect volume
 
 `s_sound.c` passed `I_StartSound` and `I_UpdateSoundParams` a volume taken
@@ -187,9 +237,10 @@ called `I_InitMusic` — there was no reason to, since it did nothing.
 The WADs store music as MUS lumps, a trimmed-down MIDI with delays counted in
 140 Hz ticks. `mus2mid.c` converts one into a Standard MIDI File in memory,
 and `i_sound.c` renders it with FluidSynth against a General MIDI soundfont.
-FluidSynth runs its own audio thread and its own connection to the sound
-system, so the game loop is untouched and music mixes with the effects
-outside the process.
+FluidSynth renders on a thread of its own, so the game loop is untouched and
+music mixes with the effects outside the process -- in the host's sound server
+when one is shared with the container, and otherwise in `audiostream`, which
+is covered above.
 
 Details worth knowing:
 

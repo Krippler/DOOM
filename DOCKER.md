@@ -2,8 +2,8 @@
 
 Builds the original `linuxdoom-1.10` sources and runs them inside the image,
 with the game reachable from a browser. Nothing needs to be installed on the
-host beyond Docker — no X server and no display. Sound is optional and needs
-only a shared audio socket; see below.
+host beyond Docker — no X server, no display, and nothing to set up for sound:
+it comes out of the same browser tab as the picture.
 
 ```
 docker run --rm -p 6080:6080 ghcr.io/krippler/doom
@@ -75,7 +75,7 @@ Two pages are served:
 | --- | --- |
 | `/` | Redirects to `play.html`. |
 | `/play.html` | Captures the mouse. Use this to play. |
-| `/vnc.html?autoconnect=1&resize=off` | Stock noVNC, no capture. Useful for looking at the screen without grabbing your pointer. |
+| `/vnc.html?autoconnect=1&resize=off` | Stock noVNC, no capture and no sound. Useful for looking at the screen without grabbing your pointer. |
 
 `play.html` offers two ways in, and both capture the mouse with the Pointer
 Lock API — the cursor disappears into the game, so turning never runs out of
@@ -88,6 +88,9 @@ screen and the pointer cannot slide off into the rest of your desktop:
 
 Once the capture is released, clicking the picture resumes it the same way you
 started, so Escape then click will not drop you into fullscreen unexpectedly.
+
+Either way that first click also starts the sound, which browsers will not
+play without one. See [Sound](#sound).
 
 The picture is scaled up to fill the window, by the same factor in both
 directions, so it keeps its shape — black bars on whichever axis has room
@@ -199,8 +202,10 @@ Everything is set through the environment:
 | `DOOM_WEB_PORT` | `6080` | noVNC HTTP port. |
 | `DOOM_VNC_PORT` | `5900` | VNC port. |
 | `DOOM_VNC_PASSWORD` | unset | If set, the VNC session requires this password. |
-| `DOOM_SOUND` | `1` | Set to `0` to not start the sound server at all. |
-| `PULSE_SERVER` | unset | PulseAudio server for sound, e.g. `unix:/tmp/pulse`. |
+| `DOOM_SOUND` | `1` | Set to `0` for no sound at all. |
+| `DOOM_AUDIO_RATE` | `22050` | Rate the sound reaches the browser at. `11025` or `44100` also work. |
+| `DOOM_AUDIO_PORT` | `5901` | Internal mixer port. Nothing to publish. |
+| `PULSE_SERVER` | unset | Send the sound to this PulseAudio server instead of the browser. |
 | `DOOM_SOUNDFONT` | auto | General MIDI soundfont for music; empty means search for an installed one. |
 | `PUID` / `PGID` | `1001` | User to drop to, when the container starts as root. |
 
@@ -272,26 +277,48 @@ to true colour for the VNC client.
 
 ## Sound
 
+**It comes out of the browser.** Nothing to mount, nothing to configure — the
+same page that shows the picture plays the sound, so it works when the
+container is on a server in another room, which is where most of them are.
+
 The engine plays effects through a separate `sndserver` process, which is how
-the original release worked. That server has been given a PulseAudio backend
-(`sndserv/pulse.c`), so audio leaves the container over a PulseAudio socket.
+the original release worked, and renders music itself: linuxdoom shipped every
+music function as an empty stub, so this adds them, with `mus2mid.c` turning
+the WAD's MUS lumps into Standard MIDI and FluidSynth rendering them against a
+General MIDI soundfont.
 
-Music works too. linuxdoom shipped every music function as an empty stub, so
-this adds them: `mus2mid.c` converts the WAD's MUS lumps into Standard MIDI
-and FluidSynth renders them against a General MIDI soundfont, on its own
-connection to the same PulseAudio server. Both need the same shared socket,
-so the instructions below cover music as well.
+Neither of those can reach you on their own, because the container has no
+sound card and no sound daemon, and cannot practically be given one: the only
+packaged PulseAudio brings systemd, GStreamer, cairo and a set of video codecs
+with it — 172 packages to add two streams together. VNC is no help either; it
+carries a picture and nothing else.
 
-Note on `padsp`: the usual way to feed OSS-era software into PulseAudio no
-longer exists. `padsp` and its `libpulsedsp.so` were removed upstream in
-PulseAudio 16 and are not in any current distribution, and `aoss` (the ALSA
-equivalent) needs a real ALSA stack in the container and fails the format
-negotiation the engine does at startup. Talking to PulseAudio directly avoids
-both problems and works against PipeWire too, since `pipewire-pulse` accepts
-PulseAudio clients unchanged.
+So the two streams are written to pipes and `audiostream` mixes them: effects
+at 11025 Hz resampled up, music rendered at the output rate, summed and sent
+as raw 16-bit stereo PCM. It reads on a real-time schedule, which is also what
+keeps either producer from running ahead — the same job a blocking write to
+`/dev/dsp` did in 1997.
 
-To hear the game, share the host's audio socket. On a normal Linux desktop
-running PulseAudio or PipeWire:
+That PCM reaches the page over a second WebSocket on the port you already
+published, and an `AudioWorklet` plays it through a small ring buffer that
+absorbs the difference between the container's clock and your sound card's.
+About 88 KB/s, or 700 kbit/s. Sound starts with the same click that starts
+play — browsers will not play audio without one.
+
+| | |
+| --- | --- |
+| `DOOM_AUDIO_RATE` | `22050`. Also `11025` (half the bandwidth, noticeably duller music) or `44100` (double it). |
+| `DOOM_AUDIO_PORT` | `5901`, internal only. Nothing to publish; the sound shares the web port. |
+| `DOOM_SOUND=0` | No sound server, no mixer, no audio socket. |
+
+Effects and music have separate volume sliders under Options → Sound Volume.
+
+### Sending it to the host's speakers instead
+
+If the container is on the machine you are sitting at, share the host's audio
+socket and the game plays through it directly — the sound server switches to
+its PulseAudio backend (`sndserv/pulse.c`), FluidSynth connects to the same
+server, and nothing is streamed to the browser:
 
 ```
 docker run --rm -p 6080:6080 \
@@ -303,15 +330,18 @@ docker run --rm -p 6080:6080 \
     doom
 ```
 
-The cookie is only needed if your PulseAudio requires authentication; many
-setups work without it. If the socket is not readable by the container user,
-add `--user "$(id -u):$(id -g)"`.
+Setting `PULSE_SERVER`, or having `/run/user/$(id -u)/pulse/native` visible
+inside the container, is what selects this. The cookie is only needed if your
+PulseAudio requires authentication; many setups work without it. If the socket
+is not readable by the container user, add `--user "$(id -u):$(id -g)"`.
 
-Without any of that the container prints how to enable sound and plays
-silently — a missing or unreachable audio server is not fatal.
-
-Set `DOOM_SOUND=0` to skip starting the sound server entirely. Effects and
-music have separate volume sliders under Options → Sound Volume.
+Note on `padsp`: the usual way to feed OSS-era software into PulseAudio no
+longer exists. `padsp` and its `libpulsedsp.so` were removed upstream in
+PulseAudio 16 and are not in any current distribution, and `aoss` (the ALSA
+equivalent) needs a real ALSA stack in the container and fails the format
+negotiation the engine does at startup. Talking to PulseAudio directly avoids
+both problems and works against PipeWire too, since `pipewire-pulse` accepts
+PulseAudio clients unchanged.
 
 ### Soundfont
 

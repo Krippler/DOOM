@@ -1,6 +1,7 @@
 # Build output
 linuxdoom-1.10/linux/
 sndserv/linux/
+audiostream/linux/
 *.o
 
 # Game data is not distributed with the source

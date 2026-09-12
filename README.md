@@ -11,9 +11,9 @@ docker run --rm -p 6080:6080 ghcr.io/krippler/doom
 Then open **<http://localhost:6080/play.html>** and click to play.
 
 Nothing is installed on the host — no X server, no display, no audio setup,
-and no game data to find: the shareware IWAD is in the image, so that command
-is the whole of it. To play the full game, mount your own IWAD and it takes
-precedence:
+and no game data to find: the shareware IWAD is in the image,
+so that command is the whole of it — picture and sound both arrive in the
+browser. To play the full game, mount your own IWAD and it takes precedence:
 
 ```
 docker run --rm -p 6080:6080 -v "$PWD/wads:/wads:ro" ghcr.io/krippler/doom
@@ -43,6 +43,12 @@ once it did. Getting from there to a playable game took:
 - **Music**, which was never implemented at all: every music function in the
   1997 sources is an empty stub. The WAD's MUS lumps are converted to Standard
   MIDI and rendered by FluidSynth.
+- **A way for any of that to reach you.** The container has no sound card and
+  no sound daemon — the only packaged PulseAudio brings systemd, GStreamer and
+  a set of video codecs with it — and VNC carries a picture and nothing else.
+  So `audiostream` mixes the two and sends raw PCM to the page, which plays it
+  through an `AudioWorklet`. Nothing to mount, which matters when the
+  container is on a server in another room.
 - **A display the engine will accept.** It only ever supported an 8-bit
   PseudoColor X visual, which no current X server offers, so the container
   brings its own Xvfb at depth 8 and exports it over noVNC.

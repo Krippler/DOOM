@@ -6,6 +6,36 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Added
+- **Sound, in the browser.** The game has had effects and music since 1.10.0,
+  but only a container sharing the host's PulseAudio socket could play them —
+  which is no use at all when the container is on a server in another room and
+  you are looking at it through a browser. Now the audio arrives on the page,
+  over the port that was already published. Nothing to install, nothing to
+  mount, no flags: click to play and it plays.
+
+  There was no shortcut to it. The container has no sound card and no sound
+  daemon, and cannot practically be given one — the only packaged PulseAudio
+  brings systemd, GStreamer, cairo and a set of video codecs with it, 172
+  packages, to do a job that is adding two streams together. VNC was no help
+  either; it carries a picture and nothing else.
+
+  So the sound server gained a third output that writes raw PCM to a pipe, the
+  engine learned to render music into another one, and a new `audiostream`
+  mixes the two on a real-time schedule and sends 16-bit stereo to the page,
+  where an `AudioWorklet` plays it through a ring buffer that absorbs the
+  difference between the container's clock and your sound card's. Reading on
+  that schedule is also what paces the game's audio, the same job a blocking
+  write to `/dev/dsp` did in 1997.
+
+  About 700 kbit/s at the default 22050 Hz; `DOOM_AUDIO_RATE` takes `11025` or
+  `44100` instead. The image is no larger. Sharing the host's PulseAudio
+  socket still works exactly as before and still takes precedence — set
+  `PULSE_SERVER` and the sound goes there rather than to the browser. Stock
+  `/vnc.html` is unchanged, and silent, as it always was.
+
 ## [1.10.14] — 2026-09-12
 
 ### Changed

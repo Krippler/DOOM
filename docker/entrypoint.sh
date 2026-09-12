@@ -14,6 +14,11 @@ WEB_PORT="${DOOM_WEB_PORT:-6080}"
 DISP="${DOOM_DISPLAY:-:99}"
 DOOM_BIN="${DOOM_BIN:-/usr/local/games/linuxxdoom}"
 SNDSERVER_BIN="${DOOM_SNDSERVER_BIN:-/usr/local/games/sndserver}"
+SNDSERVER_STREAM_BIN="${DOOM_SNDSERVER_STREAM_BIN:-/usr/local/games/sndserver-stream}"
+AUDIOSTREAM_BIN="${DOOM_AUDIOSTREAM_BIN:-/usr/local/games/audiostream}"
+WSPROXY_BIN="${DOOM_WSPROXY_BIN:-/usr/local/bin/doom-wsproxy}"
+AUDIO_PORT="${DOOM_AUDIO_PORT:-5901}"
+AUDIO_RATE="${DOOM_AUDIO_RATE:-22050}"
 NOVNC_ROOT="${DOOM_NOVNC_ROOT:-/usr/share/novnc}"
 
 log() { printf '[doom] %s\n' "$*" >&2; }
@@ -197,23 +202,54 @@ fi
 #
 # The engine spawns a separate sound server process and looks for it at
 # $DOOMWADDIR/sndserver, so it goes in the same directory as the IWAD links.
-# The server plays through PulseAudio; if it cannot reach a server it says so
-# and the game runs silent.
+# Music it renders itself, with FluidSynth.
+#
+# Those two streams go one of two ways. By default they go to the browser:
+# audiostream reads both, mixes them and serves the result over the same port
+# the picture arrives on, because a container on a server somewhere has no
+# speakers and nobody is sitting next to it. Share the host's PulseAudio
+# socket instead and they go there, which is what you want when the container
+# is on the machine you are sitting at.
 ##############################################################################
-if [ "${DOOM_SOUND:-1}" = "1" ] && [ -x "$SNDSERVER_BIN" ]; then
-    ln -sf "$SNDSERVER_BIN" "$LINKDIR/sndserver"
+AUDIO_TO_BROWSER=0
 
-    if [ -n "${PULSE_SERVER:-}" ]; then
-        log "sound: PULSE_SERVER=$PULSE_SERVER"
-    elif [ -S "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/pulse/native" ]; then
-        log "sound: using ${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/pulse/native"
-    else
-        log "sound: no PulseAudio server configured, the game will be silent"
-        log "sound: to hear it, share the host's audio socket, e.g."
-        log "sound:   -v /run/user/\$(id -u)/pulse/native:/tmp/pulse:ro \\"
-        log "sound:   -e PULSE_SERVER=unix:/tmp/pulse"
+if [ "${DOOM_SOUND:-1}" != "1" ]; then
+    log "sound: disabled"
+    rm -f "$LINKDIR/sndserver"
+elif [ -n "${PULSE_SERVER:-}" ] || \
+     [ -S "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/pulse/native" ]; then
+    # An audio server was handed to us, so use it: this is the same container
+    # on the same desktop as the speakers.
+    if [ -x "$SNDSERVER_BIN" ]; then
+        ln -sf "$SNDSERVER_BIN" "$LINKDIR/sndserver"
     fi
 
+    if [ -n "${PULSE_SERVER:-}" ]; then
+        log "sound: to PulseAudio, PULSE_SERVER=$PULSE_SERVER"
+    else
+        log "sound: to PulseAudio at ${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/pulse/native"
+    fi
+elif [ -x "$AUDIOSTREAM_BIN" ] && [ -x "$SNDSERVER_STREAM_BIN" ]; then
+    AUDIO_TO_BROWSER=1
+    ln -sf "$SNDSERVER_STREAM_BIN" "$LINKDIR/sndserver"
+
+    # Both producers write raw PCM into these; audiostream reads them on a
+    # real-time schedule, which is also what stops either running ahead.
+    AUDIO_PIPES="$STATE/audio"
+    rm -rf "$AUDIO_PIPES"
+    mkdir -p "$AUDIO_PIPES"
+
+    export DOOM_SFX_PIPE="$AUDIO_PIPES/sfx"
+    export DOOM_MUSIC_PIPE="$AUDIO_PIPES/music"
+    export DOOM_AUDIO_RATE="$AUDIO_RATE"
+
+    log "sound: to the browser, ${AUDIO_RATE} Hz stereo"
+else
+    log "sound: no audio output available, the game will be silent"
+    rm -f "$LINKDIR/sndserver"
+fi
+
+if [ "${DOOM_SOUND:-1}" = "1" ]; then
     # Music is rendered inside the engine by FluidSynth. With no
     # DOOM_SOUNDFONT set it finds the soundfont installed in the image and
     # reports its choice on the "using soundfont" line below.
@@ -221,9 +257,6 @@ if [ "${DOOM_SOUND:-1}" = "1" ] && [ -x "$SNDSERVER_BIN" ]; then
         log "music: DOOM_SOUNDFONT $DOOM_SOUNDFONT is not readable,"
         log "music: falling back to whichever soundfont is installed"
     fi
-else
-    log "sound: disabled"
-    rm -f "$LINKDIR/sndserver"
 fi
 
 ##############################################################################
@@ -232,6 +265,7 @@ fi
 XVFB_PID=""
 VNC_PID=""
 WEB_PID=""
+AUDIO_PID=""
 DOOM_PID=""
 
 cleanup() {
@@ -249,7 +283,7 @@ cleanup() {
         kill -TERM "$DOOM_PID" 2>/dev/null || true
     fi
 
-    for pid in "$WEB_PID" "$VNC_PID" "$XVFB_PID"; do
+    for pid in "$WEB_PID" "$AUDIO_PID" "$VNC_PID" "$XVFB_PID"; do
         if [ -n "$pid" ]; then
             kill "$pid" 2>/dev/null || true
         fi
@@ -292,8 +326,37 @@ x11vnc -display "$DISP" -rfbport "$VNC_PORT" -forever -shared -8to24 -quiet \
        $vnc_auth >"$STATE/x11vnc.log" 2>&1 &
 VNC_PID=$!
 
+# audiostream has to be up before the engine, because the engine and its sound
+# server open these pipes at startup and the reader is what creates them.
+if [ "$AUDIO_TO_BROWSER" = "1" ]; then
+    log "starting audiostream on port $AUDIO_PORT"
+    "$AUDIOSTREAM_BIN" --sfx "$DOOM_SFX_PIPE" --music "$DOOM_MUSIC_PIPE" \
+        --rate "$AUDIO_RATE" --port "$AUDIO_PORT" \
+        >"$STATE/audiostream.log" 2>&1 &
+    AUDIO_PID=$!
+
+    i=0
+    while [ ! -p "$DOOM_MUSIC_PIPE" ]; do
+        i=$((i + 1))
+        [ "$i" -gt 100 ] && die "audiostream failed to start; see $STATE/audiostream.log"
+        kill -0 "$AUDIO_PID" 2>/dev/null || die "audiostream exited; see $STATE/audiostream.log"
+        sleep 0.1
+    done
+fi
+
+# One WebSocket port, two streams behind it: the screen and, when the sound is
+# going to the browser, the sound. See docker/doom-wsproxy.py -- a connection
+# that asks for neither gets the screen, so stock /vnc.html still works.
+{
+    printf 'vnc: localhost:%s\n' "$VNC_PORT"
+    [ "$AUDIO_TO_BROWSER" = "1" ] && printf 'audio: localhost:%s\n' "$AUDIO_PORT"
+} > "$STATE/ws-targets"
+
 log "starting noVNC on port $WEB_PORT"
-websockify --web="$NOVNC_ROOT" "$WEB_PORT" "localhost:$VNC_PORT" \
+"$WSPROXY_BIN" --web="$NOVNC_ROOT" \
+       --token-plugin=websockify.token_plugins.ReadOnlyTokenFile \
+       --token-source="$STATE/ws-targets" \
+       "$WEB_PORT" \
        >"$STATE/websockify.log" 2>&1 &
 WEB_PID=$!
 

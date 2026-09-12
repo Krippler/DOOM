@@ -17,7 +17,7 @@
     &#13;
     The engine only ever supported an 8-bit PseudoColor X visual, which no current X server offers, so the container runs its own Xvfb at depth 8 and exports it over noVNC. Nothing needs to be installed on the host.&#13;
     &#13;
-    Sound effects and music both work. Music is converted from the WAD's MUS lumps to MIDI and rendered by FluidSynth; both play to a PulseAudio server if one is reachable, and the game runs silently if not, which is the usual case on a server.&#13;
+    Sound comes out of the browser, with nothing to set up. Effects and music - the music converted from the WAD's MUS lumps to MIDI and rendered by FluidSynth - are mixed inside the container and sent to the same page as the picture, over the WebUI port you already mapped. Click to start playing and the sound starts with it, because browsers will not play audio without a click.&#13;
     &#13;
     The shareware game data is included, so this plays as soon as it starts - episode 1, nine levels. To play the full game, put your own DOOM.WAD, DOOM2.WAD, TNT.WAD or PLUTONIA.WAD into the WADs folder below and it will be used instead. The name is matched without regard to case. Commercial game data is not included and must come from your own copy of the game.&#13;
     &#13;
@@ -25,7 +25,7 @@
     &#13;
     Keys and the mouse are set from inside the game, under Options - Setup. The same menu lists the WAD files in the folder below and loads the one you pick, so mods can be dropped in and switched to without touching the container settings.&#13;
     &#13;
-    The WebUI opens a client that captures the mouse, so turning does not run out of screen and the cursor stays in the game. Esc hands the cursor back; press it again for the game menu. Plain noVNC is still there at /vnc.html if you would rather it did not grab the pointer.
+    The WebUI opens a client that captures the mouse, so turning does not run out of screen and the cursor stays in the game. Esc hands the cursor back, and the ` key opens the game menu whatever the mouse is doing. Plain noVNC is still there at /vnc.html if you would rather it did not grab the pointer, though it carries no sound.
   </Overview>
   <Category>GameServers: Other:</Category>
   <WebUI>http://[IP]:[PORT:6080]/</WebUI>
@@ -39,6 +39,17 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.10.15
+- Sound comes out of the browser. Effects and music are mixed in the container
+  and sent to the same page as the picture, over the WebUI port you already
+  mapped - nothing to install, nothing to mount. It starts with the click that
+  starts play.
+
+### 1.10.14
+- The ` key opens the game menu, in every mode. Escape still does when the
+  browser lets it through, which in a window it does not.
+- Every menu is drawn at one size, and the added options fit.
+
 ### 1.10.13
 - You can now play in the window instead of fullscreen; both capture the mouse.
 
@@ -116,7 +127,7 @@
   </Changes>
 
   <Config Name="WebUI Port" Target="6080" Default="6080" Mode="tcp"
-          Description="Port for the browser client. Open the WebUI to play."
+          Description="Port for the browser client, carrying both the picture and the sound. Open the WebUI to play."
           Type="Port" Display="always" Required="true" Mask="false">6080</Config>
 
   <Config Name="VNC Port" Target="5900" Default="5900" Mode="tcp"
@@ -147,8 +158,12 @@
           Description="Optional. If set, the browser and any VNC client must supply this password. Leave empty for no password, which is fine on a LAN you trust."
           Type="Variable" Display="always" Required="false" Mask="true"></Config>
 
+  <Config Name="Audio rate" Target="DOOM_AUDIO_RATE" Default="22050"
+          Description="Rate the sound reaches the browser at, in Hz. 22050 is the default and costs about 700 kbit/s. Use 11025 to halve that, or 44100 to double it."
+          Type="Variable" Display="advanced" Required="false" Mask="false">22050</Config>
+
   <Config Name="PulseAudio server" Target="PULSE_SERVER" Default=""
-          Description="Optional. Leave empty for no sound, which is normal on a server. To hear the game, point this at a reachable PulseAudio server, for example tcp:192.168.1.50:4713, and make sure that server accepts connections from this container."
+          Description="Optional, and not what most people want. Leave empty and the sound goes to the browser. Set this to a reachable PulseAudio server, for example tcp:192.168.1.50:4713, and the sound goes there instead - to speakers attached to that machine, not to yours."
           Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
 
   <Config Name="Soundfont" Target="DOOM_SOUNDFONT" Default=""

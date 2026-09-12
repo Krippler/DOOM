@@ -22,7 +22,7 @@ MUSIC?=fluidsynth
 ifeq ($(MUSIC),fluidsynth)
 CFLAGS+=-DMUSIC_FLUIDSYNTH
 MUSIC_OBJ=$(O)/mus2mid.o
-MUSIC_LIBS=-lfluidsynth
+MUSIC_LIBS=-lfluidsynth -lpthread
 else ifeq ($(MUSIC),none)
 MUSIC_OBJ=
 MUSIC_LIBS=

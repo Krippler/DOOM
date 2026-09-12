@@ -11,6 +11,7 @@ wads/
 linuxdoom-1.10/linux/
 linuxdoom-1.10/CVS/
 sndserv/linux/
+audiostream/linux/
 ipx/
 sersrc/
 *.o
