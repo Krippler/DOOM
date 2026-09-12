@@ -39,6 +39,10 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.10.10
+- A bad screen-size value in the config no longer breaks the renderer or puts
+  the container into a crash loop.
+
 ### 1.10.9
 - The mouse turns you without also walking you forward and back. Options -
   Setup - Mouse - MOVE WITH MOUSE restores the original behaviour.
