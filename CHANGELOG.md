@@ -6,6 +6,27 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **The "140 ms video delay" in 1.10.21's notes was wrong, and is corrected.**
+  It was measured from a keypress to the muzzle flash, and the pistol spends
+  four tics in `S_PISTOL1` doing nothing before `A_FirePistol` runs — 114 ms
+  of deliberate weapon animation, counted as delay. Timed against the menu
+  key, which the game acts on the moment it arrives, the picture answers in
+  **48 ms**: about one of the engine's 35 frames a second plus a browser
+  repaint, which is the floor rather than a fault.
+
+  The replacement video path those notes proposed was then built — the
+  engine's frames pushed down the WebSocket beside the sound, x11vnc reduced
+  to carrying the keyboard and mouse, the palette applied in the browser. It
+  works and it is exactly as fast, 48 ms either way, while sending 1382 KB/s
+  against VNC's 941 when walking. It is on the
+  `claude/video-stream-experiment` branch and is deliberately not merged.
+
+  What is left that is real: the sound arrives about 150 ms after the picture
+  it belongs to.
+
 ## [1.10.21] — 2026-09-12
 
 ### Fixed

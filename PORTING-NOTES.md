@@ -309,12 +309,26 @@ Build with `make MUSIC=none` to get the original silent stubs back.
 
 ## The delay between pressing a key and seeing it
 
-About 140 ms, measured from the browser dispatching the keydown to the pixels
-arriving back at it. Not the sound -- that is a further 150 ms and is dealt
-with above -- this is the picture itself, and it is what makes the game feel
-heavier than it is.
+**About 48 ms**, and most of that is the engine's own frame rate. An earlier
+version of this section said 140 ms, which was wrong, and wrong in a way worth
+recording because it nearly bought a rewrite of the video path.
 
-Where it is not:
+That figure came from timing a keypress to the muzzle flash. The pistol spends
+four tics in `S_PISTOL1` doing nothing at all before `S_PISTOL2` runs
+`A_FirePistol` -- look at `info.c` -- so 114 ms of what was being called delay
+is the game deliberately animating the weapon. Timed against the menu key,
+which `M_Responder` acts on the moment it arrives, the same container answers
+in 48 ms: roughly one tic of engine (28 ms), a browser repaint (11 ms), and
+the trip there and back.
+
+So there is nothing much to win here. 35 frames a second is 28 ms between
+them, and no amount of transport work makes a frame that has not been drawn
+yet arrive sooner.
+
+The measurements below were made while the 140 ms figure was still believed,
+and they still say something useful: every one of them ruled out a suspect,
+and none of them moved the number, which in hindsight is exactly what should
+have been expected of a number that was mostly weapon animation.
 
 | Suspected | Measured |
 | --- | --- |
@@ -327,18 +341,18 @@ Where it is not:
 | The audio stream sharing the proxy | 143 with it, 145 without |
 | Throughput | 35 frames a second arrive, 2 ms apart in pairs |
 
-So it is not starvation and it is not any of the knobs. What is left is
-structural: VNC is a request/response protocol, and a frame goes out only
-after the client has asked for the next one, which it does after decoding the
-last. The engine samples input once a tic and draws once a tic, 28 ms apart.
-Round-tripping that through websockify twice, in Python, costs what it costs.
+None of them was ever going to move it, because what they were being measured
+against was mostly the pistol's wind-up.
 
-Getting it materially lower means not using VNC for the picture: the engine
-already writes every frame to a shared memory image, and pushing those frames
-down the WebSocket that already carries the sound -- indexed colour, palette
-applied in the browser -- would remove the request/response cycle, x11vnc and
-its polling in one go. That is a replacement for the video path rather than a
-tuning of it, and it has not been done.
+That replacement was then written, to be sure: the engine's frames pushed
+down the WebSocket beside the sound, x11vnc dropped to `-nofb` and carrying
+only the keyboard and mouse, the palette applied in the browser. It works, and
+it is exactly as fast -- 48 ms either way -- while sending 1382 KB/s against
+VNC's 941 when walking, because its tiles go raw where VNC compresses. It is
+on the `claude/video-stream-experiment` branch rather than here.
+
+What is actually worth attention is the other half: the sound arrives about
+150 ms after the picture it belongs to, and that gap is real.
 
 ## Added
 
