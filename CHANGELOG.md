@@ -6,6 +6,21 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **Escape belongs to DOOM again.** Capturing the mouse meant the browser
+  claimed Escape to cancel the capture, which is precisely the key the game
+  wants for its menu. `play.html` now goes fullscreen and takes a Keyboard Lock
+  on Escape, so it reaches the game; holding Escape is still the way out, and
+  no page can take that away.
+
+### Added
+- A second, bindable key for the menu — **Options → Setup → Controls → MENU**,
+  saved with the rest of your controls. Keyboard Lock is Chromium-only, so on
+  Firefox and Safari Escape still ends the capture; binding the menu to
+  something else (backquote is unused by DOOM) avoids the problem entirely.
+
 ## [1.10.3] — 2026-09-12
 
 ### Fixed

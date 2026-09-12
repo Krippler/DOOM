@@ -201,6 +201,12 @@ Three things the 1997 release had no way to do, all reachable from
   toggles a pointer grab (`I_SetMouseGrab`, `XGrabPointer`). The window's
   event mask had the pointer events commented out; they are back, and gated
   on `usemouse` so nothing changes when the mouse is off.
+- **A second menu key** (`m_menu.c`, `g_game.c`, `m_misc.c`). The menu key is
+  hardcoded as Escape throughout, which is awkward in a browser: pointer lock
+  gives Escape to the browser. `key_menu` is a saved binding that defaults to
+  Escape, and `M_Responder` turns it into Escape early enough that every test
+  for Escape downstream keeps working unchanged -- but late enough that typing
+  a savegame name is unaffected.
 - **Load WAD** (`m_menu.c`) lists the `.wad` files in `$DOOM_WADPATH`
   (or `$DOOMWADDIR`, or the current directory) and loads the one you pick,
   reading the four byte signature to tell an IWAD from a PWAD.

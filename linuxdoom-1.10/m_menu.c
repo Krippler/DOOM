@@ -990,6 +990,7 @@ extern int	key_fire;
 extern int	key_use;
 extern int	key_strafe;
 extern int	key_speed;
+extern int	key_menu;
 
 extern int	usemouse;
 extern int	mousebfire;
@@ -1015,7 +1016,8 @@ static binding_t bindings[] =
     {"STRAFE LEFT",	&key_strafeleft},
     {"STRAFE RIGHT",	&key_straferight},
     {"STRAFE ON",	&key_strafe},
-    {"RUN",		&key_speed}
+    {"RUN",		&key_speed},
+    {"MENU",		&key_menu}
 };
 
 #define NUM_BINDINGS	(sizeof(bindings)/sizeof(bindings[0]))
@@ -1040,6 +1042,7 @@ static keyname_t keynames[] =
     {KEY_TAB,		"TAB"},
     {KEY_BACKSPACE,	"BACKSP"},
     {KEY_PAUSE,		"PAUSE"},
+    {KEY_ESCAPE,	"ESC"},
     {KEY_EQUALS,	"="},
     {KEY_MINUS,		"-"},
     {KEY_RSHIFT,	"SHIFT"},
@@ -1134,7 +1137,8 @@ menuitem_t ControlsMenu[] =
     {1,"",M_ChangeBinding,0}, {1,"",M_ChangeBinding,0},
     {1,"",M_ChangeBinding,0}, {1,"",M_ChangeBinding,0},
     {1,"",M_ChangeBinding,0}, {1,"",M_ChangeBinding,0},
-    {1,"",M_ChangeBinding,0}, {1,"",M_ChangeBinding,0}
+    {1,"",M_ChangeBinding,0}, {1,"",M_ChangeBinding,0},
+    {1,"",M_ChangeBinding,0}
 };
 
 menu_t ControlsDef =
@@ -1143,7 +1147,7 @@ menu_t ControlsDef =
     &SetupDef,
     ControlsMenu,
     M_DrawControls,
-    56,40,
+    56,34,
     0,
     12
 };
@@ -2110,6 +2114,15 @@ boolean M_Responder (event_t* ev)
 	return true;
     }
 	
+    // A second key for the menu, treated as Escape from here down so every
+    // place that tests for Escape keeps working unchanged.
+    //
+    // Deliberately below the save-name and message handling above: those read
+    // ordinary characters, and translating one of them into Escape would
+    // cancel whatever the player was typing.
+    if (key_menu != KEY_ESCAPE && ch == key_menu)
+	ch = KEY_ESCAPE;
+
     if (devparm && ch == KEY_F1)
     {
 	G_ScreenShot ();

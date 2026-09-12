@@ -78,10 +78,10 @@
 
 <div id="overlay">
   <h1>DOOM</h1>
-  <p>Click to play. The mouse is captured, so it will not slide out of the
-     window while you turn.</p>
-  <p class="dim">Esc releases the mouse — press it again for the game menu.
-     Keys and the mouse are configured in game under Options → Setup.</p>
+  <p>Click to play. The game goes fullscreen and takes the mouse, so it will
+     not slide out of the window while you turn.</p>
+  <p class="dim" id="esc-note">Keys and the mouse are configured in game under
+     Options → Setup.</p>
 </div>
 
 <div id="status" hidden></div>
@@ -177,10 +177,63 @@ function sendMouse(dx, dy) {
                  buttons);
 }
 
-overlayEl.addEventListener('click', () => {
+//
+// Escape belongs to the game, not to the browser.
+//
+// Pointer Lock hands Escape to the browser: it cancels the capture, and the
+// game never sees the key it uses for its own menu. The Keyboard Lock API
+// exists for exactly this and gives Escape back to the page -- but only while
+// the document is fullscreen, so going fullscreen is part of starting play.
+// Holding Escape still leaves, which is the browser's guaranteed way out and
+// cannot be taken away.
+//
+let keyboardLocked = false;
+
+async function enterPlay() {
   const c = canvas();
-  if (c && c.requestPointerLock) c.requestPointerLock();
+  if (!c) return;
+
+  try {
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+      await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+    }
+  } catch (e) {
+    // Fullscreen refused. Everything below still works; Escape just goes back
+    // to being the browser's.
+  }
+
+  try {
+    if (navigator.keyboard && navigator.keyboard.lock) {
+      await navigator.keyboard.lock(['Escape']);
+      keyboardLocked = true;
+    }
+  } catch (e) {
+    keyboardLocked = false;
+  }
+
+  if (c.requestPointerLock) c.requestPointerLock();
   rfb.focus();
+  updateEscNote();
+}
+
+function updateEscNote() {
+  const note = document.getElementById('esc-note');
+  if (!note) return;
+  note.textContent = keyboardLocked
+    ? 'Esc opens the game menu. Hold Esc to release the mouse and leave fullscreen.'
+    : 'This browser will not let the page keep Esc, so Esc releases the mouse —'
+      + ' press it again for the game menu. Options → Setup → Controls can put'
+      + ' the menu on a second key.';
+}
+
+overlayEl.addEventListener('click', enterPlay);
+
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) {
+    if (navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock();
+    keyboardLocked = false;
+    updateEscNote();
+  }
 });
 
 document.addEventListener('pointerlockchange', () => {

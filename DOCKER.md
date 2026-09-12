@@ -77,11 +77,22 @@ Two pages are served:
 | `/play.html` | Captures the mouse. Use this to play. |
 | `/vnc.html?autoconnect=1&resize=off` | Stock noVNC, no capture. Useful for looking at the screen without grabbing your pointer. |
 
-`play.html` uses the Pointer Lock API: click once and the cursor disappears
-into the game, so turning never runs out of screen and the pointer cannot
-slide off into the rest of your desktop. **Esc releases the mouse** — that is
-the browser's behaviour and cannot be overridden — so press it once to get
-your cursor back and again for the game's own menu.
+`play.html` goes fullscreen and uses the Pointer Lock API: click once and the
+cursor disappears into the game, so turning never runs out of screen and the
+pointer cannot slide off into the rest of your desktop.
+
+**Escape stays DOOM's.** Pointer lock normally gives Escape to the browser,
+which cancels the capture — no use at all when Escape is the game's menu key.
+The page also takes a Keyboard Lock on Escape, which hands it back to the game.
+That needs fullscreen, which is why clicking to play goes fullscreen. **Hold**
+Escape to actually leave; browsers guarantee that way out and it cannot be
+taken away.
+
+Keyboard Lock is a Chromium feature, so on Firefox and Safari Escape still
+ends the capture. The page says so when that is the case, and the fix is to
+give the menu a second key: **Options → Setup → Controls → MENU**, bound to
+whatever you like (backquote is a good choice, since DOOM uses it for nothing).
+It is saved with the rest of your controls.
 
 If the browser refuses to capture the pointer, the page says so and carries on
 as an ordinary viewer rather than failing.
@@ -104,10 +115,10 @@ Click into the canvas first — the browser only sends keys to a focused canvas.
 | Open, use | Space |
 | Weapons | `1`–`7` |
 | Map | Tab |
-| Menu | Esc |
+| Menu | Esc, or the MENU key you bind |
 
 All of these can be changed from the game: **Esc → Options → Setup →
-Controls**. Pick a line, press Return, then press the key you want. The
+Controls**, including a second key for the menu itself. Pick a line, press Return, then press the key you want. The
 choice is written to `.doomrc` in the state directory, so it survives a
 restart.
 
