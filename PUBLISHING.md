@@ -30,7 +30,13 @@ Defined in `.github/workflows/docker-publish.yml`:
 
 `latest` is always the newest **released** version; `edge` tracks the tip of
 `master`. The workflow also builds `claude/**`, `fix/**` and `feat/**`
-branches, so an image exists to test before anything is merged.
+branches, so an image exists to test before anything is merged; each is
+tagged with its branch name.
+
+`sha-<short>` is written only by default-branch builds. The same commit is
+built twice when a branch is pushed and then merged, and since images carry a
+version stamp those two differ — so both writing `sha-<short>` left it
+pointing at whichever build happened to finish last.
 
 ## Registry
 

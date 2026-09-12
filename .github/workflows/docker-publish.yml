@@ -96,11 +96,17 @@ jobs:
           flavor: |
             latest=false
           tags: |
-            # A branch build matches none of the rules below, and
+            # A branch or PR build matches none of the version rules below, and
             # build-push-action fails immediately when handed an empty tag
             # list. These two guarantee every build is tagged with something.
             type=ref,event=branch
-            type=sha,format=short
+            type=ref,event=pr
+            # Only on the default branch. The same commit is built twice when
+            # a branch is pushed and then merged, and since the version stamp
+            # went in those two images differ, so both writing sha-<short>
+            # left it pointing at whichever finished last. A branch build is
+            # still reachable by its branch tag.
+            type=sha,format=short,enable={{is_default_branch}}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}

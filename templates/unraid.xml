@@ -39,6 +39,11 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.10.21
+- Small VNC timing changes, and notes on why the picture lags about 140 ms
+  behind the keypress - it is the VNC round trip, and none of the usual
+  settings affect it. The sound is unchanged and still arrives promptly.
+
 ### 1.10.20
 - Fixes the sound getting later the longer you play. It drifted because the
   container and your sound card keep slightly different time and nothing

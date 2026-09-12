@@ -327,9 +327,24 @@ else
     log "no VNC password set (export DOOM_VNC_PASSWORD to require one)"
 fi
 
+# x11vnc's timing defaults are tuned for a desktop, where nothing is waiting
+# on the next frame: -nap lengthens the poll interval when activity is low,
+# which is the state of a DOOM screen in the moment before you press fire, and
+# -wait and -defer each hold 20 ms in reserve for a slow link.
+#
+# None of that measured as worth anything here -- keypress to pixels is about
+# 140 ms either way, and moving these from 20 to 5 to 1 changed nothing
+# outside the noise. They are set anyway because the defaults are wrong in
+# principle for something being played rather than administered, and left
+# adjustable because the next person to look at this will want to try them.
+# What the delay actually is, and everything that was ruled out, is in
+# PORTING-NOTES.md.
 log "starting x11vnc on port $VNC_PORT"
 # shellcheck disable=SC2086
-x11vnc -display "$DISP" -rfbport "$VNC_PORT" -forever -shared -8to24 -quiet \
+x11vnc -display "$DISP" -rfbport "$VNC_PORT" -forever -shared -quiet \
+       -8to24 \
+       -nonap -wait "${DOOM_VNC_WAIT:-5}" -defer "${DOOM_VNC_DEFER:-5}" \
+       ${DOOM_VNC_ARGS:-} \
        $vnc_auth >"$STATE/x11vnc.log" 2>&1 &
 VNC_PID=$!
 

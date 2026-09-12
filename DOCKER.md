@@ -202,6 +202,9 @@ Everything is set through the environment:
 | `DOOM_WEB_PORT` | `6080` | noVNC HTTP port. |
 | `DOOM_VNC_PORT` | `5900` | VNC port. |
 | `DOOM_VNC_PASSWORD` | unset | If set, the VNC session requires this password. |
+| `DOOM_VNC_WAIT` | `5` | Milliseconds between x11vnc screen polls. |
+| `DOOM_VNC_DEFER` | `5` | Milliseconds x11vnc holds an update back. |
+| `DOOM_VNC_ARGS` | unset | Extra flags passed to x11vnc. |
 | `DOOM_SOUND` | `1` | Set to `0` for no sound at all. |
 | `DOOM_AUDIO_RATE` | `22050` | Rate the sound reaches the browser at. `11025` or `44100` also work. |
 | `DOOM_AUDIO_PORT` | `5901` | Internal mixer port. Nothing to publish. |
@@ -357,6 +360,13 @@ Most of what is left is not adjustable from here, but two things are: a
 smaller `DOOM_AUDIO_RATE` moves less data, and serving the page over HTTPS
 gets the `AudioWorklet` path, which runs on the audio thread rather than
 competing with noVNC for the main one.
+
+The picture's own ~140 ms is a VNC round trip and does not respond to
+x11vnc's timing options — `-nap`, `-wait`, `-defer`, `-threads` and the
+`-8to24` poll were each measured and each changed nothing outside the noise.
+`DOOM_VNC_WAIT`, `DOOM_VNC_DEFER` and `DOOM_VNC_ARGS` are there to try
+anyway. `PORTING-NOTES.md` has the measurements and what a real fix would
+involve.
 | `sound: to PulseAudio` in the log | It went to a host audio server rather than to you. Unset `PULSE_SERVER`. |
 | `Sound: on … N s received` and still silent | It is arriving and being played, so the problem is past the browser: a muted tab, or the machine's output device. |
 

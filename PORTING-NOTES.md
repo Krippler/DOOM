@@ -307,6 +307,39 @@ Details worth knowing:
 
 Build with `make MUSIC=none` to get the original silent stubs back.
 
+## The delay between pressing a key and seeing it
+
+About 140 ms, measured from the browser dispatching the keydown to the pixels
+arriving back at it. Not the sound -- that is a further 150 ms and is dealt
+with above -- this is the picture itself, and it is what makes the game feel
+heavier than it is.
+
+Where it is not:
+
+| Suspected | Measured |
+| --- | --- |
+| The browser drawing | 11 ms of the total |
+| The test harness injecting keys | 1.2 ms |
+| x11vnc's `-nap`, `-wait`, `-defer` | 20 → 5 → 1/0 ms: no change outside noise |
+| x11vnc's `-threads` | no change |
+| `-8to24 poll` | no change (the help says it is ignored on a depth 8 display) |
+| Pixel volume | `DOOM_SCALE=1` is a quarter the pixels: 139 vs 143 ms |
+| The audio stream sharing the proxy | 143 with it, 145 without |
+| Throughput | 35 frames a second arrive, 2 ms apart in pairs |
+
+So it is not starvation and it is not any of the knobs. What is left is
+structural: VNC is a request/response protocol, and a frame goes out only
+after the client has asked for the next one, which it does after decoding the
+last. The engine samples input once a tic and draws once a tic, 28 ms apart.
+Round-tripping that through websockify twice, in Python, costs what it costs.
+
+Getting it materially lower means not using VNC for the picture: the engine
+already writes every frame to a shared memory image, and pushing those frames
+down the WebSocket that already carries the sound -- indexed colour, palette
+applied in the browser -- would remove the request/response cycle, x11vnc and
+its polling in one go. That is a replacement for the video path rather than a
+tuning of it, and it has not been done.
+
 ## Added
 
 Three things the 1997 release had no way to do, all reachable from

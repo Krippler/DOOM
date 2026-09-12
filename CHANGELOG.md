@@ -6,6 +6,53 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.21] — 2026-09-12
+
+### Fixed
+- **`sha-<short>` image tags pointed at whichever build finished last.** The
+  same commit is built twice — once when a branch is pushed, once when it is
+  merged — and since 1.10.17 gave images a version stamp those two builds
+  differ, so both writing the same tag left it ambiguous. Only default-branch
+  builds write it now; a branch build is still reachable by its branch name,
+  and PR builds get a `pr-<n>` tag so they are never left with none.
+
+### Changed
+- x11vnc no longer naps, and polls and defers at 5 ms rather than 20. Its
+  defaults are meant for a desktop nobody is waiting on — `-nap` deliberately
+  slows polling when activity is low, which is the state of a DOOM screen in
+  the instant before you press fire. `DOOM_VNC_WAIT`, `DOOM_VNC_DEFER` and
+  `DOOM_VNC_ARGS` expose these.
+
+  **It made no measurable difference**, and is kept only because the defaults
+  are wrong in principle for something being played. See below.
+
+### Known
+
+- **The picture is about 140 ms behind the keypress, and this release does not
+  fix it.** That is separate from the sound, which is a further 150 ms and did
+  come down. Measured from the browser dispatching the keydown to the pixels
+  arriving back:
+
+  | Suspected | Measured |
+  | --- | --- |
+  | The browser drawing | 11 ms of the total |
+  | x11vnc `-nap`/`-wait`/`-defer`, 20 → 5 → 1/0 | no change outside noise |
+  | x11vnc `-threads` | no change |
+  | `-8to24 poll` | no change |
+  | Pixel volume (`DOOM_SCALE=1`, a quarter) | 139 vs 143 ms |
+  | The audio sharing the proxy | 143 with, 145 without |
+  | Throughput | 35 frames a second, arriving in pairs 2 ms apart |
+
+  Nothing is starved and no knob touches it. What remains is structural: VNC
+  is request/response, so a frame goes out only once the client has asked for
+  the next, which it does after decoding the last; the engine samples input
+  and draws once a tic, 28 ms apart; and all of it crosses websockify twice.
+
+  Getting it materially lower means not using VNC for the picture — pushing
+  the engine's frames down the WebSocket that already carries the sound, with
+  the palette applied in the browser. That replaces the video path rather than
+  tuning it, and has not been done.
+
 ## [1.10.20] — 2026-09-12
 
 ### Fixed
