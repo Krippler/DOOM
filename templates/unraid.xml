@@ -39,6 +39,16 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.10.3
+- The Ultimate Doom is recognised properly. Re-releases install it as DOOM.WAD,
+  which the engine read as three-episode Doom, so Thy Flesh Consumed could not
+  be reached. It is identified by its contents now.
+- With both games in the WADs folder, Doom starts rather than Doom II. Set
+  DOOM_IWAD to choose.
+- The attract demos play instead of being rejected, and two 1997 bugs that
+  filled the log with repeated warnings are fixed.
+- The WebUI address now goes straight to the client that captures the mouse.
+
 ### 1.10.2
 - The shareware game data ships with the container, so it plays as soon as it
   starts. Your own IWAD still takes precedence when you add one.

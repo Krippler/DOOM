@@ -6,7 +6,7 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
-## [Unreleased]
+## [1.10.3] — 2026-09-12
 
 ### Fixed
 - **The Ultimate Doom was being played as plain registered Doom**, with *Thy
