@@ -77,9 +77,17 @@ Two pages are served:
 | `/play.html` | Captures the mouse. Use this to play. |
 | `/vnc.html?autoconnect=1&resize=off` | Stock noVNC, no capture. Useful for looking at the screen without grabbing your pointer. |
 
-`play.html` goes fullscreen and uses the Pointer Lock API: click once and the
-cursor disappears into the game, so turning never runs out of screen and the
-pointer cannot slide off into the rest of your desktop.
+`play.html` offers two ways in, and both capture the mouse with the Pointer
+Lock API — the cursor disappears into the game, so turning never runs out of
+screen and the pointer cannot slide off into the rest of your desktop:
+
+| | |
+| --- | --- |
+| **Play fullscreen** | Fills the screen, and keeps Escape for the game (below). |
+| **Play in this window** | Same capture, no fullscreen. Escape releases the mouse. |
+
+Once the capture is released, clicking the picture resumes it the same way you
+started, so Escape then click will not drop you into fullscreen unexpectedly.
 
 The picture is scaled up to fill the window, by the same factor in both
 directions, so it keeps its shape — black bars on whichever axis has room
@@ -87,12 +95,16 @@ left over rather than a stretched image. `DOOM_SCALE` sets how many pixels the
 engine actually renders; the page then scales that to whatever size the window
 is, so raise it if the result looks soft on a large screen.
 
-**Escape stays DOOM's.** Pointer lock normally gives Escape to the browser,
-which cancels the capture — no use at all when Escape is the game's menu key.
-The page also takes a Keyboard Lock on Escape, which hands it back to the game.
-That needs fullscreen, which is why clicking to play goes fullscreen. **Hold**
-Escape to actually leave; browsers guarantee that way out and it cannot be
-taken away.
+**Escape stays DOOM's, in fullscreen.** Pointer lock normally gives Escape to
+the browser, which cancels the capture — no use at all when Escape is the
+game's menu key. The page also takes a Keyboard Lock on Escape, which hands it
+back to the game. That only works in fullscreen, which is the one real
+advantage fullscreen has. **Hold** Escape to actually leave; browsers guarantee
+that way out and it cannot be taken away.
+
+Playing in the window, Escape always releases the mouse — nothing can change
+that — so press it once for your cursor and again for the game's menu, or give
+the menu a second key under Options → Setup → Controls.
 
 Keyboard Lock is a Chromium feature, so on Firefox and Safari Escape still
 ends the capture. The page says so when that is the case, and the fix is to

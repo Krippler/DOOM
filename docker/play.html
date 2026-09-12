@@ -70,6 +70,24 @@
   }
   #overlay p { margin: 0; max-width: 34em; }
   #overlay .dim { color: #808080; font-size: 13px; }
+  #choices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+  }
+  #choices button {
+    font: inherit;
+    color: #d8d8d8;
+    background: #1a1a1a;
+    border: 1px solid #4a4a4a;
+    border-radius: 4px;
+    padding: 9px 18px;
+    cursor: pointer;
+  }
+  #choices button:hover { background: #262626; border-color: #b33; }
+  #choices button:focus-visible { outline: 2px solid #b33; outline-offset: 2px; }
+  #play-fullscreen { border-color: #b33; }
   #status {
     position: absolute;
     left: 0; right: 0; bottom: 0;
@@ -85,8 +103,12 @@
 
 <div id="overlay">
   <h1>DOOM</h1>
-  <p>Click to play. The game goes fullscreen and takes the mouse, so it will
-     not slide out of the window while you turn.</p>
+  <p>The mouse is captured either way, so it cannot slide out of the picture
+     while you turn.</p>
+  <div id="choices">
+    <button id="play-fullscreen" type="button">Play fullscreen</button>
+    <button id="play-windowed" type="button">Play in this window</button>
+  </div>
   <p class="dim" id="esc-note">Keys and the mouse are configured in game under
      Options → Setup.</p>
 </div>
@@ -316,9 +338,15 @@ function releaseButtons() {
 //
 let keyboardLocked = false;
 
-function enterPlay() {
+// Which way play was last started, so clicking the picture after Esc resumes
+// the same way rather than surprising anyone with fullscreen.
+let wantFullscreen = true;
+
+function enterPlay(fullscreen) {
   const c = canvas();
   if (!c) return;
+
+  wantFullscreen = fullscreen;
 
   // Both requests go out inside the click, before anything is awaited.
   //
@@ -330,7 +358,8 @@ function enterPlay() {
   if (c.requestPointerLock) c.requestPointerLock();
 
   let fs = Promise.resolve();
-  if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+  if (fullscreen && !document.fullscreenElement
+      && document.documentElement.requestFullscreen) {
     try {
       fs = document.documentElement.requestFullscreen({ navigationUI: 'hide' })
              || Promise.resolve();
@@ -364,7 +393,10 @@ function enterPlay() {
 
 function lockKeyboard() {
   fitCanvas();
-  if (!(navigator.keyboard && navigator.keyboard.lock)) {
+  // Keyboard Lock only takes effect in fullscreen, so windowed play always
+  // leaves Escape to the browser. The note below says so.
+  if (!document.fullscreenElement
+      || !(navigator.keyboard && navigator.keyboard.lock)) {
     keyboardLocked = false;
     updateEscNote();
     return;
@@ -377,15 +409,32 @@ function lockKeyboard() {
 function updateEscNote() {
   const note = document.getElementById('esc-note');
   if (!note) return;
-  note.textContent = keyboardLocked
-    ? 'Esc opens the game menu. Hold Esc to release the mouse and leave fullscreen.'
-    : 'This browser will not let the page keep Esc, so Esc releases the mouse —'
+  if (keyboardLocked) {
+    note.textContent =
+      'Esc opens the game menu. Hold Esc to release the mouse and leave fullscreen.';
+  } else if (locked() && !document.fullscreenElement) {
+    note.textContent =
+      'Playing in the window, so Esc releases the mouse — press it again for'
+      + ' the game menu. Options → Setup → Controls can put the menu on a'
+      + ' second key. Fullscreen keeps Esc for the game.';
+  } else {
+    note.textContent =
+      'This browser will not let the page keep Esc, so Esc releases the mouse —'
       + ' press it again for the game menu. Options → Setup → Controls can put'
       + ' the menu on a second key.';
+  }
 }
 
-overlayEl.addEventListener('click', enterPlay);
-screenEl.addEventListener('click', () => { if (!locked()) enterPlay(); });
+document.getElementById('play-fullscreen')
+  .addEventListener('click', () => enterPlay(true));
+document.getElementById('play-windowed')
+  .addEventListener('click', () => enterPlay(false));
+
+// Clicking the picture after the capture is released resumes however play was
+// started, so Escape then click does not drop anyone into fullscreen.
+screenEl.addEventListener('click', () => {
+  if (!locked()) enterPlay(wantFullscreen);
+});
 
 document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement) {
@@ -403,6 +452,9 @@ document.addEventListener('pointerlockchange', () => {
   } else {
     releaseButtons();
   }
+  // Pointer lock resolves after enterPlay returns, so the note is only
+  // correct once we know whether it actually took.
+  updateEscNote();
 });
 
 // A button held while the window goes away is the other way to get stuck.

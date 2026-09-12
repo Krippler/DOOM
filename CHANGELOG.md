@@ -6,6 +6,17 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Added
+- **Play in this window**, alongside **Play fullscreen**, on the page you land
+  on. Both capture the mouse; fullscreen is no longer the price of playing.
+  Its one remaining advantage is that Keyboard Lock only works there, so only
+  fullscreen can keep Escape for the game's menu — in the window Escape always
+  releases the mouse, which no page can change.
+- Once the capture is released, clicking the picture resumes it the way you
+  started, so Escape then click cannot drop you into fullscreen unexpectedly.
+
 ## [1.10.12] — 2026-09-12
 
 ### Fixed

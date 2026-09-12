@@ -49,7 +49,8 @@ once it did. Getting from there to a playable game took:
 - **A browser client that captures the mouse.** noVNC is a remote desktop
   client and reports where the pointer is; a game needs to know how far it
   moved. `play.html` locks the pointer instead, so turning never runs out of
-  screen and the cursor cannot wander off into the rest of your desktop.
+  screen and the cursor cannot wander off into the rest of your desktop —
+  fullscreen or in the window, whichever you pick.
 
 [`PORTING-NOTES.md`](PORTING-NOTES.md) documents every change, with the
 original code and why it broke.
