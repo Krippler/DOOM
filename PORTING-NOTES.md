@@ -92,6 +92,13 @@ current gcc and glibc. Behaviour is otherwise left alone.
   inside one 35 Hz tic only the last was used. Every mouse reports faster than
   the tic rate, so most movement was silently dropped; it is summed now, and
   `G_BuildTiccmd` still zeroes the pair once it has built the command.
+- The browser client reports the pointer by walking it around the screen and
+  re-centring only near an edge, rather than always naming centre-plus-delta.
+  The latter reads better but names the same coordinates for the whole of a
+  steady drag, and x11vnc drops a pointer report that does not move the
+  pointer — so most of the movement never reached the engine. The engine's
+  "ignore a motion event landing exactly on the centre" rule is what makes the
+  re-centring free: it costs no turn and re-bases the next delta.
 - **`i_video.c`** — after re-centring the pointer the engine left `lastmousex`
   and `lastmousey` pointing at where the last event landed, and corrected them
   only when the warp's own motion event came back. That event is queued behind

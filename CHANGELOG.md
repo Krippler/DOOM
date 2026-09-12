@@ -6,6 +6,34 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **Mouse look still jittered, and this is the cause the last two releases
+  missed.** The page reported the pointer as *centre plus the movement*, so a
+  steady drag named the same coordinates over and over — and x11vnc discards a
+  pointer report that does not move the pointer. Most of the movement never
+  reached X at all. The page walks the pointer around the screen now and puts
+  it back in the middle only when it would run off the edge, which the engine
+  ignores for movement. Measured end to end through a real browser, pointer
+  lock and x11vnc, over an identical drag: 1.1° before, 83.3° now, the same in
+  both directions, and no drift at all with the mouse still.
+- **The picture did not fill the window.** noVNC writes its own width and
+  height onto the canvas whenever the framebuffer size arrives, which replaced
+  the page's sizing; the scale is applied with `!important` now, and the page
+  watches for the canvas being resized rather than measuring it once.
+- **The mouse capture could silently fail to start.** The click asked for
+  fullscreen and awaited it before requesting pointer lock, by which time the
+  click's user activation was spent and the browser refused — leaving an
+  ordinary remote-desktop pointer with the engine recentring underneath it.
+  Both requests go out inside the click now, and the page says so if the
+  capture does not take.
+
+### Changed
+- `grab_mouse` is off by default again. The engine's own recentring is for
+  running on a real X display; through VNC the page handles it, and the two
+  fought.
+
 ## [1.10.6] — 2026-09-12
 
 ### Fixed

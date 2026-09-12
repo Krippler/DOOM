@@ -103,10 +103,11 @@ It is saved with the rest of your controls.
 If the browser refuses to capture the pointer, the page says so and carries on
 as an ordinary viewer rather than failing.
 
-If you use the plain viewer instead, turn **GRAB POINTER** off under
-Options → Setup → Mouse. With it on the engine keeps pulling the pointer back
-to the middle, which is what makes capture work and what makes an ordinary
-remote-desktop pointer jump around.
+**GRAB POINTER**, under Options → Setup → Mouse, is off by default and should
+stay that way in a browser. It makes the engine pull the pointer back to the
+middle of the screen itself, which is right when you are running the engine on
+a real X display and wrong through VNC — the page already keeps the pointer
+where it needs to be, and the two fight.
 
 ## Controls
 

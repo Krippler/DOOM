@@ -36,10 +36,17 @@
   }
   /* The engine renders one fixed size. The canvas is scaled up to fill the
      window, by the same factor in both directions so the picture keeps its
-     shape -- the black bars are whatever is left over on the other axis. */
+     shape -- the black bars are whatever is left over on the other axis.
+
+     Set here with !important rather than as an inline style, because noVNC
+     writes its own width and height onto the canvas whenever the framebuffer
+     is resized and would otherwise win: an inline style beats a stylesheet
+     rule, but not an important one. */
   #screen canvas {
     image-rendering: pixelated;
     image-rendering: crisp-edges;
+    width:  var(--fb-w, auto) !important;
+    height: var(--fb-h, auto) !important;
   }
   #overlay {
     position: absolute;
@@ -151,12 +158,34 @@ function fitCanvas() {
   const scale = Math.min(window.innerWidth  / c.width,
                          window.innerHeight / c.height);
 
-  c.style.width  = `${Math.round(c.width  * scale)}px`;
-  c.style.height = `${Math.round(c.height * scale)}px`;
+  document.documentElement.style.setProperty(
+    '--fb-w', `${Math.round(c.width  * scale)}px`);
+  document.documentElement.style.setProperty(
+    '--fb-h', `${Math.round(c.height * scale)}px`);
 }
 
 // Fullscreen resizes the window after the event, so refit on both.
 document.addEventListener('fullscreenchange', fitCanvas);
+
+// The framebuffer size is not known when the connection opens; noVNC sets the
+// canvas dimensions once the server has said how big it is, and resizes it
+// again if that ever changes. Refit whenever it does, or the picture keeps
+// whatever size it happened to have when we first looked.
+const fbObserver = new MutationObserver(fitCanvas);
+
+function watchCanvas() {
+  const c = canvas();
+  if (!c) return false;
+  fbObserver.observe(c, { attributes: true, attributeFilter: ['width', 'height'] });
+  fitCanvas();
+  return true;
+}
+
+if (!watchCanvas()) {
+  const waitForCanvas = setInterval(() => {
+    if (watchCanvas()) clearInterval(waitForCanvas);
+  }, 100);
+}
 
 window.addEventListener('resize', fitCanvas);
 
@@ -173,58 +202,80 @@ let pendingX = 0;
 let pendingY = 0;
 let flushQueued = false;
 
+// Where the remote pointer currently is. Reports walk this around the screen
+// rather than always naming centre-plus-delta: a steady drag has a steady
+// delta, so that named the same coordinates over and over, and x11vnc drops a
+// pointer report that does not move the pointer. Most of the movement never
+// reached X at all, which is what the jitter was.
+let vx = 0;
+let vy = 0;
+
 function locked() {
   return document.pointerLockElement === canvas();
 }
 
-function sendMouse(dx, dy) {
+function centreOf(c) {
+  return [Math.round(c.width / 2), Math.round(c.height / 2)];
+}
+
+function resetPointer() {
   const c = canvas();
   if (!c) return;
-  // _sendMouse is noVNC's internal pointer path. There is no public
-  // equivalent in this version; if a future noVNC renames it, the page
-  // falls back to being an ordinary viewer rather than breaking.
-  if (typeof rfb._sendMouse !== 'function') return;
-
-  // The offset has to land inside the framebuffer, so a movement bigger than
-  // half the screen cannot be expressed in one report. Send as much as fits
-  // and keep the rest for the next one, rather than dropping it: a fast flick
-  // should turn further, not mysteriously turn less.
-  const cx = Math.round(c.width / 2);
-  const cy = Math.round(c.height / 2);
-  const limX = cx - 1;
-  const limY = cy - 1;
-
-  const useX = Math.max(-limX, Math.min(limX, dx));
-  const useY = Math.max(-limY, Math.min(limY, dy));
-
-  pendingX = dx - useX;
-  pendingY = dy - useY;
-
-  rfb._sendMouse(cx + useX, cy + useY, buttons);
+  [vx, vy] = centreOf(c);
+  pendingX = 0;
+  pendingY = 0;
 }
 
 //
 // One report per frame, not one per mouse event.
 //
 // A gaming mouse reports several hundred times a second. Sending each one
-// straight out floods the VNC link with pointer events, and the button state
-// rides along on those same events -- so a release could sit behind a queue of
-// movement, or be coalesced away, and the game would keep firing. Batching the
+// straight out floods the VNC link, and the button state rides on those same
+// reports -- so a release could sit behind a queue of movement. Batching the
 // movement into one report per frame keeps the link quiet, and button changes
-// are sent immediately and on their own.
+// go out immediately and on their own.
 //
 function flushMouse() {
   flushQueued = false;
   if (!locked()) return;
   if (pendingX === 0 && pendingY === 0) return;
 
-  const dx = pendingX;
-  const dy = pendingY;
+  const c = canvas();
+  if (!c || typeof rfb._sendMouse !== 'function') return;
+
+  const [cx, cy] = centreOf(c);
+  const edgeX = cx - 4;
+  const edgeY = cy - 4;
+
+  let dx = pendingX;
+  let dy = pendingY;
   pendingX = 0;
   pendingY = 0;
-  sendMouse(dx, dy);
 
-  // sendMouse may have left a remainder from a very fast flick.
+  // Walking off the screen would clamp, and clamping silently eats movement.
+  // Put the pointer back in the middle first: a report landing exactly on the
+  // centre is the one the engine ignores, so it costs no turn and simply
+  // re-bases where the next delta is measured from.
+  if (vx + dx < cx - edgeX || vx + dx > cx + edgeX ||
+      vy + dy < cy - edgeY || vy + dy > cy + edgeY) {
+    rfb._sendMouse(cx, cy, buttons);
+    vx = cx;
+    vy = cy;
+  }
+
+  // Whatever still will not fit is kept for the next frame rather than lost,
+  // so a fast flick turns further instead of mysteriously turning less.
+  const nx = Math.max(0, Math.min(c.width  - 1, vx + dx));
+  const ny = Math.max(0, Math.min(c.height - 1, vy + dy));
+  pendingX = (vx + dx) - nx;
+  pendingY = (vy + dy) - ny;
+
+  if (nx !== vx || ny !== vy) {
+    vx = nx;
+    vy = ny;
+    rfb._sendMouse(vx, vy, buttons);
+  }
+
   if (pendingX !== 0 || pendingY !== 0) queueFlush();
 }
 
@@ -234,11 +285,15 @@ function queueFlush() {
   requestAnimationFrame(flushMouse);
 }
 
-// A button change on its own, at the centre, leaving pending movement alone.
+// A button change on its own. Sent at the centre, which the engine ignores for
+// movement, so pressing fire cannot also nudge the view.
 function sendButtons() {
   const c = canvas();
   if (!c || typeof rfb._sendMouse !== 'function') return;
-  rfb._sendMouse(Math.round(c.width / 2), Math.round(c.height / 2), buttons);
+  const [cx, cy] = centreOf(c);
+  vx = cx;
+  vy = cy;
+  rfb._sendMouse(cx, cy, buttons);
 }
 
 // Let go of everything. Losing the capture with a button held would otherwise
@@ -246,12 +301,7 @@ function sendButtons() {
 function releaseButtons() {
   if (buttons === 0) return;
   buttons = 0;
-  pendingX = 0;
-  pendingY = 0;
-  const c = canvas();
-  if (c && typeof rfb._sendMouse === 'function') {
-    rfb._sendMouse(Math.round(c.width / 2), Math.round(c.height / 2), 0);
-  }
+  sendButtons();
 }
 
 //
@@ -266,31 +316,62 @@ function releaseButtons() {
 //
 let keyboardLocked = false;
 
-async function enterPlay() {
+function enterPlay() {
   const c = canvas();
   if (!c) return;
 
-  try {
-    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-      await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
-    }
-  } catch (e) {
-    // Fullscreen refused. Everything below still works; Escape just goes back
-    // to being the browser's.
-  }
-
-  try {
-    if (navigator.keyboard && navigator.keyboard.lock) {
-      await navigator.keyboard.lock(['Escape']);
-      keyboardLocked = true;
-    }
-  } catch (e) {
-    keyboardLocked = false;
-  }
-
+  // Both requests go out inside the click, before anything is awaited.
+  //
+  // Awaiting fullscreen first and asking for the pointer afterwards spends
+  // the click's user activation on the way, and the browser then refuses the
+  // pointer lock -- silently. That left the game running with an ordinary
+  // remote-desktop pointer while the engine recentred underneath it, which is
+  // the worst of both and jitters.
   if (c.requestPointerLock) c.requestPointerLock();
+
+  let fs = Promise.resolve();
+  if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+    try {
+      fs = document.documentElement.requestFullscreen({ navigationUI: 'hide' })
+             || Promise.resolve();
+    } catch (e) {
+      fs = Promise.reject(e);
+    }
+  }
+
+  fs.then(lockKeyboard).catch(() => {
+    // Fullscreen refused: an iframe without permission, or a browser that
+    // says no. Playable, but Escape stays the browser's.
+    keyboardLocked = false;
+    updateEscNote();
+  });
+
   rfb.focus();
+  fitCanvas();
   updateEscNote();
+
+  // Nothing reports a refused pointer lock reliably, so check.
+  setTimeout(() => {
+    if (!locked()) {
+      status('The browser did not capture the mouse. Click the picture to try '
+           + 'again. Until it does, turn GRAB POINTER off under Options → '
+           + 'Setup → Mouse, or the view will jump about.');
+    } else {
+      status('');
+    }
+  }, 700);
+}
+
+function lockKeyboard() {
+  fitCanvas();
+  if (!(navigator.keyboard && navigator.keyboard.lock)) {
+    keyboardLocked = false;
+    updateEscNote();
+    return;
+  }
+  navigator.keyboard.lock(['Escape'])
+    .then(() => { keyboardLocked = true;  updateEscNote(); })
+    .catch(() => { keyboardLocked = false; updateEscNote(); });
 }
 
 function updateEscNote() {
@@ -304,6 +385,7 @@ function updateEscNote() {
 }
 
 overlayEl.addEventListener('click', enterPlay);
+screenEl.addEventListener('click', () => { if (!locked()) enterPlay(); });
 
 document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement) {
@@ -315,8 +397,12 @@ document.addEventListener('fullscreenchange', () => {
 
 document.addEventListener('pointerlockchange', () => {
   overlayEl.hidden = locked();
-  if (locked()) rfb.focus();
-  else releaseButtons();
+  if (locked()) {
+    resetPointer();
+    rfb.focus();
+  } else {
+    releaseButtons();
+  }
 });
 
 // A button held while the window goes away is the other way to get stuck.
