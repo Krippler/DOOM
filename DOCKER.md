@@ -311,11 +311,29 @@ play — browsers will not play audio without one.
 | `DOOM_AUDIO_PORT` | `5901`, internal only. Nothing to publish; the sound shares the web port. |
 | `DOOM_SOUND=0` | No sound server, no mixer, no audio socket. |
 
-If it is silent, the page says why at the bottom of the screen — a refused
-connection, a worklet the browser would not load, or a container sending
-nothing. The container's own log says which way it sent the sound, on a line
-beginning `sound:`; `sound: to PulseAudio` means it went to a host audio
-server rather than to you, which is what setting `PULSE_SERVER` asks for.
+### When there is no sound
+
+The start screen carries two lines under the buttons:
+
+```
+Sound: on — 22050 Hz in, 48000 Hz out, 12.4 s received
+1.10.17
+```
+
+The first is the live state; if there is no sound it says why instead — a
+refused connection, a worklet the browser would not load, a stream that opens
+and stays quiet. The same reason appears at the bottom of the screen during
+play. The second is the build the **page** came from.
+
+The container prints its own build at startup as `DOOM <version>`, and says
+which way it sent the sound on a line beginning `sound:`. That gives three
+checks that between them cover everything:
+
+| | |
+| --- | --- |
+| Page build older than the log's | The browser is running a cached client. Reload with Ctrl+Shift+R. |
+| `sound: to PulseAudio` in the log | It went to a host audio server rather than to you. Unset `PULSE_SERVER`. |
+| `Sound: on … N s received` and still silent | It is arriving and being played, so the problem is past the browser: a muted tab, or the machine's output device. |
 
 Effects and music have separate volume sliders under Options → Sound Volume.
 

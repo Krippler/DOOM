@@ -39,6 +39,11 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.10.17
+- The start screen now shows what the sound is doing and which build the page
+  came from, and the container prints its own build at startup. If there is no
+  sound, those three things say why between them.
+
 ### 1.10.16
 - Fixes 1.10.15's sound not arriving in some browsers: the page was being
   served from the browser cache, from before the sound existed. No more hard

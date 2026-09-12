@@ -115,11 +115,20 @@ COPY docker/entrypoint.sh /usr/local/bin/doom-entrypoint
 # websockify, taught to carry the sound alongside the picture on one port.
 COPY docker/doom-wsproxy.py /usr/local/bin/doom-wsproxy
 
+# Which build this is. Stamped into the client and printed at startup, so a
+# report of "no sound" can be told apart from a browser quietly running the
+# client from two releases ago -- the container's log looks identical either
+# way, and everything that decides whether sound arrives happens in the page.
+ARG DOOM_VERSION=dev
+
 # A client that captures the mouse. Stock noVNC reports absolute pointer
 # positions, which a game cannot use: see the comment at the top of the file.
 COPY docker/play.html /usr/share/novnc/play.html
 COPY docker/doom-audio.js /usr/share/novnc/doom-audio.js
 COPY docker/index.html /usr/share/novnc/index.html
+
+RUN sed -i "s/__DOOM_VERSION__/${DOOM_VERSION}/g" /usr/share/novnc/play.html \
+ && ! grep -q __DOOM_VERSION__ /usr/share/novnc/play.html
 
 # The shareware IWAD, so the container is playable with nothing mounted.
 # id distributes it freely; see shareware/README.md. A mounted IWAD still
@@ -138,7 +147,8 @@ RUN chmod +x /usr/local/bin/doom-entrypoint /usr/local/bin/doom-wsproxy \
 # DOOM_SOUNDFONT is deliberately unset: the engine searches for an installed
 # General MIDI soundfont on its own, so whichever SOUNDFONT_PACKAGE was built
 # in gets used. Set it to override with your own file.
-ENV DOOM_SCALE=2 \
+ENV DOOM_VERSION=${DOOM_VERSION} \
+    DOOM_SCALE=2 \
     DOOM_WADDIR=/wads \
     DOOM_STATE=/doom/state \
     DOOM_VNC_PORT=5900 \

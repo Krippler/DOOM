@@ -6,6 +6,23 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.17] — 2026-09-12
+
+### Added
+- **The page now says what the sound is doing, and which build it is.** Two
+  releases running, "no sound" has been impossible to tell apart from "sound
+  arriving and inaudible" from the outside: the container's log is identical
+  in both cases, because everything that decides whether sound reaches you
+  happens in the browser. The start screen now carries two lines — the sound's
+  live state (`Sound: on — 22050 Hz in, 48000 Hz out, 12.4 s received`, or the
+  reason there is none) and the build the page itself came from.
+
+  The build stamp is printed at container startup too, as `DOOM <version>`.
+  The two disagreeing is a complete diagnosis on its own: it means the browser
+  is running an older client than the container it is talking to, which
+  nothing in the container's log can reveal, because nothing in the container
+  is wrong.
+
 ## [1.10.16] — 2026-09-12
 
 ### Fixed

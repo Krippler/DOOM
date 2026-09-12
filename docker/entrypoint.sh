@@ -56,6 +56,13 @@ if [ "$(id -u)" = "0" ]; then
     fi
 fi
 
+# Which build this is, printed after the drop so the re-exec above does not
+# say it twice. The client carries the same stamp on its start screen, and the
+# two disagreeing is the whole diagnosis when a browser is quietly running an
+# older client than the container it is talking to -- which the container's
+# own log cannot tell you, because nothing about it is wrong.
+log "DOOM ${DOOM_VERSION:-dev}"
+
 case "$SCALE" in
     1|2|3|4) ;;
     *) die "DOOM_SCALE must be 1, 2, 3 or 4 (got '$SCALE')" ;;

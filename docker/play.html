@@ -70,6 +70,7 @@
   }
   #overlay p { margin: 0; max-width: 34em; }
   #overlay .dim { color: #808080; font-size: 13px; }
+  #overlay #build-note { color: #555; font-size: 11px; letter-spacing: 0.08em; }
   #overlay kbd { font: inherit; color: #d0d0d0; border: 1px solid #555;
                  border-radius: 3px; padding: 0 4px; }
   #choices {
@@ -113,6 +114,8 @@
   </div>
   <p class="dim" id="esc-note">The <kbd>`</kbd> key opens the game menu. Keys and
      the mouse are configured there, under Options → Setup.</p>
+  <p class="dim" id="audio-note">Sound: not started.</p>
+  <p class="dim" id="build-note">__DOOM_VERSION__</p>
 </div>
 
 <div id="status" hidden></div>
@@ -373,27 +376,65 @@ let audioSocket = null;
 let audioNode = null;
 let audioWanted = true;
 let audioFrames = 0;
+let audioSrcRate = 0;
 let audioWatchdog = null;
 
 // For automated checks; harmless otherwise, like __rfb above.
 window.__audio = () => ({
+  build: '__DOOM_VERSION__',
   state: audioCtx ? audioCtx.state : 'none',
   rate: audioCtx ? audioCtx.sampleRate : 0,
+  srcRate: audioSrcRate,
   node: !!audioNode,
   frames: audioFrames,
+  reason: audioReason,
 });
 
 // Sound that does not arrive used to arrive as nothing at all: no message, no
 // way to tell a container sending silence from a page that never connected.
 // Whatever goes wrong now says so, once, in the status line.
 let audioComplained = false;
+let audioReason = '';
 
 function audioFailed(why) {
   if (audioComplained) return;
   audioComplained = true;
+  audioReason = why;
   audioStatus('No sound: ' + why + ' The game is unaffected; the picture and '
             + 'the controls do not depend on it.');
+  audioNote();
 }
+
+//
+// What the sound is actually doing, on the page rather than in a console.
+//
+// Twice now a silent game has been indistinguishable from a broken one from
+// the outside: the container's log is identical either way, and everything
+// that decides whether sound arrives happens in the browser. This says which,
+// where the overlay already is -- press Esc or ` and it is on screen.
+//
+const audioNoteEl = document.getElementById('audio-note');
+
+function audioNote() {
+  if (!audioNoteEl) return;
+
+  let text;
+
+  if (audioComplained)
+    text = 'Sound: ' + audioReason;
+  else if (!audioCtx)
+    text = 'Sound: not started — click to play.';
+  else if (!audioNode)
+    text = 'Sound: connecting…';
+  else
+    text = `Sound: on — ${audioSrcRate} Hz in, ${Math.round(audioCtx.sampleRate)}`
+         + ` Hz out, ${(audioFrames / (audioSrcRate || 1)).toFixed(1)} s received`
+         + (audioCtx.state === 'running' ? '.' : `, context ${audioCtx.state}.`);
+
+  audioNoteEl.textContent = text;
+}
+
+setInterval(audioNote, 500);
 
 function audioURL() {
   return `${scheme}://${location.host}/websockify?token=audio`;
@@ -488,6 +529,7 @@ async function startAudio() {
                     | (bytes[off+10] << 16) | (bytes[off+11] << 24);
       off += 16;
       haveHeader = true;
+      audioSrcRate = srcRate;
 
       try {
         audioNode = new AudioWorkletNode(ctx, 'doom-audio', {
@@ -522,6 +564,7 @@ async function startAudio() {
       clearTimeout(audioWatchdog);
       audioWatchdog = null;
       audioComplained = false;
+      audioReason = '';
       audioStatus('');
     }
 
