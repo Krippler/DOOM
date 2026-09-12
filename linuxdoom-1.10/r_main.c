@@ -660,6 +660,24 @@ R_SetViewSize
   int		detail )
 {
     setsizeneeded = true;
+
+    // Clamp, because this is reached from the config file as well as from the
+    // menu that produces sane values. The view height is computed straight
+    // from this, and anything past 11 makes it taller than the 200 line
+    // screen: at 12 the renderer draws off the right hand edge, at 13 and
+    // beyond it walks off the end of the framebuffer and dies. The 1997 code
+    // trusted the number; a config file is a text file anyone can edit, and a
+    // game that cannot start is a poor answer to a bad line in one.
+    if (blocks < 3)
+	blocks = 3;
+    if (blocks > 11)
+	blocks = 11;
+
+    if (detail < 0)
+	detail = 0;
+    if (detail > 1)
+	detail = 1;
+
     setblocks = blocks;
     setdetail = detail;
 }

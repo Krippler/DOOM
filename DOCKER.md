@@ -352,6 +352,10 @@ its raw URL into the *Template* field of **Docker → Add Container**.
 
 ## Troubleshooting
 
+**It starts, crashes immediately and keeps restarting.** Almost always a bad
+value in `.doomrc` in the state directory. Delete that file and it will be
+recreated with defaults; you lose your settings, not your savegames.
+
 **The browser shows a black canvas.** Click it first; noVNC only forwards
 keyboard input once the canvas has focus.
 

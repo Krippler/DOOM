@@ -255,6 +255,14 @@ anything drawn below y=168 smears and stays there.
   behind `novert`, defaulting to off, the way later ports settled the same
   question.
 
+- **`r_main.c`, `m_menu.c`** — `R_SetViewSize` took the screen size on trust.
+  It is reached from the config file as well as from the menu, and the view
+  height is computed straight from it: above 11 the view is taller than the
+  200 line screen and the renderer writes past the end of the framebuffer —
+  `R_DrawColumn: 206 to 219 at 178` at 12, a segfault at 13. Clamped to the
+  range the menu can express, in both places, so a bad line in a text file
+  cannot stop the game starting.
+
 ## Not changed
 
 - Networking (`i_net.c`) is untouched and untested here.

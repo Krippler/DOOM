@@ -6,6 +6,19 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **A bad `screenblocks` in `.doomrc` broke the renderer**, with errors like
+  `R_DrawColumn: 206 to 219 at 178` and, past 12, a segfault on the first
+  frame — and since the container restarts, a crash loop. The view height is
+  derived straight from that number and anything above 11 makes the view
+  taller than the 200-line screen, so the renderer draws off the end of the
+  framebuffer. The 1997 code trusted the value, which is fine for the menu
+  that produces it and not for a text file. It is clamped now, both where the
+  view size is set and on load, so a bad value is corrected and saved back
+  rather than carried around.
+
 ## [1.10.9] — 2026-09-12
 
 ### Fixed

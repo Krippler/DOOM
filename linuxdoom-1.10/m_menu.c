@@ -2488,6 +2488,14 @@ void M_Init (void)
     itemOn = currentMenu->lastOn;
     whichSkull = 0;
     skullAnimCounter = 10;
+    // Keep the saved value inside what the menu can express, so a bad one is
+    // corrected rather than carried around for ever, and so the slider and
+    // the view size cannot drift apart.
+    if (screenblocks < 3)
+	screenblocks = 3;
+    if (screenblocks > 11)
+	screenblocks = 11;
+
     screenSize = screenblocks - 3;
     messageToPrint = 0;
     messageString = NULL;
