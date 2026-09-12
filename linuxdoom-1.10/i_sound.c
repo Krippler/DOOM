@@ -48,6 +48,9 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 // Timer stuff. Experimental.
 #include <time.h>
 #include <signal.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <pthread.h>
 
 #include "z_zone.h"
@@ -763,21 +766,67 @@ I_InitSound()
   // game down with it. Losing sound is enough.
   signal(SIGPIPE, SIG_IGN);
 
-  if (getenv("DOOMWADDIR"))
+  // Somebody is already doing the mixing, so there is no server to start:
+  // connect to it and talk the same protocol down a socket instead of down a
+  // child process's standard input. audiostream mixes the effects itself now,
+  // which takes two stages of buffering out of the path between asking for a
+  // sound and hearing it.
+  //
+  // Nothing here may return early: I_InitMusic is called at the end of this
+  // function, and skipping it is how the music went silent the first time
+  // this was written.
+  //
+  const char*	sockpath = getenv("DOOM_SFX_SOCKET");
+
+  if (sockpath && *sockpath)
+  {
+    struct sockaddr_un	addr;
+    int			fd = socket(AF_UNIX, SOCK_STREAM, 0);
+
+    if (fd < 0)
+      fprintf(stderr, "Could not make a sound socket (%s)\n", strerror(errno));
+    else
+    {
+      memset(&addr, 0, sizeof(addr));
+      addr.sun_family = AF_UNIX;
+      strncpy(addr.sun_path, sockpath, sizeof(addr.sun_path) - 1);
+
+      if (connect(fd, (struct sockaddr*) &addr, sizeof(addr)) < 0)
+      {
+	fprintf(stderr, "Could not reach the mixer at %s (%s), "
+		"running without sound\n", sockpath, strerror(errno));
+	close(fd);
+      }
+      else
+      {
+	sndserver = fdopen(fd, "w");
+
+	if (!sndserver)
+	  close(fd);
+	else
+	  fprintf(stderr, "sound: mixing in audiostream, commands to %s\n",
+		  sockpath);
+      }
+    }
+  }
+  else if (getenv("DOOMWADDIR"))
     sprintf(buffer, "%s/%s",
 	    getenv("DOOMWADDIR"),
 	    sndserver_filename);
   else
     sprintf(buffer, "%s", sndserver_filename);
-  
+
   // start sound process
-  if ( !access(buffer, X_OK) )
+  if (!sndserver && (!sockpath || !*sockpath))
   {
-    strcat(buffer, " -quiet");
-    sndserver = popen(buffer, "w");
+    if ( !access(buffer, X_OK) )
+    {
+      strcat(buffer, " -quiet");
+      sndserver = popen(buffer, "w");
+    }
+    else
+      fprintf(stderr, "Could not start sound server [%s]\n", buffer);
   }
-  else
-    fprintf(stderr, "Could not start sound server [%s]\n", buffer);
 #else
     
   int i;

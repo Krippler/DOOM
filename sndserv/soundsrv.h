@@ -40,6 +40,25 @@
 #define SPEED			11025
 
 
+//
+// The mixer, as a library.
+//
+// audiostream links these and drives mix() from its own period, so that a
+// sound asked for is mixed into the next few milliseconds of output rather
+// than into a 46 ms block that then waits its turn in a pipe. Building the
+// standalone server leaves main() in; building the library takes it out and
+// leaves everything below.
+//
+extern signed short	mixbuffer[];
+extern int		steptable[];
+extern int		snd_verbose;
+
+int  grabdata (int c, char** v);      // 0, or -1 when no WAD could be found
+void initdata (void);
+int  addsfx (int sfxid, int volume, int step, int seperation);
+int  mix (int frames);                // stereo frames into mixbuffer
+
+
 void I_InitMusic(void);
 
 void

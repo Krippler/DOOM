@@ -38,22 +38,14 @@ RUN make -C linuxdoom-1.10 -j"$(nproc)" \
  && strip linuxdoom-1.10/linux/linuxxdoom \
  && test -x linuxdoom-1.10/linux/linuxxdoom
 
-# The engine drives sound through this separate process, which is how the
-# original release worked and, per its own README, the arrangement that
-# sounds best. Built twice: once talking to PulseAudio (sndserv/pulse.c), for
-# when the host's audio socket is shared with the container, and once writing
-# raw PCM to a pipe (sndserv/stream.c), for when there is no audio system at
-# all and the sound is going to the browser. The entrypoint picks.
+# The sound server, for the one case that still uses it: a container sharing
+# the host's PulseAudio socket, which is how the 1997 release worked and, per
+# its own README, the arrangement that sounds best. Sound going to the browser
+# does not come through here -- audiostream links the same mixer and drives it
+# directly, which is two stages of buffering shorter.
 RUN make -C sndserv -j"$(nproc)" SNDBACKEND=pulse \
  && strip sndserv/linux/sndserver \
- && test -x sndserv/linux/sndserver \
- && mv sndserv/linux/sndserver /tmp/sndserver-pulse \
- && make -C sndserv clean \
- && make -C sndserv -j"$(nproc)" SNDBACKEND=stream \
- && strip sndserv/linux/sndserver \
- && test -x sndserv/linux/sndserver \
- && mv sndserv/linux/sndserver /tmp/sndserver-stream \
- && mv /tmp/sndserver-pulse sndserv/linux/sndserver
+ && test -x sndserv/linux/sndserver
 
 # Mixes the sound server's effects with the engine's music and serves the
 # result to the browser, because the container has no sound card and cannot
@@ -108,7 +100,6 @@ RUN apt-get update \
 
 COPY --from=build /src/linuxdoom-1.10/linux/linuxxdoom /usr/local/games/linuxxdoom
 COPY --from=build /src/sndserv/linux/sndserver /usr/local/games/sndserver
-COPY --from=build /tmp/sndserver-stream /usr/local/games/sndserver-stream
 COPY --from=build /src/audiostream/linux/audiostream /usr/local/games/audiostream
 COPY docker/entrypoint.sh /usr/local/bin/doom-entrypoint
 

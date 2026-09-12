@@ -178,22 +178,31 @@ The container has none, and cannot practically be given one: the only packaged
 job that is, here, adding two streams together. Nor does the picture's own
 transport help, because VNC carries a framebuffer and nothing else.
 
-So there is a third backend, `sndserv/stream.c` (`SNDBACKEND=stream`), which
-writes the mixed effects as raw PCM to a pipe, and a small program of its own
-to read it:
+So there is a program of its own for that case:
 
-- **`audiostream/audiostream.c`** reads the effects pipe at 11025 Hz and the
-  engine's music pipe at the output rate, resamples the effects up by the
-  whole-number factor between them, sums the two with clipping, and writes
-  16-bit stereo PCM to whoever has connected, after a short header naming the
-  rate. It works to an absolute schedule off `CLOCK_MONOTONIC`, one 512-frame
-  period at a time.
+- **`audiostream/audiostream.c`** mixes the effects itself, reads the engine's
+  music pipe at the output rate, resamples the effects up by the whole-number
+  factor between 11025 Hz and the output rate, sums the two with clipping, and
+  writes 16-bit stereo PCM to whoever has connected, after a short header
+  naming the rate. It works to an absolute schedule off `CLOCK_MONOTONIC`, one
+  256-frame period at a time.
 
-  That schedule is also the pacing for everything upstream. Both producers
-  write blocking into pipes sized to hold about 93 ms, so neither can run
-  ahead of a reader that only takes a period at a time -- exactly the job the
-  blocking write to `/dev/dsp` did in 1997. The pipes are read whether or not
-  anyone is listening, because a sound server blocked on a full pipe would
+  The effects are mixed by the 1997 mixer, not a new one: `audiostream`'s
+  Makefile compiles `sndserv/soundsrv.c` with `-DSNDMIX_LIB`, which takes that
+  file's `main()` out and leaves `grabdata`, `initdata`, `addsfx` and `mix`
+  behind, and the engine sends its `'p'` commands to a UNIX socket instead of
+  to a child process's pipe. So there is no separate sound server on this path
+  at all, and a sound asked for is mixed into the next period -- twelve
+  milliseconds of output -- rather than into a 46 ms block that then has to
+  wait its turn in a pipe. Doing it the other way first cost about 90 ms:
+  sound lagged the picture by ~105 ms with the separate server and by ~12 ms
+  without it, measured in the browser off the audio clock.
+
+  That schedule is also the pacing for everything upstream. The music is
+  written blocking into a pipe sized to hold about 93 ms, so the synth cannot
+  run ahead of a reader that only takes a period at a time -- exactly the job
+  the blocking write to `/dev/dsp` did in 1997. The pipe is read whether or
+  not anyone is listening, because a producer blocked on a full pipe would
   block the engine behind it.
 
 - **`i_sound.c`** grew a matching path for music. With `DOOM_MUSIC_PIPE` set
@@ -228,7 +237,7 @@ to read it:
   buffers instead would drift until it stuttered or fell behind.
 
   How much it holds is adaptive, because how much a machine needs depends on
-  the machine, the browser and what else the page is doing. It starts at 40 ms
+  the machine, the browser and what else the page is doing. It starts at 25 ms
   and grows by 20 ms whenever it runs dry, giving 10 ms back after every eight
   seconds that do not. Everything it holds is delay between pulling a trigger
   and hearing it, and a fixed figure is either too much for everyone or too
