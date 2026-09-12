@@ -33,6 +33,7 @@ static const char rcsid[] = "$Id: d_main.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 
 #ifdef NORMALUNIX
 #include <stdio.h>
+#include <time.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -186,6 +187,9 @@ void D_ProcessEvents (void)
 //  draw current display, possibly wiping it from the previous
 //
 
+double		I_FrameFinish;	// how long I_FinishUpdate took, set there
+boolean		D_FrameWiped;	// a melt ran, so a slow frame was meant to be
+
 // wipegamestate can be set to -1 to force a wipe on the next draw
 gamestate_t     wipegamestate = GS_DEMOSCREEN;
 extern  boolean setsizeneeded;
@@ -325,6 +329,10 @@ void D_Display (void)
 	return;
     }
     
+    // A melt takes about a second by design. Saying so keeps it out of the
+    // slow-frame count, which is there to report faults.
+    D_FrameWiped = true;
+
     // wipe update
     wipe_EndScreen(0, 0, SCREENWIDTH, SCREENHEIGHT);
 
@@ -336,6 +344,12 @@ void D_Display (void)
 	{
 	    nowtime = I_GetTime ();
 	    tics = nowtime - wipestart;
+
+	    // Same spin as the one in TryRunTics, and the same answer. This
+	    // one only runs during the melt between screens, so it cost a
+	    // second of a core at every level start rather than all the time.
+	    if (!tics)
+		I_Sleep (1);
 	} while (!tics);
 	wipestart = nowtime;
 	done = wipe_ScreenWipe(wipe_Melt
@@ -352,6 +366,49 @@ void D_Display (void)
 //  D_DoomLoop
 //
 extern  boolean         demorecording;
+
+//
+// Frame timing, reported the way audiostream reports sound arriving short: a
+// line when something went wrong and nothing when it did not, so a quiet log
+// is a clean one. Stutter is the one fault that is obvious to whoever is
+// playing and invisible from here, and guessing at it from the outside has
+// already cost two releases.
+//
+// The engine runs at 35 tics a second, so a frame has 28.6 ms to happen in
+// and TryRunTics deliberately waits out whatever is left. Only the time
+// something takes counts, which is why the wait is measured separately.
+//
+#define FRAME_SLOW_MS	50.0
+
+// A frame is 28.6 ms of wall clock, nearly all of it spent waiting. Using
+// much more CPU than it takes to draw one means something is spinning, and
+// whatever else on the machine wants that CPU is not getting it -- which is
+// what the picture arriving in fits looked like the first time.
+#define FRAME_BUSY_PCT	40.0
+
+static double
+D_Now (void)
+{
+    struct timespec	ts;
+
+    clock_gettime (CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
+}
+
+//
+// CPU this process has actually been given, as opposed to time that passed.
+//
+static double
+D_Cpu (void)
+{
+    struct timespec	ts;
+
+    if (clock_gettime (CLOCK_PROCESS_CPUTIME_ID, &ts) < 0)
+	return 0;
+
+    return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
+}
+
 
 void D_DoomLoop (void)
 {
@@ -370,8 +427,15 @@ void D_DoomLoop (void)
 
     while (1)
     {
+	static double	report = 0, reportcpu = 0;
+	static int	slow = 0, frames = 0;
+	static double	worst = 0, worst_tics = 0, worst_draw = 0;
+	static double	worst_put = 0;
+	double		t0, t1, t2;
+
 	// frame syncronous IO operations
 	I_StartFrame ();                
+	t0 = D_Now ();
 	
 	// process one or more tics
 	if (singletics)
@@ -391,10 +455,66 @@ void D_DoomLoop (void)
 	    TryRunTics (); // will run at least one tic
 	}
 		
+	t1 = D_Now ();
+
 	S_UpdateSounds (players[consoleplayer].mo);// move positional sounds
 
 	// Update display, next frame, with current state.
+	I_FrameFinish = 0;
 	D_Display ();
+	t2 = D_Now ();
+
+	//
+	// TryRunTics waits out the rest of the tic, so t1 - t0 is mostly that
+	// wait and only the excess is work. What is left after the wait plus
+	// the drawing is what a player sees as a frame that did not arrive.
+	//
+	frames++;
+
+	if (t2 - t0 > FRAME_SLOW_MS && !D_FrameWiped)
+	{
+	    slow++;
+
+	    if (t2 - t0 > worst)
+	    {
+		worst      = t2 - t0;
+		worst_tics = t1 - t0;
+		worst_draw = t2 - t1;
+		worst_put  = I_FrameFinish;
+	    }
+	}
+
+	D_FrameWiped = false;
+
+	if (!report)
+	{
+	    report = t2;
+	    reportcpu = D_Cpu ();
+	}
+	else if (t2 - report >= 5000.0)
+	{
+	    double	cpu = D_Cpu ();
+	    double	busy = (cpu - reportcpu) / (t2 - report) * 100.0;
+
+	    if (slow || busy > FRAME_BUSY_PCT)
+	    {
+		fprintf (stderr, "frames: %d in the last 5s, %d over %.0f ms, "
+			 "%.0f%% of a core", frames, slow, FRAME_SLOW_MS, busy);
+
+		if (slow)
+		    fprintf (stderr, "; worst %.0f ms (tics %.0f, draw %.0f, "
+			     "of which handing over the picture %.0f)",
+			     worst, worst_tics, worst_draw, worst_put);
+
+		fprintf (stderr, "\n");
+		fflush (stderr);
+	    }
+
+	    report = t2;
+	    reportcpu = cpu;
+	    frames = slow = 0;
+	    worst = worst_tics = worst_draw = worst_put = 0;
+	}
 
 #ifndef SNDSERV
 	// Sound mixing for the buffer is snychronous.

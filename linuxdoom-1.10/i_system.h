@@ -44,6 +44,13 @@ byte*	I_ZoneBase (int *size);
 // returns current time in tics.
 int I_GetTime (void);
 
+//
+// Give the rest of the machine a moment. The engine's wait-for-the-next-tic
+// loop had nothing like this, because in 1997 there was nothing else on the
+// machine worth yielding to.
+//
+void I_Sleep (int ms);
+
 
 //
 // Called by D_DoomLoop,

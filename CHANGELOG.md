@@ -6,6 +6,63 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **The engine was spinning on a core waiting for the next tic, and starving
+  everything that had to get the picture out.** `TryRunTics` has a loop that
+  waits for the tic it is about to run, and in the 1997 sources that loop has
+  no sleep in it: between one tic and the next — five sixths of the time, at 35
+  tics a second — the engine asked the clock whether it was time yet as fast as
+  the machine could manage. Measured here at **97% of a core** to draw a
+  320×168 view.
+
+  On a 1997 machine that was free, and getting to the tic the instant it
+  arrived was the point. In this container the same box is also running an X
+  server, a VNC server reading that server's framebuffer, a websocket proxy in
+  Python, a mixer and a synth. A millisecond sleep in that loop is 35 times
+  finer than the tic being waited for, so nothing about the timing changes:
+
+  | | engine CPU, playing |
+  | --- | --- |
+  | before | 96.5% of a core |
+  | after | 5% of a core |
+
+  What that costs when the CPU is contended, measured in the browser by
+  watching the canvas actually change, 70 seconds of walking and turning with
+  the container held to one core:
+
+  | | frames painted | median gap | p90 | p99 |
+  | --- | --- | --- | --- | --- |
+  | before | 1915, 1953 | 33 ms | **67 ms** | **84 ms** |
+  | after | 2441, 2449 | 33 ms | **34 ms** | **51 ms** |
+
+  The old build drops a quarter of its frames — 27 a second reaching the
+  browser instead of 35 — and the ones that arrive come unevenly. Two runs each,
+  the figures repeat. Keypress-to-picture is unchanged at 156 ms and
+  sound-behind-picture at 14 ms, so none of this was buying responsiveness.
+
+  The melt between screens had the same spin in its own inner loop, costing a
+  second of a core at every level start. Same fix.
+
+### Added
+- **The engine says when its frames run late, and when it is using more CPU
+  than drawing one takes.** A line every five seconds if either is true and
+  nothing when neither is, so a quiet log is a clean one — the same bargain
+  audiostream's underrun reporting makes. It names where the time went, split
+  between waiting for the tic, drawing, and handing the finished picture to the
+  X server:
+
+  ```
+  frames: 167 in the last 5s, 2 over 50 ms, 4% of a core; worst 95 ms
+      (tics 28, draw 67, of which handing over the picture 67)
+  ```
+
+  The screen melt is excluded, being slow on purpose. A spinning engine is
+  invisible in a frame count — the picture keeps arriving, just not on time —
+  which is why the CPU figure is in there. Diagnosing the fault above took
+  per-process CPU sampling inside a container; it should take reading the log.
+
 ## [1.10.24] — 2026-09-12
 
 ### Fixed

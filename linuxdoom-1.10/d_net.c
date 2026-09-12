@@ -730,6 +730,27 @@ void TryRunTics (void)
 	    M_Ticker ();
 	    return;
 	} 
+
+	//
+	// Wait for the tic rather than racing to it. This loop had no sleep,
+	// so between one tic and the next -- five sixths of the time, at 35
+	// tics a second -- the engine spun at whatever speed the machine
+	// could manage, asking the clock whether it was time yet. Measured at
+	// 97% of a core to draw 320x168.
+	//
+	// In 1997 that was free: nothing else on the machine wanted the CPU,
+	// and spinning got you to the tic the instant it arrived. Here the
+	// same box is also running an X server, a VNC server reading its
+	// framebuffer, a websocket proxy in Python, a mixer and a synth. The
+	// engine starving them shows up as the picture arriving in fits --
+	// worst exactly when a lot of the screen changes at once, because
+	// that is when they need the CPU most.
+	//
+	// A millisecond is 35 times finer than the tic being waited for, so
+	// it costs nothing that can be perceived; input is sampled at tic
+	// boundaries either way.
+	//
+	I_Sleep (1);
     }
     
     // run the count * ticdup dics

@@ -42,6 +42,7 @@ int XShmGetEventBase( Display* dpy ); // problems with g++?
 
 #include <stdarg.h>
 #include <sys/time.h>
+#include <time.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 
@@ -422,8 +423,27 @@ void I_UpdateNoBlit (void)
 //
 // I_FinishUpdate
 //
+//
+// How long handing the finished frame to the X server took. D_DoomLoop reports
+// it when a frame ran slow, because the MIT-SHM path below waits for the
+// server to say it is done with the image -- and x11vnc is reading that same
+// server as fast as it is allowed to, so this is where the two of them
+// contend.
+//
+extern double	I_FrameFinish;
+
+static double
+I_FrameNow (void)
+{
+    struct timespec	ts;
+
+    clock_gettime (CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
+}
+
 void I_FinishUpdate (void)
 {
+    double	finish_t0 = I_FrameNow ();
 
     static int	lasttic;
     int		tics;
@@ -591,6 +611,7 @@ void I_FinishUpdate (void)
 
     }
 
+    I_FrameFinish = I_FrameNow () - finish_t0;
 }
 
 
