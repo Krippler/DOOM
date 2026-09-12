@@ -66,6 +66,17 @@ current gcc and glibc. Behaviour is otherwise left alone.
   this source is v1.10. It now falls back to the title screen.
 - **`p_saveg.c`** — savegames round-trip array indices through pointer fields;
   the `(int)` casts are now `intptr_t` so nothing is truncated.
+- **`i_system.c`, `m_misc.c`** — the zone allocator was getting two megabytes.
+  `mb_used` is initialised to 6, but `M_LoadDefaults` runs before `Z_Init` and
+  overwrites it from the config table, whose default was 2; every config file
+  written by this container therefore says `mb_used 2`. The zone is the cache
+  for every texture, sprite and level structure in play, so at that size it
+  spends the game purging what it is about to need and reading it back from the
+  WAD — 230 lumps and 825 KB re-read in three minutes of the shareware demos,
+  and `W_ReadLump` blocks the thread that draws the frame. Now 32 MB, applied
+  as a floor because the old value is already written into people's config
+  files: 33 re-reads over the same three minutes, which is first-time loads
+  and nothing more.
 - **`z_zone.c`, `d_net.c`, `d_main.c`, `i_video.c`** — remaining
   pointer-to-integer casts widened to `intptr_t`/`uintptr_t`.
 - **`i_video.c`** — the MIT-SHM check works out whether the display is local by

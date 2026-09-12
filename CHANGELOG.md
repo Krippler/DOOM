@@ -6,6 +6,52 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.24] — 2026-09-12
+
+### Fixed
+- **The engine was re-reading the WAD during play, which is what a pause when
+  a door opens or a new monster appears actually is.** The zone allocator is
+  the cache for every wall texture, every sprite and every level structure in
+  play, and it was being given **two megabytes**. `i_system.c` initialises
+  `mb_used` to 6, but `M_LoadDefaults` runs before `Z_Init` and overwrites it
+  from the config table, where the default was 2 — and every config file this
+  container has ever written says `mb_used 2`.
+
+  Two megabytes does not hold a level's textures and the sprites of the things
+  standing in it, so the zone spends the game purging what it is about to want
+  again and reading it back. Measured on the shareware attract demos, counting
+  every lump that had to be re-read after startup, over the same three minutes
+  of the same demo each time:
+
+  | zone heap | lumps re-read | bytes |
+  | --- | --- | --- |
+  | 1 MB | 1278 | 3094 KB |
+  | **2 MB (what shipped)** | **230** | **825 KB** |
+  | 16 MB | 41 | 320 KB |
+  | **32 MB (now)** | **33** | **288 KB** |
+
+  What is left at 32 MB is first-time loads and nothing more. And that is the
+  smallest WAD and the smallest levels in existence — a retail IWAD has larger
+  levels and many more monsters to hold sprites for, so the same 2 MB has more
+  to thrash over.
+
+  Those re-reads land exactly where the pause is reported: a door revealing a
+  texture nothing was using, or a monster coming into view for the first time.
+  `W_ReadLump` is a blocking read on the thread that draws the frame, and the
+  IWAD is a symlink to whatever was mounted — on a NAS that is a share on the
+  array, possibly behind a FUSE layer, possibly a disk that has spun down. The
+  sound keeps playing while the picture waits, because the mixer is a separate
+  process.
+
+  The new value is a floor rather than a setting: a config file asking for
+  less is a 1997 answer to a problem nobody has, so it is raised. Asking for
+  more still works. The engine's resident memory went up by under a megabyte
+  in three minutes of play — the zone is allocated, not touched.
+
+  Measured on this machine the re-reads were too cheap to produce a visible
+  stall, so the pause itself is not reproduced here; what is measured is that
+  the reads are gone.
+
 ## [1.10.23] — 2026-09-12
 
 ### Changed
