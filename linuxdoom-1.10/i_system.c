@@ -48,7 +48,27 @@ rcsid[] = "$Id: m_bbox.c,v 1.1 1997/02/03 22:45:10 b1 Exp $";
 
 
 
-int	mb_used = 6;
+//
+// How much memory the zone allocator gets, in megabytes.
+//
+// This is the cache for every wall texture, every sprite and every level
+// structure in play. The 1997 default was 6 MB, and the config file's default
+// -- which M_LoadDefaults applies before Z_Init runs, so it is the one that
+// counts -- was 2. Two megabytes does not hold a level's textures and the
+// sprites of the things standing in it, so the zone spends the game purging
+// what it is about to want again and reading it back from the WAD: measured
+// on the shareware demos, 230 lumps and 825 KB re-read in three minutes of
+// play, and that is the smallest WAD and the smallest levels there are. Those
+// re-reads land exactly when a door reveals a texture nothing was using or a
+// monster comes into view for the first time.
+//
+// 16 MB was enough to take that to 41 reads -- first-time loads and no more.
+// 32 leaves room for a retail IWAD's larger levels and the PWADs people play,
+// and 32 MB of a machine's memory is no longer worth saving.
+//
+#define ZONE_MB_MIN	32
+
+int	mb_used = ZONE_MB_MIN;
 
 
 void
@@ -68,14 +88,23 @@ ticcmd_t*	I_BaseTiccmd(void)
 }
 
 
+//
+// A floor rather than a setting: anyone who has played this container before
+// has 'mb_used 2' written in their config file, and honouring it would keep
+// the thrashing that number causes. Asking for more still works; asking for
+// less is a 1997 answer to a problem nobody has.
+//
 int  I_GetHeapSize (void)
 {
+    if (mb_used < ZONE_MB_MIN)
+	mb_used = ZONE_MB_MIN;
+
     return mb_used*1024*1024;
 }
 
 byte* I_ZoneBase (int*	size)
 {
-    *size = mb_used*1024*1024;
+    *size = I_GetHeapSize ();
     return (byte *) malloc (*size);
 }
 
