@@ -375,16 +375,21 @@ const AUDIO_MAGIC = 'DOOMAUD1';
 // not to be enough. Every millisecond here is a millisecond between pulling
 // the trigger and hearing it, so it starts small and earns more only when it
 // actually runs dry -- see doom-ring.js.
-const AUDIO_TARGET_MS     = 40;
+const AUDIO_TARGET_MS     = 25;
 const AUDIO_MAX_TARGET_MS = 250;
 const AUDIO_MAX_MS        = 400;
 
 // The fallback runs on the main thread, alongside noVNC decoding and blitting
-// every frame the game draws, so it starts with a little more in hand. Its
-// own buffer is the bigger cost: a ScriptProcessorNode is handed to the page
-// roughly two buffers ahead of when it is heard, so 4096 frames was about
-// 190 ms of delay on its own, and 1024 is a quarter of that.
-const AUDIO_FALLBACK_TARGET_MS = 40;
+// every frame the game draws. Its own buffer is the bigger cost: a
+// ScriptProcessorNode is handed to the page roughly two buffers ahead of when
+// it is heard, so 4096 frames was about 190 ms of delay on its own, and 1024
+// is a quarter of that.
+//
+// 512 was tried and is worse, not better: it halves that 46 ms but leaves the
+// main thread 11 ms a callback next to noVNC's decoding, and on a busy
+// machine the ring buffer answers the underruns by growing its target to
+// 125 ms -- giving back twice what the smaller buffer saved.
+const AUDIO_FALLBACK_TARGET_MS = 25;
 const AUDIO_FALLBACK_BUFFER    = 1024;
 
 

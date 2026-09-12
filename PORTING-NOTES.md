@@ -354,6 +354,28 @@ on the `claude/video-stream-experiment` branch rather than here.
 What is actually worth attention is the other half: the sound arrives about
 150 ms after the picture it belongs to, and that gap is real.
 
+It is also stubborn. It is spread across six stages -- the sound server's pipe
+(~50 ms), the block it mixes into (~23 ms), the mixer's period (12 ms), the
+browser's ring buffer (~25-40 ms), the `ScriptProcessorNode` (~46 ms) and the
+output device (~32 ms) -- with no one of them dominant, so each is worth
+10-20 ms at best, and two of the three ways to take it cost more than they
+save. A smaller mixer period triples the number of periods that arrive short
+of sound; a smaller `ScriptProcessorNode` buffer halves its own 46 ms and is
+then answered by the ring buffer growing its target to 125 ms.
+
+The instructive failure was the transport. The pipe between the sound server
+and the mixer is the largest single stage, and a pipe cannot be smaller than a
+page -- 4096 bytes, 93 ms of 11025 Hz stereo. A unix socket can: asked for
+2048 it holds 1024, which is 23 ms. Both ends have to be told, because the
+sender blocks on its own `SO_SNDBUF` and the default is about 42 KB, a full
+second of this stream; setting only the receiver's buys a second of delay and
+no complaint from anything. Set properly on both, it works, it runs clean, and
+it makes **no measurable difference to the total**. Seventy milliseconds came
+out of the stage that was supposed to be holding them and the sound arrived no
+sooner, which means the buffering that matters is not where the queue depth
+says it is. Whoever picks this up next should find out where before changing
+anything.
+
 ## Added
 
 Three things the 1997 release had no way to do, all reachable from

@@ -6,7 +6,7 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
-## [Unreleased]
+## [1.10.22] — 2026-09-12
 
 ### Fixed
 - **The "140 ms video delay" in 1.10.21's notes was wrong, and is corrected.**
@@ -26,6 +26,50 @@ The version follows the engine this is built from, linuxdoom-1.10.
 
   What is left that is real: the sound arrives about 150 ms after the picture
   it belongs to.
+
+## [Unreleased]
+
+### Changed
+- **The browser now asks for 25 ms of sound in hand rather than 40.** On a
+  machine that can sustain it that is 15 ms less delay between a shot and
+  hearing it; on one that cannot, the buffer grows to what that machine needs
+  as it already did, so there is nothing to lose by asking for less first.
+
+### Added
+- **audiostream says when a producer could not keep up.** A period short of
+  sound is padded with silence, and silence is exactly what an absent sound
+  already sounds like — the one fault in the audio path that cannot be heard.
+  It now prints a line when it happens, and nothing when it does not, so a
+  quiet log means a clean one.
+
+### Known
+
+- **The sound still arrives about 150 ms after the picture, and this release
+  barely moves it.** What follows is what was measured, so the next attempt
+  starts further along than this one did.
+
+  The gap is spread across six stages with no dominant one: the sound
+  server's pipe (~50 ms), the block it mixes into (~23 ms), the mixer's period
+  (12 ms), the browser's ring buffer (~25–40 ms), the `ScriptProcessorNode`
+  (~46 ms) and the output device (~32 ms). Squeezing any of them moves the
+  total by 10–20 ms, and two of the three ways to do it cost more than they
+  save:
+
+  | Tried | Result |
+  | --- | --- |
+  | Ring target 40 → 25 ms | Kept. Helps where the machine can sustain it. |
+  | Mixer period 12 → 6 ms | ~10 ms better, three times the short periods. Not kept. |
+  | `ScriptProcessorNode` 1024 → 512 frames | Halves its own 46 ms, but the ring answers the underruns by growing to 125 ms. Worse. Not kept. |
+  | Pipes → unix sockets, to hold 23 ms instead of 93 | **No measurable change.** Not kept. |
+
+  That last one is the useful negative: the transport was the largest single
+  stage on paper, and shrinking it by 70 ms did nothing to the total. So the
+  buffering that matters is not where the pipe queue said it was, and the next
+  attempt should find out where before changing anything.
+
+  On a loaded machine the ring buffer's own adaptation sets the floor
+  regardless — it grows until the machine can keep up, and that figure is the
+  latency. The start screen's `holding` reading is that number.
 
 ## [1.10.21] — 2026-09-12
 

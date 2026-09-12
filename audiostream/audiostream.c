@@ -78,6 +78,7 @@ typedef struct
     unsigned char	partial[PERIOD * 4 * 4];
     size_t		have;
     long		underruns;
+    long		periods;
 } source_t;
 
 
@@ -151,6 +152,8 @@ ReadSource
 	memset (s->partial + s->have, 0, want - s->have);
 	s->underruns++;
     }
+
+
 
     memcpy (buf, s->partial, want);
     s->have = 0;
@@ -249,6 +252,8 @@ main
 
     struct timespec	next;
     long		period_ns;
+    long		reports = 0;
+    long		lastsfx = 0, lastmusic = 0;
 
     for (i = 1; i < argc; i++)
     {
@@ -380,6 +385,25 @@ main
 	    if (verbose)
 		fprintf (stderr, "audiostream: listener connected (%d)\n",
 			 nclients);
+	}
+
+	// Say when a producer could not keep up, which is otherwise the one
+	// fault nobody can hear: a period short of sound is padded with
+	// silence, and silence is what an absent sound already sounds like.
+	// Said only when it happens, so a quiet log means a clean one.
+	if (++reports >= 22050 / PERIOD * 5)
+	{
+	    if (sfx.underruns != lastsfx || music.underruns != lastmusic)
+	    {
+		fprintf (stderr, "audiostream: short periods in the last 5s: "
+			 "effects %ld, music %ld\n",
+			 sfx.underruns - lastsfx, music.underruns - lastmusic);
+		fflush (stderr);
+		lastsfx = sfx.underruns;
+		lastmusic = music.underruns;
+	    }
+
+	    reports = 0;
 	}
 
 	// Read both pipes whether or not anyone is listening. These reads are
