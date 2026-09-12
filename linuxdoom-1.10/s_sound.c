@@ -373,7 +373,10 @@ S_StartSoundAtVolume
   if (sfx->lumpnum < 0)
     sfx->lumpnum = I_GetSfxLumpNum(sfx);
 
-#ifndef SNDSRV
+// Was SNDSRV. Every other file spells it SNDSERV, which is what the build
+// defines, so this guard never matched and the warning below fired for
+// every single sound played through the sound server.
+#ifndef SNDSERV
   // cache data if necessary
   if (!sfx->data)
   {

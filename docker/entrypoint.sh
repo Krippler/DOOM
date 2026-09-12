@@ -81,6 +81,12 @@ fi
 IWADS="doom2f.wad doom2.wad plutonia.wad tnt.wad doomu.wad doom.wad doom1.wad"
 LINKDIR="$STATE/.iwads"
 
+# Which one to start when several are mounted. The engine's own search order
+# picks Doom II first, so a directory holding both games always started the
+# sequel; Doom comes first here instead. Set DOOM_IWAD to a filename or a path
+# to choose directly.
+IWAD_PREFERENCE="doomu.wad doom.wad doom2.wad doom2f.wad tnt.wad plutonia.wad doom1.wad"
+
 # The bundled shareware IWAD, used only when nothing was mounted.
 BUNDLED_WAD="${DOOM_BUNDLED_WAD:-/usr/share/doom/doom1.wad}"
 BUNDLED_MD5="f0cefca49926d00903cf57551d901abe"
@@ -130,6 +136,45 @@ if [ -z "$found" ]; then
 fi
 
 export DOOMWADDIR="$LINKDIR"
+
+##############################################################################
+# Choose which IWAD to start, and say so rather than leaving it to the
+# engine's built-in search order.
+##############################################################################
+CHOSEN=""
+
+if [ -n "${DOOM_IWAD:-}" ]; then
+    # A path, or a bare filename to look for in the mounted directory.
+    for cand in "$DOOM_IWAD" "$WADDIR/$DOOM_IWAD" "$LINKDIR/$DOOM_IWAD"; do
+        [ -r "$cand" ] && { CHOSEN="$cand"; break; }
+    done
+    [ -n "$CHOSEN" ] || die "DOOM_IWAD='$DOOM_IWAD' not found or not readable"
+    log "DOOM_IWAD set: starting $(basename "$CHOSEN")"
+else
+    for want in $IWAD_PREFERENCE; do
+        if [ -e "$LINKDIR/$want" ]; then
+            CHOSEN="$LINKDIR/$want"
+            break
+        fi
+    done
+fi
+
+# By now this script has re-executed itself as PUID:PGID, so this is the
+# access the engine will actually have. Finding a file needs only the
+# directory; reading it needs the file itself, and a WAD that is readable by
+# its owner alone fails here with nothing to explain why.
+if [ -n "$CHOSEN" ] && [ ! -r "$CHOSEN" ]; then
+    log "found $(basename "$CHOSEN") but cannot read it as $(id -u):$(id -g)"
+    log "make it readable, e.g.  chmod a+r <your wad>"
+    log "or run with -e PUID=<owner uid> -e PGID=<owner gid>"
+    die "IWAD is not readable"
+fi
+
+# Only worth a line when there was actually a choice to make.
+if [ -z "${DOOM_IWAD:-}" ] && [ "$(echo $found | wc -w)" -gt 1 ]; then
+    log "several IWADs present ($(echo $found)); starting $(basename "$CHOSEN")"
+    log "set DOOM_IWAD to start a different one"
+fi
 
 # The in-game WAD menu scans this instead, so it lists what the user actually
 # mounted rather than the lowercase symlinks above. With nothing mounted there
@@ -247,7 +292,7 @@ websockify --web="$NOVNC_ROOT" "$WEB_PORT" "localhost:$VNC_PORT" \
 WEB_PID=$!
 
 log ""
-log "  play at  http://localhost:$WEB_PORT/play.html"
+log "  play at  http://localhost:$WEB_PORT/  (or /play.html)"
 log ""
 log "  plain noVNC (no mouse capture):  http://localhost:$WEB_PORT/vnc.html?autoconnect=1&resize=off"
 log ""
@@ -262,6 +307,16 @@ case " $* " in
         if [ "$SCALE" -gt 1 ]; then
             set -- "-$SCALE" "$@"
         fi
+        ;;
+esac
+
+# Name the IWAD outright unless the caller already did. The engine would
+# otherwise fall back to searching, which is what picked the wrong game.
+case " $* " in
+    *" -iwad "*)
+        ;;
+    *)
+        [ -n "$CHOSEN" ] && set -- -iwad "$CHOSEN" "$@"
         ;;
 esac
 

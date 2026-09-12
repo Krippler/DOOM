@@ -54,6 +54,16 @@ your own copy of the game.
 If no IWAD is mounted the container falls back to the bundled shareware file
 and says so. It stops only if that is missing or fails its checksum too.
 
+With several mounted, Doom is started ahead of Doom II — the engine's own
+search order picks the sequel, so a directory holding both always started
+Doom II. Set `DOOM_IWAD` to a filename or path to choose directly.
+
+**The Ultimate Doom** is recognised by its contents, not its name. The 1997
+code expected the four-episode version to be called `doomu.wad`; Steam, GOG and
+every other re-release install it as `DOOM.WAD`, which that code reads as plain
+registered Doom with *Thy Flesh Consumed* unreachable. The engine now looks for
+E4M1 in the IWAD itself and identifies the game from that.
+
 Mods (PWADs) go in the same directory. They are not matched against the table
 above; anything ending in `.wad` shows up in the in-game WAD menu below.
 
@@ -63,6 +73,7 @@ Two pages are served:
 
 | | |
 | --- | --- |
+| `/` | Redirects to `play.html`. |
 | `/play.html` | Captures the mouse. Use this to play. |
 | `/vnc.html?autoconnect=1&resize=off` | Stock noVNC, no capture. Useful for looking at the screen without grabbing your pointer. |
 
@@ -148,6 +159,7 @@ Everything is set through the environment:
 | `DOOM_SCALE` | `2` | Pixel scale, 1–4. The window is 320×200 times this. |
 | `DOOM_WADDIR` | `/wads` | Where to look for IWADs. |
 | `DOOM_BUNDLED_WAD` | `/usr/share/doom/doom1.wad` | Shareware IWAD used when nothing is mounted. |
+| `DOOM_IWAD` | unset | Which IWAD to start when several are mounted. A filename or a path. |
 | `DOOM_STATE` | `/doom/state` | Config file, savegames and logs. |
 | `DOOM_WEB_PORT` | `6080` | noVNC HTTP port. |
 | `DOOM_VNC_PORT` | `5900` | VNC port. |

@@ -1586,7 +1586,13 @@ void G_DoPlayDemo (void)
 	 
     gameaction = ga_nothing; 
     demobuffer = demo_p = W_CacheLumpName (defdemoname, PU_STATIC); 
-    if ( *demo_p++ != VERSION)
+
+    // Every released IWAD carries demos recorded by 1.9, and this source is
+    // 1.9's game code with the version number bumped to 1.10, so they play
+    // back correctly. Rejecting them left the title screen sitting there with
+    // "Demo is from a different game version!" on the console instead of the
+    // attract loop the game is supposed to show.
+    if ( *demo_p != VERSION && *demo_p != 109)
     {
       fprintf( stderr, "Demo is from a different game version!\n");
       gameaction = ga_nothing;
@@ -1602,7 +1608,10 @@ void G_DoPlayDemo (void)
       D_StartTitle ();
       return;
     }
-    
+
+    // Past the version byte the header is the same either way.
+    demo_p++;
+
     skill = *demo_p++; 
     episode = *demo_p++; 
     map = *demo_p++; 

@@ -6,6 +6,34 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **The Ultimate Doom was being played as plain registered Doom**, with *Thy
+  Flesh Consumed* sitting in the WAD where the menu could not reach it. The
+  1997 code identifies the game from the IWAD's filename and expected the four
+  episode version to be called `doomu.wad`; Steam, GOG and every other
+  re-release install it as `DOOM.WAD`. The engine now looks for E4M1 inside the
+  IWAD and identifies it from that, so the banner, the episode menu and the
+  fourth episode all agree.
+- **A directory holding both games always started Doom II.** That is the
+  engine's own search order. The container now picks the IWAD itself, prefers
+  Doom over Doom II, and names it on the command line rather than leaving it to
+  the search. `DOOM_IWAD` chooses directly.
+- **"Demo is from a different game version!" on repeat, and no attract loop.**
+  Every released IWAD's demos were recorded by 1.9 and this engine announces
+  itself as 1.10, so it rejected all of them and sat on the title screen. The
+  1.10 source is 1.9's game code with the version bumped, so the demos play
+  back correctly; they are accepted now.
+- **"S_StartSoundAtVolume: 16bit and not pre-cached - wtf?" for every sound.**
+  The guard around that warning is spelled `SNDSRV`; every other file, and the
+  build, spells it `SNDSERV`. A one-character typo in the 1997 source meant the
+  branch never compiled out.
+- The bare URL now serves the client that captures the mouse instead of a
+  directory listing, so reaching the plain viewer by accident is harder.
+- A WAD the game cannot read — owned by someone else, or not world-readable —
+  now says so, and which user it tried as, instead of failing obscurely.
+
 ## [1.10.2] — 2026-09-11
 
 ### Added

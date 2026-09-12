@@ -92,6 +92,23 @@ current gcc and glibc. Behaviour is otherwise left alone.
   the screen and stopped there, and mouse look stopped with it. It is now
   re-centred immediately after each motion the engine acts on, so every one is
   measured from the middle however many arrive between tics.
+- **`d_main.c`** — the game is identified from the IWAD's filename, and the
+  four episode version was `doomu.wad` in 1997. It has not been sold under that
+  name in decades: every re-release installs The Ultimate Doom as `doom.wad`,
+  which this code reads as three-episode registered Doom, leaving *Thy Flesh
+  Consumed* in the WAD with no way to reach it. It now reads the IWAD's lump
+  directory and identifies the game by whether E4M1 is in it. Reading the file
+  rather than asking `W_CheckNumForName` matters: the latter searches every
+  loaded WAD, so a PWAD adding an E4M1 would have been mistaken for retail.
+- **`g_game.c`** — every released IWAD's demos are recorded by version 1.9, and
+  this source announces itself as 1.10, so `G_DoPlayDemo` rejected all of them:
+  no attract loop, and "Demo is from a different game version!" on the console
+  for each attempt. 1.10 is 1.9's game code with the version bumped, so the
+  demos play back correctly and 109 is accepted.
+- **`s_sound.c`** — the guard around "16bit and not pre-cached - wtf?" is
+  spelled `SNDSRV`, while the build and every other file spell it `SNDSERV`, so
+  it never compiled out and the warning printed for every sound played through
+  the sound server.
 
 ## Sound server (`sndserv/`)
 

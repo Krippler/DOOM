@@ -94,6 +94,7 @@ COPY docker/entrypoint.sh /usr/local/bin/doom-entrypoint
 # A client that captures the mouse. Stock noVNC reports absolute pointer
 # positions, which a game cannot use: see the comment at the top of the file.
 COPY docker/play.html /usr/share/novnc/play.html
+COPY docker/index.html /usr/share/novnc/index.html
 
 # The shareware IWAD, so the container is playable with nothing mounted.
 # id distributes it freely; see shareware/README.md. A mounted IWAD still

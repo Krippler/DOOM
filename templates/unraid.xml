@@ -28,7 +28,7 @@
     The WebUI opens a client that captures the mouse, so turning does not run out of screen and the cursor stays in the game. Esc hands the cursor back; press it again for the game menu. Plain noVNC is still there at /vnc.html if you would rather it did not grab the pointer.
   </Overview>
   <Category>GameServers: Other:</Category>
-  <WebUI>http://[IP]:[PORT:6080]/play.html</WebUI>
+  <WebUI>http://[IP]:[PORT:6080]/</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/Krippler/DOOM/master/templates/unraid.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/Krippler/DOOM/master/templates/doom-icon.png</Icon>
   <ExtraParams>--restart=unless-stopped</ExtraParams>

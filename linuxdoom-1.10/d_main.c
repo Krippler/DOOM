@@ -51,6 +51,7 @@ static const char rcsid[] = "$Id: d_main.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 
 #include "z_zone.h"
 #include "w_wad.h"
+#include "m_swap.h"
 #include "s_sound.h"
 #include "v_video.h"
 
@@ -581,6 +582,62 @@ static char* WadFileName (char* dir, char* file)
 
 
 //
+// Does this WAD contain a named lump?
+//
+// Used to tell The Ultimate Doom from plain registered Doom before the WAD
+// system is running, so the game is identified correctly from the start
+// rather than corrected afterwards.
+//
+static boolean WadHasLump (char* path, char* lump)
+{
+    FILE*	f;
+    char	id[4];
+    int		numlumps;
+    int		infotableofs;
+    int		i;
+    boolean	found = false;
+
+    f = fopen (path, "rb");
+
+    if (!f)
+	return false;
+
+    if (fread (id, 1, 4, f) != 4
+	|| (memcmp (id, "IWAD", 4) && memcmp (id, "PWAD", 4))
+	|| fread (&numlumps, 4, 1, f) != 1
+	|| fread (&infotableofs, 4, 1, f) != 1)
+    {
+	fclose (f);
+	return false;
+    }
+
+    numlumps = LONG(numlumps);
+    infotableofs = LONG(infotableofs);
+
+    if (numlumps < 0 || numlumps > 65535
+	|| fseek (f, infotableofs, SEEK_SET))
+    {
+	fclose (f);
+	return false;
+    }
+
+    for (i = 0; i < numlumps && !found; i++)
+    {
+	filelump_t	entry;
+
+	if (fread (&entry, sizeof(entry), 1, f) != 1)
+	    break;
+
+	if (!strncasecmp (entry.name, lump, 8))
+	    found = true;
+    }
+
+    fclose (f);
+    return found;
+}
+
+
+//
 // IdentifyVersion
 // Checks availability of IWAD files by name,
 // to determine whether registered/commercial features
@@ -660,7 +717,13 @@ void IdentifyVersion (void)
 	else if (!strcasecmp (base, "doomu.wad"))
 	    gamemode = retail;
 	else if (!strcasecmp (base, "doom.wad"))
-	    gamemode = registered;
+	{
+	    // Every re-release ships The Ultimate Doom under this name, and
+	    // only it has a fourth episode. The 1997 code expected the four
+	    // episode version to be called doomu.wad and has not been right
+	    // about this for a very long time.
+	    gamemode = WadHasLump (iwad, "e4m1") ? retail : registered;
+	}
 	else if (!strcasecmp (base, "doom1.wad"))
 	    gamemode = shareware;
 	else
@@ -754,7 +817,9 @@ void IdentifyVersion (void)
 
     if ( !access (doomwad,R_OK) )
     {
-      gamemode = registered;
+      // Same story as the -iwad branch above: doom.wad is The Ultimate Doom
+      // everywhere it is sold now, and only that has a fourth episode.
+      gamemode = WadHasLump (doomwad, "e4m1") ? retail : registered;
       D_AddFile (doomwad);
       return;
     }
@@ -1077,7 +1142,7 @@ void D_DoomMain (void)
 
     printf ("W_Init: Init WADfiles.\n");
     W_InitMultipleFiles (wadfiles);
-    
+
 
     // Check for -file in shareware
     if (modifiedgame)
