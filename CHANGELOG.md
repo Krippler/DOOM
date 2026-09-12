@@ -6,6 +6,58 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Changed
+- **The sound effects are mixed where they are sent, and the separate sound
+  server is gone from this path.** It was the last piece of the 1997
+  arrangement still in the way: the engine started a child process, the child
+  mixed 512 samples — 46 ms — at a time and wrote the result down a pipe, and
+  `audiostream` read that pipe a period at a time and sent it on. A shot
+  therefore waited half a block to be mixed at all and then waited its turn in
+  a queue, all of it behind sound that had already been decided.
+
+  `audiostream` now links the same mixer — `sndserv/soundsrv.c` compiled with
+  `-DSNDMIX_LIB`, which takes its `main()` out and leaves `grabdata`,
+  `initdata`, `addsfx` and `mix` — and calls it once per 12 ms period, and the
+  engine sends the same `'p'` commands it always sent to a unix socket instead
+  of to a child's standard input. Nothing about the mixing changed; what
+  changed is who calls it and how often.
+
+  Measured in the browser off the audio clock, twenty shots a run, music
+  muted so the measurement starts from silence:
+
+  | | keypress → picture | keypress → sound | sound behind picture |
+  | --- | --- | --- | --- |
+  | 1.10.22 | 155 ms | 259 ms | **102 ms** |
+  | this release | 154 ms | 169 ms | **14 ms** |
+
+  Repeated: 107 ms against 10 ms. The sound is now within a frame of the
+  picture, which is where it was always supposed to be.
+
+  This also explains 1.10.22's useful negative — shrinking the transport from
+  93 ms to 23 ms changed nothing measurable. The queue was never the stage
+  that mattered. The separate process was: a mixer that decides 46 ms at a
+  time and runs ahead of the reader is 90 ms of delay no matter how short the
+  pipe between them is.
+
+- The sound server itself is unchanged and still built, for the one case that
+  still uses it: a container sharing the host's PulseAudio socket. Its
+  pipe-writing backend (`SNDBACKEND=stream`, added in 1.10.15) has no caller
+  left and is removed.
+
+- **The browser now asks for 25 ms of sound in hand rather than 40.** On a
+  machine that can sustain it that is 15 ms less delay between a shot and
+  hearing it; on one that cannot, the buffer grows to what that machine needs
+  as it already did, so there is nothing to lose by asking for less first.
+
+### Added
+- **audiostream says when a producer could not keep up.** A period short of
+  sound is padded with silence, and silence is exactly what an absent sound
+  already sounds like — the one fault in the audio path that cannot be heard.
+  It now prints a line when it happens, and nothing when it does not, so a
+  quiet log means a clean one.
+
 ## [1.10.22] — 2026-09-12
 
 ### Fixed
@@ -26,50 +78,6 @@ The version follows the engine this is built from, linuxdoom-1.10.
 
   What is left that is real: the sound arrives about 150 ms after the picture
   it belongs to.
-
-## [Unreleased]
-
-### Changed
-- **The browser now asks for 25 ms of sound in hand rather than 40.** On a
-  machine that can sustain it that is 15 ms less delay between a shot and
-  hearing it; on one that cannot, the buffer grows to what that machine needs
-  as it already did, so there is nothing to lose by asking for less first.
-
-### Added
-- **audiostream says when a producer could not keep up.** A period short of
-  sound is padded with silence, and silence is exactly what an absent sound
-  already sounds like — the one fault in the audio path that cannot be heard.
-  It now prints a line when it happens, and nothing when it does not, so a
-  quiet log means a clean one.
-
-### Known
-
-- **The sound still arrives about 150 ms after the picture, and this release
-  barely moves it.** What follows is what was measured, so the next attempt
-  starts further along than this one did.
-
-  The gap is spread across six stages with no dominant one: the sound
-  server's pipe (~50 ms), the block it mixes into (~23 ms), the mixer's period
-  (12 ms), the browser's ring buffer (~25–40 ms), the `ScriptProcessorNode`
-  (~46 ms) and the output device (~32 ms). Squeezing any of them moves the
-  total by 10–20 ms, and two of the three ways to do it cost more than they
-  save:
-
-  | Tried | Result |
-  | --- | --- |
-  | Ring target 40 → 25 ms | Kept. Helps where the machine can sustain it. |
-  | Mixer period 12 → 6 ms | ~10 ms better, three times the short periods. Not kept. |
-  | `ScriptProcessorNode` 1024 → 512 frames | Halves its own 46 ms, but the ring answers the underruns by growing to 125 ms. Worse. Not kept. |
-  | Pipes → unix sockets, to hold 23 ms instead of 93 | **No measurable change.** Not kept. |
-
-  That last one is the useful negative: the transport was the largest single
-  stage on paper, and shrinking it by 70 ms did nothing to the total. So the
-  buffering that matters is not where the pipe queue said it was, and the next
-  attempt should find out where before changing anything.
-
-  On a loaded machine the ring buffer's own adaptation sets the floor
-  regardless — it grows until the machine can keep up, and that figure is the
-  latency. The start screen's `holding` reading is that number.
 
 ## [1.10.21] — 2026-09-12
 

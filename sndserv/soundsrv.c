@@ -140,7 +140,7 @@ static void derror(char* msg)
     exit(-1);
 }
 
-int mix(void)
+int mix(int frames)
 {
 
     register int		dl;
@@ -157,7 +157,7 @@ int mix(void)
     rightout = mixbuffer+1;
     step = 2;
 
-    leftend = mixbuffer + SAMPLECOUNT*step;
+    leftend = mixbuffer + frames*step;
 
     // mix into the mixing buffer
     while (leftout != leftend)
@@ -323,7 +323,7 @@ static char* wadfilename (char* dir, char* file)
     return path;
 }
 
-void
+int
 grabdata
 ( int		c,
   char**	v )
@@ -392,7 +392,7 @@ grabdata
     else
     {
 	fprintf(stderr, "Could not find wadfile anywhere\n");
-	exit(-1);
+	return -1;
     }
 
     
@@ -421,6 +421,7 @@ grabdata
 	//  }
     }
 
+    return 0;
 }
 
 static struct timeval		last={0,0};
@@ -428,13 +429,17 @@ static struct timeval		last={0,0};
 
 static struct timezone		whocares;
 
+#ifndef SNDMIX_LIB
+
 void updatesounds(void)
 {
 
-    mix();
+    mix(SAMPLECOUNT);
     I_SubmitOutputBuffer(mixbuffer, SAMPLECOUNT);
 
 }
+
+#endif
 
 int
 addsfx
@@ -591,6 +596,8 @@ void initdata(void)
 
 
 
+#ifndef SNDMIX_LIB
+
 void quit(void)
 {
     I_ShutdownMusic();
@@ -629,7 +636,8 @@ main
     int		waitingtofinish=0;
 
     // get sound data
-    grabdata(c, v);
+    if (grabdata(c, v) < 0)
+	exit(-1);
 
     // init any data
     initdata();		
@@ -759,3 +767,5 @@ main
     quit();
     return 0;
 }
+
+#endif	// SNDMIX_LIB

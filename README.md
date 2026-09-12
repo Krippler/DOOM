@@ -36,10 +36,12 @@ once it did. Getting from there to a playable game took:
   that assumed big-endian and mirrored every pixel pair, undefined behaviour
   in the input queue, and a sound path that called `exit(-1)` on any system
   without OSS — which is every system now.
-- **Sound**, through the separate sound server that shipped with the release,
-  given a PulseAudio backend. The original wrote to `/dev/dsp`, which no
-  current kernel provides, and PulseAudio's own OSS shim was removed upstream
-  in PulseAudio 16.
+- **Sound**, through the mixer that shipped with the release. The original ran
+  it in a separate process writing to `/dev/dsp`, which no current kernel
+  provides, and PulseAudio's own OSS shim was removed upstream in PulseAudio
+  16. Sound bound for the browser is mixed by `audiostream` directly, from the
+  same code; a container sharing the host's PulseAudio socket still runs the
+  separate server, with a PulseAudio backend in place of the OSS one.
 - **Music**, which was never implemented at all: every music function in the
   1997 sources is an empty stub. The WAD's MUS lumps are converted to Standard
   MIDI and rendered by FluidSynth.
@@ -47,8 +49,9 @@ once it did. Getting from there to a playable game took:
   no sound daemon — the only packaged PulseAudio brings systemd, GStreamer and
   a set of video codecs with it — and VNC carries a picture and nothing else.
   So `audiostream` mixes the two and sends raw PCM to the page, which plays it
-  through an `AudioWorklet`. Nothing to mount, which matters when the
-  container is on a server in another room.
+  through an `AudioWorklet` where the browser allows one and a
+  `ScriptProcessorNode` where it does not. Nothing to mount, which matters
+  when the container is on a server in another room.
 - **A display the engine will accept.** It only ever supported an 8-bit
   PseudoColor X visual, which no current X server offers, so the container
   brings its own Xvfb at depth 8 and exports it over noVNC.

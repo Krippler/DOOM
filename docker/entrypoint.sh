@@ -14,7 +14,6 @@ WEB_PORT="${DOOM_WEB_PORT:-6080}"
 DISP="${DOOM_DISPLAY:-:99}"
 DOOM_BIN="${DOOM_BIN:-/usr/local/games/linuxxdoom}"
 SNDSERVER_BIN="${DOOM_SNDSERVER_BIN:-/usr/local/games/sndserver}"
-SNDSERVER_STREAM_BIN="${DOOM_SNDSERVER_STREAM_BIN:-/usr/local/games/sndserver-stream}"
 AUDIOSTREAM_BIN="${DOOM_AUDIOSTREAM_BIN:-/usr/local/games/audiostream}"
 WSPROXY_BIN="${DOOM_WSPROXY_BIN:-/usr/local/bin/doom-wsproxy}"
 AUDIO_PORT="${DOOM_AUDIO_PORT:-5901}"
@@ -236,9 +235,11 @@ elif [ -n "${PULSE_SERVER:-}" ] || \
     else
         log "sound: to PulseAudio at ${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/pulse/native"
     fi
-elif [ -x "$AUDIOSTREAM_BIN" ] && [ -x "$SNDSERVER_STREAM_BIN" ]; then
+elif [ -x "$AUDIOSTREAM_BIN" ]; then
     AUDIO_TO_BROWSER=1
-    ln -sf "$SNDSERVER_STREAM_BIN" "$LINKDIR/sndserver"
+    # No sound server to start: audiostream does the mixing itself and the
+    # engine sends it the same commands down a socket.
+    rm -f "$LINKDIR/sndserver"
 
     # Both producers write raw PCM into these; audiostream reads them on a
     # real-time schedule, which is also what stops either running ahead.
@@ -246,7 +247,7 @@ elif [ -x "$AUDIOSTREAM_BIN" ] && [ -x "$SNDSERVER_STREAM_BIN" ]; then
     rm -rf "$AUDIO_PIPES"
     mkdir -p "$AUDIO_PIPES"
 
-    export DOOM_SFX_PIPE="$AUDIO_PIPES/sfx"
+    export DOOM_SFX_SOCKET="$AUDIO_PIPES/commands"
     export DOOM_MUSIC_PIPE="$AUDIO_PIPES/music"
     export DOOM_AUDIO_RATE="$AUDIO_RATE"
 
@@ -352,7 +353,8 @@ VNC_PID=$!
 # server open these pipes at startup and the reader is what creates them.
 if [ "$AUDIO_TO_BROWSER" = "1" ]; then
     log "starting audiostream on port $AUDIO_PORT"
-    "$AUDIOSTREAM_BIN" --sfx "$DOOM_SFX_PIPE" --music "$DOOM_MUSIC_PIPE" \
+    "$AUDIOSTREAM_BIN" --commands "$DOOM_SFX_SOCKET" \
+        --music "$DOOM_MUSIC_PIPE" \
         --rate "$AUDIO_RATE" --port "$AUDIO_PORT" \
         >"$STATE/audiostream.log" 2>&1 &
     AUDIO_PID=$!
