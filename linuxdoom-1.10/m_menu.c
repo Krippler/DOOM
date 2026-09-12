@@ -1739,10 +1739,18 @@ void M_ChangeSensitivity(int choice)
 void M_ChangeDetail(int choice)
 {
     choice = 0;
-    detailLevel = 1 - detailLevel;
 
-    // FIXME - does not work. Remove anyway?
-    fprintf( stderr, "M_ChangeDetail: low detail mode n.a.\n");
+    // Low detail does not work in this port. The 1997 source says so itself,
+    // in the comment just below, and the routine it selects indexes past the
+    // end of its column table.
+    //
+    // It used to flip detailLevel anyway. That did nothing visible, because
+    // the call that would apply it is commented out -- but the changed value
+    // was still written to .doomrc, and the next start applied it for real,
+    // at which point the renderer drew outside the framebuffer and the game
+    // died. Pressing this one menu item broke the game on the following
+    // launch. Leave the setting alone and say why.
+    players[consoleplayer].message = "LOW DETAIL IS NOT AVAILABLE";
 
     return;
     
@@ -2495,6 +2503,9 @@ void M_Init (void)
 	screenblocks = 3;
     if (screenblocks > 11)
 	screenblocks = 11;
+
+    // Older builds could save this as 1; see M_ChangeDetail.
+    detailLevel = 0;
 
     screenSize = screenblocks - 3;
     messageToPrint = 0;

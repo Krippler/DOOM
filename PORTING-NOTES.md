@@ -263,6 +263,16 @@ anything drawn below y=168 smears and stays there.
   range the menu can express, in both places, so a bad line in a text file
   cannot stop the game starting.
 
+- **`m_menu.c`, `r_main.c`, `r_draw.c`** — the Options menu's detail toggle
+  flipped `detailLevel` and then returned without applying it, above a comment
+  reading "FIXME - does not work". The value was still saved, and applied on
+  the next start, where `R_DrawColumnLow` range checks `dc_x` against
+  `SCREENWIDTH` and then doubles it to index `columnofs` twice — so a column
+  up to 319 passes the check and reads entry 638. Wild destination pointers,
+  and a segfault a few frames later. The menu leaves the setting alone now,
+  `R_SetViewSize` refuses the mode outright, a stale value is corrected on
+  load, and the check is against half the width where it belongs.
+
 ## Not changed
 
 - Networking (`i_net.c`) is untouched and untested here.

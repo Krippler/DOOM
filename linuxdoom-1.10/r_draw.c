@@ -266,7 +266,10 @@ void R_DrawColumnLow (void)
 	return; 
 				 
 #ifdef RANGECHECK 
-    if ((unsigned)dc_x >= SCREENWIDTH
+    // Against half the width, because dc_x is doubled below and used to index
+    // columnofs twice. Checking it against the full width let everything up to
+    // 319 through, and 319 doubled is past the end of the view.
+    if ((unsigned)dc_x >= SCREENWIDTH/2
 	|| dc_yl < 0
 	|| dc_yh >= SCREENHEIGHT)
     {

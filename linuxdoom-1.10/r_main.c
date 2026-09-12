@@ -673,10 +673,12 @@ R_SetViewSize
     if (blocks > 11)
 	blocks = 11;
 
-    if (detail < 0)
-	detail = 0;
-    if (detail > 1)
-	detail = 1;
+    // Low detail is not available in this port: R_DrawColumnLow range checks
+    // the column against the full screen width and then doubles it, so it
+    // indexes past the end of columnofs and writes wherever that lands. The
+    // menu no longer offers it; this makes sure a value left in a config file
+    // by an older build cannot switch it on either.
+    detail = 0;
 
     setblocks = blocks;
     setdetail = detail;

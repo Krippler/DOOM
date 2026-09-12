@@ -6,6 +6,24 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **Pressing "Detail" in Options broke the game on the next launch.** Low
+  detail does not work in this port — the 1997 source says so itself and the
+  call that would apply it is commented out — but the menu item still flipped
+  the setting, and the flipped value was written to `.doomrc`. The next start
+  applied it for real, selecting a drawing routine that range-checks the
+  column against the full screen width and *then* doubles it, so it indexes
+  past the end of its column table and writes wherever that lands: garbled
+  rendering, then a segfault, then a restart loop.
+
+  The menu no longer changes the setting and says why, the renderer refuses
+  the mode whatever a config file asks for, and a value left behind by an
+  older build is corrected on load — so an already-broken config fixes itself
+  with nothing to edit. The range check is corrected too, so the routine is
+  not a trap if it is ever revived.
+
 ## [1.10.11] — 2026-09-12
 
 ### Changed

@@ -364,8 +364,8 @@ The startup log says which view size is in use:
 R_SetViewSize: blocks 11, detail 0 -> view 320x200
 ```
 
-`blocks` is clamped to 3–11, so anything higher in that line means an old
-image — pull again.
+`blocks` is clamped to 3–11 and `detail` is always 0, so anything else in that
+line means an old image — pull again.
 
 **The browser shows a black canvas.** Click it first; noVNC only forwards
 keyboard input once the canvas has focus.
