@@ -124,6 +124,7 @@ ARG DOOM_VERSION=dev
 # A client that captures the mouse. Stock noVNC reports absolute pointer
 # positions, which a game cannot use: see the comment at the top of the file.
 COPY docker/play.html /usr/share/novnc/play.html
+COPY docker/doom-ring.js /usr/share/novnc/doom-ring.js
 COPY docker/doom-audio.js /usr/share/novnc/doom-audio.js
 COPY docker/index.html /usr/share/novnc/index.html
 

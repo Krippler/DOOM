@@ -220,12 +220,26 @@ to read it:
   server talking to nobody. `no-cache` means revalidate, not do not store, so
   the usual answer is a 304.
 
-- **`docker/play.html`** plays the stream through an `AudioWorklet` feeding a
-  ring buffer. The container sends at its own real-time rate and the sound
-  card consumes at its own, which are never quite the same, so the worklet
-  pads when it runs dry and drops when it runs long, and resamples to whatever
-  rate the `AudioContext` turns out to be. Scheduling a queue of buffers
-  instead would drift until it stuttered or fell behind.
+- **`docker/play.html`** plays the stream through a ring buffer
+  (`doom-ring.js`). The container sends at its own real-time rate and the
+  sound card consumes at its own, which are never quite the same, so it pads
+  when it runs dry, drops the oldest frame when it runs long, and resamples to
+  whatever rate the `AudioContext` turns out to be. Scheduling a queue of
+  buffers instead would drift until it stuttered or fell behind.
+
+  Two things drive that buffer. An `AudioWorklet` (`doom-audio.js`) where the
+  browser has one, and a `ScriptProcessorNode` where it does not -- which is
+  most of the time, because `AudioWorklet` is gated on a secure context and
+  this page is normally served over plain HTTP from a machine on the network.
+  `ctx.audioWorklet` is absent there while the `AudioWorkletNode` constructor
+  is present, so a support check that tests for the constructor passes and the
+  `addModule` call then throws.
+
+  `doom-ring.js` assigns its class onto `globalThis` rather than exporting it,
+  because it is loaded two ways: as an ordinary script by the page, and as a
+  worklet module into the `AudioWorkletGlobalScope`, which does not share the
+  page's. A module export would only reach one of them, and the point of the
+  file is that there is one copy of the algorithm rather than two that drift.
 
 ### Effect volume
 

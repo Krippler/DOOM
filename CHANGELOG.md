@@ -6,9 +6,31 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
-## [Unreleased]
+## [1.10.18] — 2026-09-12
 
 ### Fixed
+- **Sound never worked anywhere but localhost.** 1.10.15 played it through an
+  `AudioWorklet`, which browsers expose only in a *secure context* — HTTPS, or
+  localhost. This page is normally served over plain HTTP from a machine on
+  the network, where `ctx.audioWorklet` is simply absent, and asking it to
+  load the worklet threw. Which is every real installation of this container:
+  the one arrangement where it did work was the one every test used.
+
+  What made it hard to see from either end is that `AudioWorkletNode` *is*
+  defined in an insecure context even though `ctx.audioWorklet` is not, so the
+  support check passed and the failure came later — and until 1.10.17 it came
+  silently, leaving a container whose log was perfectly healthy because
+  nothing in the container was wrong.
+
+  Where there is no worklet the sound now goes through a `ScriptProcessorNode`
+  instead: deprecated for years, implemented everywhere, and needing no secure
+  context. Both feed the same ring buffer, in `doom-ring.js`, which the page
+  and the worklet load from the one file so they cannot drift apart. The
+  fallback keeps a little more sound in hand, since it runs on the main thread
+  alongside noVNC's decoding. Measured over 37 seconds of play on an insecure
+  origin: no dropouts, and audio arriving at 22045 Hz against a nominal 22050.
+
+  The start screen says which of the two is in use.
 - **Branch builds failed on the version stamp 1.10.17 added.** It was
   substituted with `sed s/…/…/`, and the stamp for a non-release build carries
   the branch name — which in this repository contains a slash, ending the

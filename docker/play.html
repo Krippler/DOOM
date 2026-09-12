@@ -120,6 +120,10 @@
 
 <div id="status" hidden></div>
 
+<!-- The ring buffer that both audio paths use. An ordinary script, not a
+     module: the worklet loads this same file into its own global scope. -->
+<script src="doom-ring.js"></script>
+
 <script type="module">
 import RFB from './core/rfb.js';
 
@@ -370,18 +374,28 @@ const AUDIO_MAGIC = 'DOOMAUD1';
 const AUDIO_TARGET_MS = 80;
 const AUDIO_MAX_MS    = 300;
 
+// The fallback runs on the main thread, alongside noVNC decoding and blitting
+// every frame the game draws, so it needs more in hand before a hiccup in
+// that work becomes a hole in the sound.
+const AUDIO_FALLBACK_TARGET_MS = 140;
+const AUDIO_FALLBACK_BUFFER    = 4096;
+
 
 let audioCtx = null;
 let audioSocket = null;
 let audioNode = null;
+let audioPush = null;
 let audioWanted = true;
 let audioFrames = 0;
 let audioSrcRate = 0;
 let audioWatchdog = null;
+let audioVia = '';
 
 // For automated checks; harmless otherwise, like __rfb above.
 window.__audio = () => ({
   build: '__DOOM_VERSION__',
+  secure: window.isSecureContext,
+  via: audioVia,
   state: audioCtx ? audioCtx.state : 'none',
   rate: audioCtx ? audioCtx.sampleRate : 0,
   srcRate: audioSrcRate,
@@ -429,6 +443,7 @@ function audioNote() {
   else
     text = `Sound: on — ${audioSrcRate} Hz in, ${Math.round(audioCtx.sampleRate)}`
          + ` Hz out, ${(audioFrames / (audioSrcRate || 1)).toFixed(1)} s received`
+         + (audioVia === 'worklet' ? '' : ', via the fallback')
          + (audioCtx.state === 'running' ? '.' : `, context ${audioCtx.state}.`);
 
   audioNoteEl.textContent = text;
@@ -452,6 +467,11 @@ async function startAudio() {
     return;
   }
 
+  if (!window.DoomRing) {
+    audioFailed('doom-ring.js did not load.');
+    return;
+  }
+
   let ctx;
 
   try {
@@ -463,11 +483,32 @@ async function startAudio() {
 
   audioCtx = ctx;
 
-  try {
-    await ctx.audioWorklet.addModule('doom-audio.js');
-  } catch (e) {
-    audioFailed('the browser would not load the audio worklet (' + e + ').');
-    return;
+  // AudioWorklet is the better of the two -- it runs on the audio thread,
+  // where nothing the page is doing can interrupt it -- but it is gated on a
+  // secure context, and this page is normally served over plain HTTP from a
+  // machine on the network. `ctx.audioWorklet` is simply absent there, while
+  // the AudioWorkletNode constructor is present, which is what made the first
+  // attempt at this look supported right up until it threw.
+  //
+  // So where there is no worklet the sound goes through a ScriptProcessorNode
+  // instead: deprecated for years, implemented everywhere, and needing no
+  // secure context. Both feed the same DoomRing.
+  if (ctx.audioWorklet && typeof ctx.audioWorklet.addModule === 'function') {
+    try {
+      await ctx.audioWorklet.addModule('doom-ring.js');
+      await ctx.audioWorklet.addModule('doom-audio.js');
+      audioVia = 'worklet';
+    } catch (e) {
+      audioVia = '';
+    }
+  }
+
+  if (!audioVia) {
+    if (typeof ctx.createScriptProcessor !== 'function') {
+      audioFailed('this browser offers no way to play a stream of audio.');
+      return;
+    }
+    audioVia = 'fallback';
   }
 
   let sock;
@@ -532,16 +573,35 @@ async function startAudio() {
       audioSrcRate = srcRate;
 
       try {
-        audioNode = new AudioWorkletNode(ctx, 'doom-audio', {
-          outputChannelCount: [2],
-          processorOptions: {
-            srcRate,
-            targetMs: AUDIO_TARGET_MS,
-            maxMs: AUDIO_MAX_MS,
-          },
-        });
+        if (audioVia === 'worklet') {
+          audioNode = new AudioWorkletNode(ctx, 'doom-audio', {
+            outputChannelCount: [2],
+            processorOptions: {
+              srcRate,
+              targetMs: AUDIO_TARGET_MS,
+              maxMs: AUDIO_MAX_MS,
+            },
+          });
+
+          audioPush = (f) => audioNode.port.postMessage(f, [f.buffer]);
+        } else {
+          const ring = new DoomRing(srcRate, ctx.sampleRate,
+                                    AUDIO_FALLBACK_TARGET_MS, AUDIO_MAX_MS);
+
+          // One input channel, not none: a node with no inputs at all is not
+          // pulled by every implementation, and this one is never connected
+          // to anything, so what it reads is silence either way.
+          audioNode = ctx.createScriptProcessor(AUDIO_FALLBACK_BUFFER, 1, 2);
+
+          audioNode.onaudioprocess = (e) => {
+            const out = e.outputBuffer;
+            ring.read(out.getChannelData(0), out.getChannelData(1));
+          };
+
+          audioPush = (f) => ring.push(f);
+        }
       } catch (err) {
-        audioFailed('the audio worklet would not start (' + err + ').');
+        audioFailed('the browser would not start playback (' + err + ').');
         sock.close();
         return;
       }
@@ -569,7 +629,7 @@ async function startAudio() {
     }
 
     audioFrames += whole >> 2;
-    audioNode.port.postMessage(f, [f.buffer]);
+    audioPush(f);
   };
 
   sock.onclose = () => {
@@ -601,7 +661,12 @@ async function startAudio() {
 function stopAudio() {
   if (audioWatchdog) { clearTimeout(audioWatchdog); audioWatchdog = null; }
   if (audioSocket) { audioSocket.close(); audioSocket = null; }
-  if (audioNode)   { audioNode.disconnect(); audioNode = null; }
+  if (audioNode)   {
+    audioNode.onaudioprocess = null;   // no-op on a worklet node
+    audioNode.disconnect();
+    audioNode = null;
+  }
+  audioPush = null;
   if (audioCtx)    { audioCtx.close().catch(() => {}); audioCtx = null; }
 }
 

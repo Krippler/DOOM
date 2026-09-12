@@ -300,10 +300,19 @@ keeps either producer from running ahead — the same job a blocking write to
 `/dev/dsp` did in 1997.
 
 That PCM reaches the page over a second WebSocket on the port you already
-published, and an `AudioWorklet` plays it through a small ring buffer that
-absorbs the difference between the container's clock and your sound card's.
-About 88 KB/s, or 700 kbit/s. Sound starts with the same click that starts
-play — browsers will not play audio without one.
+published, and is played through a small ring buffer that absorbs the
+difference between the container's clock and your sound card's. About 88 KB/s,
+or 700 kbit/s. Sound starts with the same click that starts play — browsers
+will not play audio without one.
+
+The ring buffer is driven one of two ways. An `AudioWorklet` is the better of
+them, running on the audio thread where nothing the page is doing can
+interrupt it, but browsers expose it only in a **secure context** — HTTPS, or
+localhost. Reaching this container at `http://<host>:6080` is neither, so
+there the sound goes through a `ScriptProcessorNode`: deprecated for years,
+implemented everywhere, and needing no secure context. The start screen says
+which is in use. Serving the page over HTTPS through a reverse proxy gets you
+the worklet, and is worth nothing else.
 
 | | |
 | --- | --- |
@@ -332,6 +341,7 @@ checks that between them cover everything:
 | | |
 | --- | --- |
 | Page build older than the log's | The browser is running a cached client. Reload with Ctrl+Shift+R. |
+| `Sound: … via the fallback` | Normal over plain HTTP — see above. Not a fault. |
 | `sound: to PulseAudio` in the log | It went to a host audio server rather than to you. Unset `PULSE_SERVER`. |
 | `Sound: on … N s received` and still silent | It is arriving and being played, so the problem is past the browser: a muted tab, or the machine's output device. |
 
