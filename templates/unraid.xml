@@ -39,6 +39,9 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.10.8
+- Holding a mouse button repeats the action, and releasing it stops.
+
 ### 1.10.7
 - Mouse look actually works. Most of the movement was being discarded before
   it reached the game.
