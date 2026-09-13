@@ -182,20 +182,84 @@ let videoPlayKB = 0;
 // they stop together, it is the link or the proxy. Nothing else distinguishes
 // those two, and they need completely different answers.
 //
+// Declared up here because playing() below reads it, and a let that is read
+// before its declaration throws rather than reading as undefined.
+let videoBusy = false;        // was the last second one where anything moved?
+
+// Every figure below is meant to describe a spell of play. This is the one
+// test for that, because getting it wrong has now produced four sets of
+// confident numbers measured against a motionless screen.
+function playing() {
+  const o = document.getElementById('overlay');
+
+  // Not merely "the start screen is down", but "the picture is moving".
+  //
+  // VNC sends what changed and nothing else, so a player standing still gets
+  // no messages at all, for as long as they stand there -- and gating only on
+  // the start screen still measured that as a 355 ms stall on a machine whose
+  // longest real gap was 50. videoBusy is the same test the painted-frame
+  // figures use: at least ten frames painted in the last second.
+  return !!o && o.hidden && videoBusy;
+}
+
 let audioBytes = 0;
 let audioWorstGap = 0;        // longest the sound went without a message, ms
+let videoMsgGap = 0;          // ... and the picture, which is not the same as
+                              //     the longest it went without being painted
+let videoAskGap = 0;          // longest this page took to ask for the next one
 
 (function countBytes() {
   const Native = window.WebSocket;
   let audioLast = 0;
+  let videoLastMsg = 0;
 
   window.WebSocket = function (...a) {
     const sock = new Native(...a);
     const isAudio = String(a[0]).indexOf('token=audio') >= 0;
+
+    //
+    // When this page asks for the next frame.
+    //
+    // VNC here is one frame per round trip -- x11vnc offers no continuous
+    // updates, so nothing arrives until the client asks -- and the container
+    // side has now shown x11vnc answering within a few milliseconds of every
+    // request while the browser takes hundreds to make one. Splitting that
+    // wait in two says whether the data was slow reaching this page or this
+    // page was slow to act on it.
+    //
+    if (!isAudio) {
+      const send = sock.send.bind(sock);
+      sock.send = (data) => {
+        if (videoLastMsg && playing()) {
+          const since = performance.now() - videoLastMsg;
+          if (since > videoAskGap) videoAskGap = since;
+        }
+        return send(data);
+      };
+    }
+
     sock.addEventListener('message', (e) => {
       const n = (e.data && e.data.byteLength) || 0;
 
-      if (!isAudio) { videoBytes += n; return; }
+      if (!isAudio) {
+        videoBytes += n;
+
+        const now = performance.now();
+
+        if (!playing()) {
+          // Nothing counts while this screen is up. Nobody is playing, so the
+          // picture legitimately goes quiet for as long as it likes -- and a
+          // figure gathered then describes the reader, not the game. This is
+          // the fourth thing in this file to have needed that said out loud.
+          videoLastMsg = 0;
+          return;
+        }
+
+        if (videoLastMsg && now - videoLastMsg > videoMsgGap)
+          videoMsgGap = now - videoLastMsg;
+        videoLastMsg = now;
+        return;
+      }
 
       audioBytes += n;
 
@@ -209,6 +273,8 @@ let audioWorstGap = 0;        // longest the sound went without a message, ms
       //
       const now = performance.now();
 
+      if (!playing()) { audioLast = 0; return; }
+
       if (audioLast && now - audioLast > audioWorstGap)
         audioWorstGap = now - audioLast;
 
@@ -219,7 +285,7 @@ let audioWorstGap = 0;        // longest the sound went without a message, ms
   window.WebSocket.prototype = Native.prototype;
   Object.assign(window.WebSocket, Native);
 
-  window.__audioGapReset = () => { audioLast = 0; };
+  window.__audioGapReset = () => { audioLast = 0; videoLastMsg = 0; };
 })();
 
 const rfb = new RFB(screenEl, `${scheme}://${location.host}`, {
@@ -563,7 +629,6 @@ let videoRate = 0;            // ... and in the last full second
 let videoBest = 0;            // the best second lately, which is the real test
 let videoWorstGap = 0;        // longest wait between two of them, ms
 let videoLate = 0;            // paints that took over a tic and a quarter
-let videoBusy = false;        // was the last second one where anything moved?
 let videoStalls = 0;          // times the browser's own frame loop went away
 let videoWorstStall = 0;      // ... and for how long, ms
 const VIDEO_TIC_MS = 1000 / 35;
@@ -696,6 +761,10 @@ function videoNote() {
            + ` ${Math.round(videoWorstStall)} ms — frames that arrive during`
            + ` one of those are never painted.`
          : '')
+    + ` The picture's data arrived in gaps of at most`
+    + ` ${Math.round(videoMsgGap)} ms, and this page took at most`
+    + ` ${Math.round(videoAskGap)} ms to ask for the next frame after one`
+    + ` arrived.`
     + (videoWorstGap
          ? ` The sound, over the same link, went quiet for at most`
            + ` ${Math.round(audioWorstGap)} ms.`
@@ -724,6 +793,8 @@ function videoReset() {
   videoStalls = 0;
   videoWorstStall = 0;
   audioWorstGap = 0;
+  videoMsgGap = 0;
+  videoAskGap = 0;
   if (window.__audioGapReset) window.__audioGapReset();
   videoWorstGap = 0;
   videoLate = 0;
@@ -744,6 +815,8 @@ window.__video = () => ({
   stalls: videoStalls,
   worstStallMs: Math.round(videoWorstStall),
   audioWorstGapMs: Math.round(audioWorstGap),
+  msgGapMs: Math.round(videoMsgGap),
+  askGapMs: Math.round(videoAskGap),
 });
 
 function audioURL() {
