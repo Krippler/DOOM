@@ -16,11 +16,15 @@
 # to mean the screen -- the one thing every client that predates this wanted.
 #
 import sys
+import time
 from urllib.parse import parse_qs, urlparse
 
 from websockify.websocketproxy import ProxyRequestHandler, websockify_init
 
 DEFAULT_TOKEN = 'vnc'
+
+# Report a silence on the picture connection longer than this, in seconds.
+GAP_REPORT_S = 0.2
 
 
 #
@@ -51,6 +55,107 @@ def end_headers(self):
 ProxyRequestHandler.end_headers = end_headers
 
 
+#
+# Which side of the picture connection went quiet.
+#
+# The page can already tell that the picture stopped arriving while the sound,
+# over the same link, kept coming -- so the link and the proxy are working and
+# x11vnc alone went silent. What it cannot tell is why, because VNC is
+# request-driven: the server sends an update only after the client asks for
+# one. A silence means either the browser stopped asking, or it asked and
+# x11vnc did not answer. Those are opposite faults and this is the only place
+# that sees both halves of the conversation.
+#
+# The wrapper sits on the socket to x11vnc and times each direction. Marked
+# lines so the entrypoint can lift them out of websockify's own chatter and
+# into the container log, where anyone reading a stutter report will find them.
+#
+GAP_MARK = 'picture gap'
+
+
+class _WatchedTarget(object):
+
+    def __init__(self, sock):
+        self._sock = sock
+        self._last_in = time.time()     # x11vnc last said something
+        self._last_ask = 0.0            # the browser last asked for a frame
+        self._recent = []               # (when, how much), over the last second
+
+    def __getattr__(self, name):
+        return getattr(self._sock, name)
+
+    def recv(self, *a, **k):
+        data = self._sock.recv(*a, **k)
+
+        if data:
+            now = time.time()
+            gap = now - self._last_in
+
+            #
+            # Only a gap that interrupts a stream that was flowing.
+            #
+            # VNC is request-driven and the server holds a request until there
+            # is something to send, so a still screen produces silences of any
+            # length that are not faults at all -- an idle game here reported
+            # 200 ms gaps as "x11vnc answered 216 ms later", which is exactly
+            # what it should have done. Only a stall in the middle of a moving
+            # picture means anything.
+            #
+            # Measured in bytes rather than in reads: the first attempt counted
+            # how many times the socket had been read, and an idle picture
+            # still gets read several times a second, so it counted as busy and
+            # the false reports carried on. A moving 320x200 picture is some
+            # hundreds of kilobytes a second; an idle one is nearly nothing.
+            #
+            before = sum(n for t, n in self._recent if t > self._last_in - 1.0)
+
+            if gap > GAP_REPORT_S and before > 50000:
+                # Where in the silence the browser's request fell says whose
+                # silence it was.
+                if self._last_ask > self._last_in:
+                    asked = (self._last_ask - self._last_in) * 1000
+                    waited = (now - self._last_ask) * 1000
+                    print('%s %.0f ms: the browser asked %.0f ms in, x11vnc '
+                          'answered %.0f ms later'
+                          % (GAP_MARK, gap * 1000, asked, waited),
+                          file=sys.stderr, flush=True)
+                else:
+                    print('%s %.0f ms: the browser never asked during it'
+                          % (GAP_MARK, gap * 1000),
+                          file=sys.stderr, flush=True)
+
+            self._last_in = now
+            self._recent.append((now, len(data)))
+
+            if len(self._recent) > 400:
+                self._recent = [(t, n) for t, n in self._recent if t > now - 1.0]
+
+        return data
+
+    def send(self, data, *a, **k):
+        n = self._sock.send(data, *a, **k)
+
+        if n:
+            self._last_ask = time.time()
+
+        return n
+
+
+_do_proxy = ProxyRequestHandler.do_proxy
+
+
+def do_proxy(self, target):
+    # Only the picture; the sound is a plain one-way trickle with nothing to
+    # ask for.
+    if getattr(self, '_doom_is_screen', False):
+        target = _WatchedTarget(target)
+
+    return _do_proxy(self, target)
+
+
+ProxyRequestHandler.do_proxy = do_proxy
+
+
 def get_target(self, target_plugin):
     query = parse_qs(urlparse(self.path).query)
     token = (query.get('token') or [''])[0].strip() or DEFAULT_TOKEN
@@ -59,6 +164,9 @@ def get_target(self, target_plugin):
 
     if pair is None:
         raise self.server.EClose("no stream called %r" % token)
+
+    # Remembered for do_proxy above, which only watches the picture.
+    self._doom_is_screen = (token == DEFAULT_TOKEN)
 
     return pair
 
