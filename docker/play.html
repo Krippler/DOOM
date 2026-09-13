@@ -168,6 +168,9 @@ const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
 //
 let videoBytes = 0;
 let videoRateKB = 0;
+let videoPlayBytes = 0;     // ... and over the whole spell of play, which is
+let videoPlayMs = 0;        //     what the note reports
+let videoPlayKB = 0;
 
 (function countScreenBytes() {
   const Native = window.WebSocket;
@@ -590,6 +593,9 @@ const VIDEO_BUSY_RATE = 10;
       videoBusy = videoRate >= VIDEO_BUSY_RATE;
       if (videoRate > videoBest) videoBest = videoRate;
       videoRateKB = videoBytes / 1024 * 1000 / (now - secondStart);
+      videoPlayBytes += videoBytes;
+      videoPlayMs += now - secondStart;
+      videoPlayKB = videoPlayBytes / 1024 * 1000 / Math.max(1, videoPlayMs);
       videoBytes = 0;
       videoPainted = 0;
       secondStart = now;
@@ -605,46 +611,50 @@ function videoNote() {
   if (!videoNoteEl) return;
 
   if (!videoBest) {
-    videoNoteEl.textContent = 'Picture: not started.';
+    videoNoteEl.textContent = 'Picture: nothing measured yet — play for a few'
+                            + ' seconds, then press Esc.';
     return;
   }
 
-  // Standing still is not a fault, and the best second lately is the honest
-  // answer to whether this path can carry 35 a second.
-  if (!videoBusy) {
-    videoNoteEl.textContent =
-      `Picture: still — nothing is changing on screen. Best lately`
-      + ` ${videoBest.toFixed(0)} frames a second, of the 35 the game draws.`;
-    return;
-  }
-
+  //
+  // These figures describe the last spell of play, and they hold.
+  //
+  // They used to age out on a timer that kept running while this screen was
+  // up -- and this screen can only be read when you have stopped playing, so
+  // what you read was whatever had survived being wiped, measured against a
+  // motionless picture. That is how a quarter-size run came back reporting 8
+  // frames a second and sent me chasing bandwidth that was never the problem.
+  // They are cleared when play starts again instead, so what is on screen is
+  // always the run you just did.
+  //
   videoNoteEl.textContent =
-    `Picture: ${videoRate.toFixed(0)} frames a second painted`
-    + ` (the game draws 35), best lately ${videoBest.toFixed(0)}`
-    + `, arriving at ${videoRateKB.toFixed(0)} KB/s`
+    `Picture, while you were playing: best ${videoBest.toFixed(0)} frames a`
+    + ` second of the 35 the game draws`
+    + `, arriving at ${videoPlayKB.toFixed(0)} KB/s`
     + (videoWorstGap
          ? `, longest gap ${Math.round(videoWorstGap)} ms, ${videoLate} late`
          : '')
-    + '.'
-    + (videoBest < 25
-         ? ' Well short of 35 means the picture cannot get through as fast as'
-           + ' it is drawn — a full-rate picture at this size needs about'
-           + ' 1300 KB/s. DOOM_SCALE=1 asks for a quarter of the pixels and'
-           + ' about 470.'
-         : '');
+    + '.';
 }
 
 setInterval(videoNote, 500);
 
-// Let the worst cases age out, so they describe what is happening now rather
-// than the worst thing that ever happened -- a pause while the page sat in
-// another tab included.
-setInterval(() => { videoWorstGap = 0; videoLate = 0; videoBest = 0; }, 15000);
+// Cleared when play starts, so every figure describes one spell of play.
+function videoReset() {
+  videoBest = 0;
+  videoWorstGap = 0;
+  videoLate = 0;
+  videoPlayBytes = 0;
+  videoPlayMs = 0;
+  videoPlayKB = 0;
+  videoBytes = 0;
+}
 
 window.__video = () => ({
   painted: videoRate,
   best: videoBest,
   kbPerSec: Math.round(videoRateKB),
+  playKB: Math.round(videoPlayKB),
   busy: videoBusy,
   worstGapMs: Math.round(videoWorstGap),
   late: videoLate,
@@ -1001,6 +1011,7 @@ window.addEventListener('keydown', (e) => {
 document.addEventListener('pointerlockchange', () => {
   overlayEl.hidden = locked();
   if (locked()) {
+    videoReset();
     resetPointer();
     rfb.focus();
   } else {

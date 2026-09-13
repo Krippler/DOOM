@@ -253,6 +253,16 @@ So there is a program of its own for that case:
   driver as before, so sharing the host's PulseAudio socket still works
   unchanged.
 
+- **`-8to24` is load-bearing, and it is where the bandwidth goes.** x11vnc is
+  given a depth-8 display and presents it to clients as 32-bit truecolor, which
+  multiplies what has to be compressed by four -- its own log shows
+  `rfb_fb_bytes_per_line: 2560` for a 640-wide screen. Turning it off does cut
+  the wire traffic from 1268 KB/s to 457, at the same 35 frames a second, which
+  looks like the obvious win and is not one: noVNC has no colour-map support
+  and renders the result as a green and black mess. The screenshot is
+  unambiguous. So the picture costs what it costs, and the lever that actually
+  works is `DOOM_SCALE=1` -- 474 KB/s against 1265, for a quarter of the pixels.
+
 - **`docker/doom-wsproxy.py`** is websockify with the sound alongside the
   picture on the one port, so no second port has to be published. websockify
   can already route by a token in the query string but refuses a connection
