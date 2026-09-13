@@ -6,6 +6,48 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.38] — 2026-09-13
+
+### Fixed
+- **"The browser asked N ms in" was counting keystrokes as frame requests.**
+  Both ends of that figure took any traffic from the browser as the browser
+  asking for a picture, and during play most of what the browser sends is
+  pointer and key events — a player mouse-looking sends them continuously.
+
+  In the proxy that is the worse of the two: it takes the *last* browser
+  message before x11vnc answers, so a stray mouse event landing late in a
+  silence reads as "the browser asked 422 ms in" when the request for the
+  picture went in at 5 and x11vnc sat on it for 457. Every one of those lines
+  so far has been open to that reading.
+
+  Both ends now parse the stream properly and count only RFB client message 3,
+  the FramebufferUpdateRequest. Parsed rather than sniffed for a byte, because
+  a pointer event carries coordinates and any of those bytes can be a 3; the
+  parser is tested against eight cases including pointer and key events whose
+  payloads are full of 3s, and a request split across two writes.
+
+  Measured against the old definition over the same run, three times: worst
+  gap to any send 141, 96, 165 ms against 104, 90, 165 ms to a real request —
+  so the old figure ran up to a third high, and twice the worst "ask" it
+  reported was a keystroke. (I had said this could only ever make the browser
+  look better than it was. It is the other way round.)
+
+### Added
+- **How long the page sat on a picture it had already finished with.** noVNC
+  asks for the next picture on the same turn it finishes one, so this is the
+  page's own share of the wait and nothing else's:
+
+  ```
+  ...took at most 5 ms to ask for the next frame after one arrived — 1 ms of
+  that with a finished picture already in hand.
+  ```
+
+  It is close to zero by construction, and that is the point: it turns the
+  figure beside it from ambiguous into an answer. If the page takes 400 ms to
+  ask and 0 ms of it was spent holding a finished picture, then the page never
+  held anything up — the wait was spent part way through a picture, waiting
+  for the rest of it to arrive, and it belongs upstream.
+
 ## [1.10.37] — 2026-09-13
 
 ### Added

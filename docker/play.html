@@ -207,6 +207,8 @@ let audioWorstGap = 0;        // longest the sound went without a message, ms
 let videoMsgGap = 0;          // ... and the picture, which is not the same as
                               //     the longest it went without being painted
 let videoAskGap = 0;          // longest this page took to ask for the next one
+let videoHeldWorst = 0;       // ... of which this much was after it had a
+                              //     finished picture in hand and could have
 
 (function countBytes() {
   const Native = window.WebSocket;
@@ -230,9 +232,35 @@ let videoAskGap = 0;          // longest this page took to ask for the next one
     if (!isAudio) {
       const send = sock.send.bind(sock);
       sock.send = (data) => {
-        if (videoLastMsg && playing()) {
+        //
+        // Only a request for a frame counts as asking for one.
+        //
+        // The first version timed the gap to the next send of anything, and
+        // during play most of what this page sends is pointer and key events
+        // -- a player mouse-looking sends them continuously. Any one of those
+        // ends the gap and makes the page look prompt when it was not, so the
+        // figure could only ever be too small. RFB client message 3 is the
+        // FramebufferUpdateRequest; a send may carry several messages, and
+        // the first byte is the one that matters because noVNC queues the
+        // request on its own.
+        //
+        const u = new Uint8Array(data.buffer || data,
+                                 data.byteOffset || 0,
+                                 data.byteLength || data.length);
+
+        if (u[0] === 3 && videoLastMsg && playing()) {
           const since = performance.now() - videoLastMsg;
           if (since > videoAskGap) videoAskGap = since;
+
+          // And how long it sat on a picture it had already finished with.
+          // This is the figure that decides whether the page is at fault at
+          // all: noVNC asks for the next frame the moment it finishes one, so
+          // if this is small then the page never held anything up and the
+          // wait is entirely upstream of it -- however long the gap above.
+          if (window.__frameDone) {
+            const held = performance.now() - window.__frameDone;
+            if (held > videoHeldWorst) videoHeldWorst = held;
+          }
         }
         return send(data);
       };
@@ -346,6 +374,23 @@ let videoDecoded = 0;         // pictures that went through the image decoder
 (function watchDecoding() {
   const d = rfb._display;
   if (!d || typeof d.imageRect !== 'function') return;
+
+  //
+  // When noVNC last finished a whole picture.
+  //
+  // It asks for the next one the instant it does -- the request goes out on
+  // the same turn, a couple of lines further down in _normalMsg -- so the
+  // time between these two is the page's own share of the wait and nothing
+  // else's. If it comes back near zero while the gap above is hundreds of
+  // milliseconds, the page never held anything up: the gap was spent part
+  // way through a picture, waiting for the rest of it to arrive.
+  //
+  const fbu = rfb._framebufferUpdate.bind(rfb);
+  rfb._framebufferUpdate = function () {
+    const done = fbu();
+    if (done) window.__frameDone = performance.now();
+    return done;
+  };
 
   const imageRect = d.imageRect.bind(d);
   d.imageRect = function (x, y, w, h, mime, arr) {
@@ -882,7 +927,8 @@ function videoNote() {
     + ` The picture's data arrived in gaps of at most`
     + ` ${Math.round(videoMsgGap)} ms, and this page took at most`
     + ` ${Math.round(videoAskGap)} ms to ask for the next frame after one`
-    + ` arrived.`
+    + ` arrived — ${Math.round(videoHeldWorst)} ms of that with a finished`
+    + ` picture already in hand.`
     //
     // Reported every time, not only when it is bad: a run where this is 2 ms
     // rules the decoder out, and ruling something out is worth as much here
@@ -926,6 +972,7 @@ function videoReset() {
   audioWorstGap = 0;
   videoMsgGap = 0;
   videoAskGap = 0;
+  videoHeldWorst = 0;
   videoDecodeWorst = 0;
   videoBlockedWorst = 0;
   videoDecoded = 0;
@@ -951,6 +998,7 @@ window.__video = () => ({
   audioWorstGapMs: Math.round(audioWorstGap),
   msgGapMs: Math.round(videoMsgGap),
   askGapMs: Math.round(videoAskGap),
+  heldWorstMs: Math.round(videoHeldWorst),
   decoded: videoDecoded,
   decodeWorstMs: Math.round(videoDecodeWorst),
   blockedWorstMs: Math.round(videoBlockedWorst),

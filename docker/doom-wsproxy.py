@@ -80,6 +80,7 @@ class _WatchedTarget(object):
         self._last_in = time.time()     # x11vnc last said something
         self._last_ask = 0.0            # the browser last asked for a frame
         self._recent = []               # (when, how much), over the last second
+        self._ask_carry = b''           # part of a client message, split across writes
 
     def __getattr__(self, name):
         return getattr(self._sock, name)
@@ -135,10 +136,67 @@ class _WatchedTarget(object):
     def send(self, data, *a, **k):
         n = self._sock.send(data, *a, **k)
 
+        #
+        # Only a request for a frame counts as asking for one.
+        #
+        # This used to take any byte from the browser, and during play most of
+        # what the browser sends is pointer and key events -- a player
+        # mouse-looking sends them continuously. One of those landing late in
+        # a silence made the report read "the browser asked 422 ms in" when
+        # the request for the frame had gone in at 5, which blames the browser
+        # for a wait that was x11vnc's.
+        #
         if n:
-            self._last_ask = time.time()
+            if self._asked(data[:n]):
+                self._last_ask = time.time()
 
         return n
+
+    #
+    # RFB client messages, by type and length. 3 is FramebufferUpdateRequest.
+    # The stream is parsed rather than sniffed for a byte, because a pointer
+    # event carries coordinates and any of those bytes can be a 3.
+    #
+    _MSG_LEN = {0: 20, 3: 10, 4: 8, 5: 6}
+
+    def _asked(self, data):
+        buf = self._ask_carry + data
+        i = 0
+
+        while i < len(buf):
+            kind = buf[i]
+
+            if kind == 3:
+                self._ask_carry = b''
+                return True
+
+            if kind == 2:                       # SetEncodings, variable
+                if i + 4 > len(buf):
+                    break
+                i += 4 + 4 * int.from_bytes(buf[i+2:i+4], 'big')
+                continue
+
+            if kind == 6:                       # ClientCutText, variable
+                if i + 8 > len(buf):
+                    break
+                i += 8 + int.from_bytes(buf[i+4:i+8], 'big')
+                continue
+
+            size = self._MSG_LEN.get(kind)
+
+            if size is None:
+                # Lost the alignment. Say yes rather than start reporting
+                # silences as x11vnc's fault on the strength of a bad parse.
+                self._ask_carry = b''
+                return True
+
+            i += size
+
+        # A message split across two writes: keep the tail for the next one.
+        self._ask_carry = buf[i:] if i < len(buf) else b''
+        if len(self._ask_carry) > 64:
+            self._ask_carry = b''
+        return False
 
 
 _do_proxy = ProxyRequestHandler.do_proxy

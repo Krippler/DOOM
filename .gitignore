@@ -17,3 +17,4 @@ wads/
 doomsav*.dsg
 DOOM*.pcx
 .doomrc
+__pycache__/
