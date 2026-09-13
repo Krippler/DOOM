@@ -55,7 +55,12 @@ int I_GetTime (void);
 //
 extern double	I_SleepLate;
 
+// How much of each tic's end is held rather than slept through, which grows to
+// match how late this machine hands the CPU back. See i_system.c.
+extern double	I_SpinMs;
+
 void I_Sleep (int ms);
+void I_WaitForTic (void);
 
 
 //

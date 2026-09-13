@@ -530,8 +530,9 @@ void D_DoomLoop (void)
 		// Three per cent of a core and frames missing their slot means
 		// this number, not the ones above, is the fault.
 		if (I_SleepLate >= 1.0)
-		    fprintf (stderr, "; woken %.0f ms late at worst",
-			     I_SleepLate);
+		    fprintf (stderr, "; woken %.0f ms late at worst, holding"
+			     " the last %.0f ms of each tic",
+			     I_SleepLate, I_SpinMs);
 
 		fprintf (stderr, "\n");
 		fflush (stderr);
