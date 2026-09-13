@@ -66,6 +66,17 @@ current gcc and glibc. Behaviour is otherwise left alone.
   this source is v1.10. It now falls back to the title screen.
 - **`p_saveg.c`** — savegames round-trip array indices through pointer fields;
   the `(int)` casts are now `intptr_t` so nothing is truncated.
+- **`d_net.c`, `d_main.c`, `i_system.c`** — `TryRunTics`' wait-for-the-next-tic
+  loop has no sleep in the 1997 sources, so the engine spun on the clock for
+  five sixths of every tic: 97% of a core to draw a 320x168 view. That was free
+  on a machine doing nothing else, and here it starves the X server, the VNC
+  server reading that server's framebuffer, the Python websocket proxy, the
+  mixer and the synth — which is what a stuttering picture turned out to be.
+  A new `I_Sleep` in the platform layer, called with one millisecond, takes it
+  to 5%: 35 times finer than the tic being waited for, so the timing is
+  unchanged (156 ms keypress-to-picture either way) while a container held to
+  one core goes from 27 frames a second reaching the browser to 35. The melt
+  between screens had the same spin in its own loop and gets the same fix.
 - **`i_system.c`, `m_misc.c`** — the zone allocator was getting two megabytes.
   `mb_used` is initialised to 6, but `M_LoadDefaults` runs before `Z_Init` and
   overwrites it from the config table, whose default was 2; every config file

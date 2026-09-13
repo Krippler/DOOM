@@ -25,6 +25,7 @@ rcsid[] = "$Id: m_bbox.c,v 1.1 1997/02/03 22:45:10 b1 Exp $";
 
 
 #include <stdlib.h>
+#include <time.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -108,6 +109,25 @@ byte* I_ZoneBase (int*	size)
     return (byte *) malloc (*size);
 }
 
+
+
+//
+// I_Sleep
+//
+// Sleeps for about this many milliseconds. Used by the loop that waits out
+// the rest of a tic, which otherwise spins.
+//
+void I_Sleep (int ms)
+{
+    struct timespec	ts;
+
+    ts.tv_sec  = ms / 1000;
+    ts.tv_nsec = (long) (ms % 1000) * 1000000L;
+
+    // A signal cutting the sleep short is not worth handling: the caller is a
+    // polling loop and will come straight back here.
+    nanosleep (&ts, NULL);
+}
 
 
 //
