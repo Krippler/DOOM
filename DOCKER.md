@@ -499,8 +499,12 @@ puts the network in the path, where a browser actually sits:
 
 ```bash
 curl -sO https://raw.githubusercontent.com/Krippler/DOOM/master/docker/doom-probe.py
-python3 doom-probe.py your-nas
+python3 doom-probe.py 192.168.1.10:380
 ```
+
+Give it the address the way it appears in the address bar when you play — a
+host, a host and port, or the whole URL all work, and the port is whatever the
+web page was published as rather than 6080.
 
 x11vnc's port is usually not published, so the first of the two lines will say
 it could not connect; the second still runs. If it stalls from another machine

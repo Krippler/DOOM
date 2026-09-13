@@ -18,6 +18,11 @@ a host and everything between that machine and the container is in the path
 too, which is where a browser actually sits.
 
     python3 doom-probe.py nas.local
+    python3 doom-probe.py 192.168.10.37:380
+    python3 doom-probe.py http://192.168.10.37:380
+
+The port is the one the web page is on, whatever it was published as -- the
+same thing that is in the address bar when you play.
 
 What it cannot do is conclude anything about a still picture. VNC sends what
 changed and nothing else, so a motionless screen produces silences of any
@@ -232,16 +237,55 @@ def report(name, waits, total, seconds):
     return kb
 
 
+def parse_where(arg, default_port):
+    """Take the address however it was typed.
+
+    The published port is rarely 6080 -- it is whatever the container was
+    given -- and asking for it in an environment variable means knowing that
+    fish spells that differently from bash. Anything that looks like the
+    address bar works instead: a host, a host and port, or the whole URL.
+    """
+    where = arg.strip()
+
+    for scheme in ('http://', 'https://', 'ws://', 'wss://'):
+        if where.lower().startswith(scheme):
+            where = where[len(scheme):]
+            break
+
+    where = where.split('/', 1)[0]          # drop /play.html and anything after
+
+    # host:port, but not an IPv6 address, which is full of colons and is
+    # written in brackets when it carries a port.
+    if where.startswith('['):
+        host, _, rest = where.partition(']')
+        host = host[1:]
+        if rest.startswith(':') and rest[1:].isdigit():
+            return host, int(rest[1:])
+        return host, default_port
+
+    if where.count(':') == 1:
+        host, _, port = where.partition(':')
+        if port.isdigit():
+            return host, int(port)
+
+    return where, default_port
+
+
 def main():
     # Inside the container both ports are on localhost. From another machine
     # the web port is the one that is published, and x11vnc's usually is not --
     # which is fine: the run that cannot connect says so and the other still
     # happens.
-    host = sys.argv[1] if len(sys.argv) > 1 else '127.0.0.1'
     vnc  = int(os.environ.get('DOOM_VNC_PORT', '5900'))
     web  = int(os.environ.get('DOOM_WEB_PORT', '6080'))
+    host = '127.0.0.1'
 
-    where = 'in the container' if host in ('127.0.0.1', 'localhost') \
+    if len(sys.argv) > 1:
+        host, web = parse_where(sys.argv[1], web)
+
+    # Not "in the container": run on the host but outside it, this is still
+    # localhost and the container is not where the probe is.
+    where = 'from here' if host in ('127.0.0.1', 'localhost') \
             else 'from here to %s' % host
     print('Timing how long x11vnc takes to answer, %s, %.0f seconds each way.'
           % (where, SECONDS))
@@ -259,6 +303,14 @@ def main():
             width, height = handshake(link)
             waits, total = measure(link, width, height, SECONDS)
             results[name] = report(name, waits, total, SECONDS)
+        except ConnectionRefusedError:
+            # The ordinary case when this is run from another machine:
+            # x11vnc's port is almost never published, and does not need to be.
+            print('%-22s nothing listening on %s:%d%s'
+                  % (name + ':', host, vnc if 'x11vnc' in name else web,
+                     ' (expected from another machine -- the line below is'
+                     ' the one that matters)' if 'x11vnc' in name else ''))
+            results[name] = None
         except Exception as exc:
             print('%-22s could not measure: %s' % (name + ':', exc))
             results[name] = None
@@ -277,10 +329,12 @@ def main():
         print('and nothing else. Start the game moving and run it again.')
         return 1
 
-    print('On a machine with nothing wrong, both lines read about 10 ms in the')
-    print('middle and never pass 60 at the worst, with nothing over 200 ms.')
-    print('A worst of several hundred here is the stutter, measured with no')
-    print('browser anywhere near it.')
+    measured = sum(1 for kb in results.values() if kb is not None)
+    print('On a machine with nothing wrong %s about 10 ms in the middle and'
+          % ('both lines read' if measured > 1 else 'this reads'))
+    print('never passes 60 at the worst, with nothing over 200 ms. A worst of')
+    print('several hundred here is the stutter, measured with no browser')
+    print('anywhere near it.')
 
     if host not in ('127.0.0.1', 'localhost'):
         print()

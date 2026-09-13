@@ -6,6 +6,32 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **`doom-probe` takes the address the way you would type it.** It wanted a
+  bare host and the published port in an environment variable, which is two
+  things to know before it will run and one of them is spelled differently in
+  fish than in bash. The port is hardly ever 6080 — it is whatever the
+  container was published as — so that was the normal case, not the corner.
+
+  A host, a host and port, or the whole URL all work now, with or without a
+  scheme and with or without a path on the end:
+
+  ```
+  python3 doom-probe.py 192.168.10.37:380
+  python3 doom-probe.py http://192.168.10.37:380/play.html
+  ```
+
+  Ten forms tested, IPv6 in brackets among them.
+
+- **It says what it means when x11vnc's port is not published.** That is the
+  ordinary case from another machine and it was printing `[Errno 111]
+  Connection refused`, which reads like a fault. It now says nothing is
+  listening there, that this is expected from another machine, and that the
+  line below is the one that matters. The closing note no longer talks about
+  "both lines" when only one of them ran.
+
 ## [1.10.40] — 2026-09-13
 
 ### Added
