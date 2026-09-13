@@ -6,6 +6,46 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **The engine no longer waits for the X server to say it has finished with
+  each frame.** `I_FinishUpdate` handed the picture over with `XShmPutImage`
+  asking for a completion event, then blocked until it arrived. That is correct
+  if you are about to overwrite the shared image — but the next frame is a tic
+  away, 28 ms, and the server copies it in microseconds. What the wait actually
+  did was couple the engine to how busy the X server is, and the X server is
+  busy because x11vnc is reading the same framebuffer as fast as it is allowed
+  to.
+
+  Measured in the field at **74 ms in that wait for one frame**, with the
+  drawing itself under 2 ms. It is gone; the frame is handed over and the
+  engine carries on. The loop was also pumping input events, which `I_StartTic`
+  does every tic through `NetUpdate` anyway, so nothing is lost — verified by
+  playing through it.
+
+  Nothing else moved: delivery here is median 33 ms between painted frames, p90
+  34, p99 52, and keypress-to-picture 154 ms with sound 13 ms behind it, all
+  unchanged.
+
+### Changed
+- **The frame report names where a slow frame went, instead of lumping four
+  things under "drawing".** The field logs had frames spending 36 ms in
+  `drawing` with the picture handover at zero, which said only that the time
+  went somewhere else. A frame is now split into the tic wait, the sound
+  update, and the three parts of the draw — handing the picture to X, pumping
+  input, and the rendering itself:
+
+  ```
+  frames: 176 in the last 5s, 12 late, 5 over 50 ms, 18% of a core; worst 59 ms
+      (tic 59, sound 0, draw 0 = picture to X 0 + input 0 + render 0);
+      woken 30 ms late at worst, holding the last 8 ms of each tic
+  ```
+
+  `input` is the other place a frame touches the X server — `I_StartTic` pumps
+  the event queue and warps the pointer through there — so between it and the
+  handover, a stall in the X path now has a name.
+
 ## [1.10.28] — 2026-09-13
 
 ### Fixed
