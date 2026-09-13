@@ -115,6 +115,7 @@
   <p class="dim" id="esc-note">The <kbd>`</kbd> key opens the game menu. Keys and
      the mouse are configured there, under Options → Setup.</p>
   <p class="dim" id="audio-note">Sound: not started.</p>
+  <p class="dim" id="video-note">Picture: not started.</p>
   <p class="dim" id="build-note">__DOOM_VERSION__</p>
 </div>
 
@@ -472,6 +473,115 @@ function audioNote() {
 }
 
 setInterval(audioNote, 500);
+
+
+//
+// The same argument for the picture.
+//
+// The engine can report a healthy 35 frames a second while the browser paints
+// far fewer: VNC only sends what changed, websockify relays it in Python, and
+// the tab has to decode and draw it. Nothing in the container can see the far
+// end of that, so the page counts what it actually painted -- by watching the
+// canvas change, which is the one measure that cannot be fooled by a frame
+// that was sent and never arrived.
+//
+// The engine's own figure is in the container log. Together they say which
+// half of the path a stutter is in, which took an afternoon of guessing the
+// first time.
+//
+const videoNoteEl = document.getElementById('video-note');
+
+let videoPainted = 0;         // canvas changes seen in the current second
+let videoRate = 0;            // ... and in the last full second
+let videoWorstGap = 0;        // longest wait between two of them, ms
+let videoLate = 0;            // paints that took over a tic and a quarter
+const VIDEO_TIC_MS = 1000 / 35;
+
+(function watchPicture() {
+  const screenEl = document.getElementById('screen');
+  const probe = document.createElement('canvas');
+  probe.width = 48;
+  probe.height = 30;
+  const g = probe.getContext('2d', { willReadFrequently: true });
+
+  let last = 0, prev = null, secondStart = 0;
+
+  function frame(now) {
+    const cv = screenEl && screenEl.querySelector('canvas');
+
+    // Nothing counts while the overlay is up. It covers the picture, so the
+    // canvas stops changing and every figure below would record the reader
+    // looking at them as the worst stutter of the session -- which is exactly
+    // what the first version of this did.
+    if (overlayEl && !overlayEl.hidden) {
+      last = 0;
+      prev = null;
+      secondStart = 0;
+      requestAnimationFrame(frame);
+      return;
+    }
+
+    if (cv && cv.width) {
+      try {
+        g.drawImage(cv, 0, 0, probe.width, probe.height);
+        const d = g.getImageData(0, 0, probe.width, probe.height).data;
+        let sum = 0;
+        for (let i = 0; i < d.length; i += 4) sum += d[i] * 3 + d[i+1] * 5 + d[i+2];
+
+        if (prev !== null && sum !== prev) {
+          if (last) {
+            const gap = now - last;
+            if (gap > videoWorstGap) videoWorstGap = gap;
+            if (gap > VIDEO_TIC_MS * 1.25) videoLate++;
+          }
+          last = now;
+          videoPainted++;
+        }
+        prev = sum;
+      } catch (e) {
+        // A canvas that is not ready to be read is not worth a message.
+      }
+    }
+
+    if (!secondStart) secondStart = now;
+    else if (now - secondStart >= 1000) {
+      videoRate = videoPainted * 1000 / (now - secondStart);
+      videoPainted = 0;
+      secondStart = now;
+    }
+
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+})();
+
+function videoNote() {
+  if (!videoNoteEl) return;
+
+  if (!videoRate) {
+    videoNoteEl.textContent = 'Picture: not started.';
+    return;
+  }
+
+  videoNoteEl.textContent =
+    `Picture: ${videoRate.toFixed(0)} frames a second painted`
+    + ` (the game draws 35), worst wait ${Math.round(videoWorstGap)} ms`
+    + `, ${videoLate} arrived late.`;
+}
+
+setInterval(videoNote, 500);
+
+// Reset the worst-case figures, so they describe what is happening rather than
+// the worst thing that ever happened -- including the pause while the page was
+// in another tab.
+setInterval(() => { videoWorstGap = 0; videoLate = 0; }, 10000);
+
+window.__video = () => ({
+  painted: videoRate,
+  worstGapMs: Math.round(videoWorstGap),
+  late: videoLate,
+});
 
 function audioURL() {
   return `${scheme}://${location.host}/websockify?token=audio`;

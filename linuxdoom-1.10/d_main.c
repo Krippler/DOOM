@@ -378,12 +378,26 @@ extern  boolean         demorecording;
 // and TryRunTics deliberately waits out whatever is left. Only the time
 // something takes counts, which is why the wait is measured separately.
 //
+//
+// A frame is one tic, 28.6 ms. A frame that took a quarter as long again has
+// missed its slot: the engine runs two tics and draws once, and whoever is
+// playing sees the picture jump. Counting those separately from the outright
+// slow ones is what distinguishes a judder from an occasional hitch, which the
+// first version of this could not do -- it only counted past 50 ms, so a
+// steady stream of 40 ms frames read as a clean log.
+//
+#define FRAME_LATE_MS	(1000.0 / TICRATE * 1.25)
 #define FRAME_SLOW_MS	50.0
 
-// A frame is 28.6 ms of wall clock, nearly all of it spent waiting. Using
-// much more CPU than it takes to draw one means something is spinning, and
-// whatever else on the machine wants that CPU is not getting it -- which is
-// what the picture arriving in fits looked like the first time.
+// Late frames happen; a clock read either side of a sleep is not exact and
+// nothing is gained by reporting one of them. This many in five seconds is
+// about one frame in fifty, which is where it starts being visible.
+#define FRAME_LATE_MANY	4
+
+// A frame is nearly all waiting. Using much more CPU than it takes to draw one
+// means something is spinning, and whatever else on the machine wants that CPU
+// is not getting it -- which is what the picture arriving in fits looked like
+// the first time.
 #define FRAME_BUSY_PCT	40.0
 
 static double
@@ -428,7 +442,7 @@ void D_DoomLoop (void)
     while (1)
     {
 	static double	report = 0, reportcpu = 0;
-	static int	slow = 0, frames = 0;
+	static int	slow = 0, late = 0, frames = 0;
 	static double	worst = 0, worst_tics = 0, worst_draw = 0;
 	static double	worst_put = 0;
 	double		t0, t1, t2;
@@ -471,9 +485,12 @@ void D_DoomLoop (void)
 	//
 	frames++;
 
-	if (t2 - t0 > FRAME_SLOW_MS && !D_FrameWiped)
+	if (t2 - t0 > FRAME_LATE_MS && !D_FrameWiped)
 	{
-	    slow++;
+	    late++;
+
+	    if (t2 - t0 > FRAME_SLOW_MS)
+		slow++;
 
 	    if (t2 - t0 > worst)
 	    {
@@ -496,15 +513,25 @@ void D_DoomLoop (void)
 	    double	cpu = D_Cpu ();
 	    double	busy = (cpu - reportcpu) / (t2 - report) * 100.0;
 
-	    if (slow || busy > FRAME_BUSY_PCT)
+	    if (late >= FRAME_LATE_MANY || slow || busy > FRAME_BUSY_PCT)
 	    {
-		fprintf (stderr, "frames: %d in the last 5s, %d over %.0f ms, "
-			 "%.0f%% of a core", frames, slow, FRAME_SLOW_MS, busy);
+		fprintf (stderr,
+			 "frames: %d in the last 5s, %d late, %d over %.0f ms, "
+			 "%.0f%% of a core",
+			 frames, late, slow, FRAME_SLOW_MS, busy);
 
-		if (slow)
-		    fprintf (stderr, "; worst %.0f ms (tics %.0f, draw %.0f, "
-			     "of which handing over the picture %.0f)",
+		if (late)
+		    fprintf (stderr, "; worst %.0f ms (waiting for the tic "
+			     "%.0f, drawing %.0f, of which handing the picture "
+			     "to X %.0f)",
 			     worst, worst_tics, worst_draw, worst_put);
+
+		// Whether the engine was late or the kernel was late with it.
+		// Three per cent of a core and frames missing their slot means
+		// this number, not the ones above, is the fault.
+		if (I_SleepLate >= 1.0)
+		    fprintf (stderr, "; woken %.0f ms late at worst",
+			     I_SleepLate);
 
 		fprintf (stderr, "\n");
 		fflush (stderr);
@@ -512,8 +539,9 @@ void D_DoomLoop (void)
 
 	    report = t2;
 	    reportcpu = cpu;
-	    frames = slow = 0;
+	    frames = slow = late = 0;
 	    worst = worst_tics = worst_draw = worst_put = 0;
+	    I_SleepLate = 0;
 	}
 
 #ifndef SNDSERV
