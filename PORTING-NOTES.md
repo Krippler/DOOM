@@ -102,6 +102,16 @@ current gcc and glibc. Behaviour is otherwise left alone.
   own environment, so `DISPLAY=:0` became `DISPLAY=`. Nothing noticed while
   DOOM only ever started once; the WAD menu re-executes the engine, and the
   new process came up with no display. It copies the host out now.
+- **`i_video.c`** — `I_FinishUpdate` asked `XShmPutImage` for a completion event
+  and blocked until the server sent it. That guards against overwriting the
+  shared image while the server is still reading it, which cannot happen here:
+  the next frame is a tic away and the copy takes microseconds. What it did
+  instead was couple the engine's frame rate to how busy the X server was, and
+  the X server is busy because x11vnc is polling the same framebuffer — 74 ms
+  in that wait for a single frame, measured in a container in use, against
+  under 2 ms of actual drawing. The event is no longer requested and the wait
+  is gone. It was also the only thing pumping input during the wait, which
+  `I_StartTic` does every tic through `NetUpdate` regardless.
 - **`i_video.c`** — `I_ShutdownGraphics` detached the shared memory segment
   unconditionally: with no MIT-SHM extension it detached one that was never
   attached, and on a startup failure before `I_InitGraphics` it passed a null

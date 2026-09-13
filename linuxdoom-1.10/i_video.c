@@ -576,6 +576,22 @@ void I_FinishUpdate (void)
     if (doShm)
     {
 
+	//
+	// Hand the frame over and carry on, rather than asking to be told when
+	// the server has finished with it and blocking until it says so.
+	//
+	// The original asked for a completion event and waited on it, which is
+	// correct if you are about to overwrite the shared image -- but the
+	// next frame is a tic away, 28 ms, and the server copies it in
+	// microseconds. What the wait actually did here was couple the engine
+	// to how busy the X server was, and the X server is busy because
+	// x11vnc is reading the same framebuffer as fast as it is allowed to.
+	// Measured in the field at 74 ms spent in this wait for a single
+	// frame, with the drawing itself under 2.
+	//
+	// The loop was also pumping input events. I_StartTic does that every
+	// tic through NetUpdate, so nothing is lost.
+	//
 	if (!XShmPutImage(	X_display,
 				X_mainWindow,
 				X_gc,
@@ -583,15 +599,10 @@ void I_FinishUpdate (void)
 				0, 0,
 				0, 0,
 				X_width, X_height,
-				True ))
+				False ))
 	    I_Error("XShmPutImage() failed\n");
 
-	// wait for it to finish and processes all input events
-	shmFinished = false;
-	do
-	{
-	    I_GetEvent();
-	} while (!shmFinished);
+	XFlush (X_display);
 
     }
     else

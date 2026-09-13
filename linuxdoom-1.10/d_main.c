@@ -188,9 +188,13 @@ void D_ProcessEvents (void)
 //
 
 double		I_FrameFinish;	// how long I_FinishUpdate took, set there
+double		D_FrameNet;	// ... and the NetUpdate inside D_Display
+double		D_FrameSound;	// ... and S_UpdateSounds
 boolean		D_FrameWiped;	// a melt ran, so a slow frame was meant to be
 
 // wipegamestate can be set to -1 to force a wipe on the next draw
+static double	D_Now (void);
+
 gamestate_t     wipegamestate = GS_DEMOSCREEN;
 extern  boolean setsizeneeded;
 extern  int             showMessages;
@@ -319,7 +323,18 @@ void D_Display (void)
 
     // menus go directly to the screen
     M_Drawer ();          // menu is drawn even on top of everything
-    NetUpdate ();         // send out any new accumulation
+
+    //
+    // Timed on its own because it is the other place in a frame that talks to
+    // the X server -- I_StartTic pumps the event queue and warps the pointer
+    // through here -- and a frame that goes slow with the picture handover at
+    // zero has gone slow somewhere, which needs saying rather than guessing.
+    //
+    {
+	double	net_t0 = D_Now ();
+	NetUpdate ();         // send out any new accumulation
+	D_FrameNet = D_Now () - net_t0;
+    }
 
 
     // normal update
@@ -444,7 +459,7 @@ void D_DoomLoop (void)
 	static double	report = 0, reportcpu = 0;
 	static int	slow = 0, late = 0, frames = 0;
 	static double	worst = 0, worst_tics = 0, worst_draw = 0;
-	static double	worst_put = 0;
+	static double	worst_put = 0, worst_net = 0, worst_snd = 0;
 	double		t0, t1, t2;
 
 	// frame syncronous IO operations
@@ -472,9 +487,11 @@ void D_DoomLoop (void)
 	t1 = D_Now ();
 
 	S_UpdateSounds (players[consoleplayer].mo);// move positional sounds
+	D_FrameSound = D_Now () - t1;
 
 	// Update display, next frame, with current state.
 	I_FrameFinish = 0;
+	D_FrameNet = 0;
 	D_Display ();
 	t2 = D_Now ();
 
@@ -498,6 +515,8 @@ void D_DoomLoop (void)
 		worst_tics = t1 - t0;
 		worst_draw = t2 - t1;
 		worst_put  = I_FrameFinish;
+		worst_net  = D_FrameNet;
+		worst_snd  = D_FrameSound;
 	    }
 	}
 
@@ -521,10 +540,12 @@ void D_DoomLoop (void)
 			 frames, late, slow, FRAME_SLOW_MS, busy);
 
 		if (late)
-		    fprintf (stderr, "; worst %.0f ms (waiting for the tic "
-			     "%.0f, drawing %.0f, of which handing the picture "
-			     "to X %.0f)",
-			     worst, worst_tics, worst_draw, worst_put);
+		    fprintf (stderr, "; worst %.0f ms (tic %.0f, sound %.0f, "
+			     "draw %.0f = picture to X %.0f + input %.0f + "
+			     "render %.0f)",
+			     worst, worst_tics, worst_snd, worst_draw,
+			     worst_put, worst_net,
+			     worst_draw - worst_put - worst_net);
 
 		// Whether the engine was late or the kernel was late with it.
 		// Three per cent of a core and frames missing their slot means
@@ -541,7 +562,8 @@ void D_DoomLoop (void)
 	    report = t2;
 	    reportcpu = cpu;
 	    frames = slow = late = 0;
-	    worst = worst_tics = worst_draw = worst_put = 0;
+	    worst = worst_tics = worst_draw = 0;
+	    worst_put = worst_net = worst_snd = 0;
 	    I_SleepLate = 0;
 	}
 
