@@ -6,6 +6,64 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **The sound could be left permanently out of step when the listener's socket
+  filled, which is what "super loud, then cut out, then back to normal" is.**
+  `write` on a socket takes as many bytes as it feels like — any number, not
+  necessarily a whole 16-bit stereo frame. audiostream dropped whatever was
+  left of the period when the socket came back `EAGAIN`, wherever in a frame
+  that happened to be. The listener is then holding half a frame, and every
+  sample after it is assembled from the wrong pair of bytes: not a glitch, but
+  full-scale noise that never recovers until the page's ring buffer gives up
+  and resynchronises.
+
+  What is owed is now kept and offered again next period, and when the backlog
+  is too old to be worth sending, **whole frames** are dropped from the front
+  of it. A gap in the sound is a click; a gap that is not a whole number of
+  frames is noise for ever.
+
+  Driven against a socket that takes an arbitrary number of bytes at a time,
+  the old code handed over **73,701 bytes — not a multiple of four**, so the
+  listener's stream was genuinely not a whole number of frames. The new code
+  delivered the whole test stream in order. The audible noise itself was not
+  reproduced end to end: several attempts foundered on faults in the test
+  rather than the program, and what is demonstrated is the misalignment, not
+  the sound it makes.
+
+### Added
+- **The page says how fast the picture is arriving, not just how much of it
+  gets painted.** A container reporting a steady 35 frames a second to a page
+  painting 11 means two thirds are going nowhere, and only the byte rate says
+  whether that is the link or something before it:
+
+  ```
+  Picture: 11 frames a second painted (the game draws 35), best lately 11,
+      arriving at 402 KB/s, longest gap 179 ms, 13 late.
+  ```
+
+  Well short of 35 now also says what a full-rate picture costs, because the
+  answer is usually a setting rather than a bug. Measured here, turning
+  continuously at `screenblocks 10`:
+
+  | | bandwidth | painted |
+  | --- | --- | --- |
+  | `DOOM_SCALE=2` (default, 640×400) | 1265 KB/s | 35.0/s |
+  | `DOOM_SCALE=1` (320×200) | **474 KB/s** | 34.4/s |
+
+  A link that can carry 400 KB/s gets a third of the frames at the default
+  size and very nearly all of them at half it.
+
+### Known
+
+- **noVNC's compression and quality settings do nothing here.** Tried against
+  the same 20-second turn, since a constrained link was the suspicion:
+  defaults 1263 KB/s, compression 9 1259, compression 9 with quality 8 1634,
+  with quality 5 1175. x11vnc is not honouring them in any useful way, so
+  there is no bandwidth to be had from that direction and the picture costs
+  what it costs.
+
 ## [1.10.29] — 2026-09-13
 
 ### Fixed

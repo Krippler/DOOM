@@ -155,6 +155,36 @@ function audioStatus(text) {
 }
 
 const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+
+//
+// Count what the picture actually costs, by wrapping WebSocket for the one
+// moment noVNC creates its own.
+//
+// The frames-painted figure alone cannot tell a picture that is not being sent
+// from one that is being sent and not arriving. A container reporting a steady
+// 35 frames a second to a page painting 11 means two thirds of them are going
+// nowhere, and the number of bytes per second says whether that is the link
+// or something before it.
+//
+let videoBytes = 0;
+let videoRateKB = 0;
+
+(function countScreenBytes() {
+  const Native = window.WebSocket;
+  window.WebSocket = function (...a) {
+    const sock = new Native(...a);
+    sock.addEventListener('message', (e) => {
+      videoBytes += (e.data && e.data.byteLength) || 0;
+    });
+    return sock;
+  };
+  window.WebSocket.prototype = Native.prototype;
+  Object.assign(window.WebSocket, Native);
+
+  // Put it back once noVNC has its socket, so the sound's is left alone.
+  setTimeout(() => { window.WebSocket = Native; }, 0);
+})();
+
 const rfb = new RFB(screenEl, `${scheme}://${location.host}`, {
   wsProtocols: ['binary'],
 });
@@ -559,6 +589,8 @@ const VIDEO_BUSY_RATE = 10;
       videoRate = videoPainted * 1000 / (now - secondStart);
       videoBusy = videoRate >= VIDEO_BUSY_RATE;
       if (videoRate > videoBest) videoBest = videoRate;
+      videoRateKB = videoBytes / 1024 * 1000 / (now - secondStart);
+      videoBytes = 0;
       videoPainted = 0;
       secondStart = now;
     }
@@ -589,10 +621,17 @@ function videoNote() {
   videoNoteEl.textContent =
     `Picture: ${videoRate.toFixed(0)} frames a second painted`
     + ` (the game draws 35), best lately ${videoBest.toFixed(0)}`
+    + `, arriving at ${videoRateKB.toFixed(0)} KB/s`
     + (videoWorstGap
          ? `, longest gap ${Math.round(videoWorstGap)} ms, ${videoLate} late`
          : '')
-    + '.';
+    + '.'
+    + (videoBest < 25
+         ? ' Well short of 35 means the picture cannot get through as fast as'
+           + ' it is drawn — a full-rate picture at this size needs about'
+           + ' 1300 KB/s. DOOM_SCALE=1 asks for a quarter of the pixels and'
+           + ' about 470.'
+         : '');
 }
 
 setInterval(videoNote, 500);
@@ -605,6 +644,7 @@ setInterval(() => { videoWorstGap = 0; videoLate = 0; videoBest = 0; }, 15000);
 window.__video = () => ({
   painted: videoRate,
   best: videoBest,
+  kbPerSec: Math.round(videoRateKB),
   busy: videoBusy,
   worstGapMs: Math.round(videoWorstGap),
   late: videoLate,
