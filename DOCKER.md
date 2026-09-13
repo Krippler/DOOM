@@ -76,6 +76,7 @@ Two pages are served:
 | `/` | Redirects to `play.html`. |
 | `/play.html` | Captures the mouse. Use this to play. |
 | `/vnc.html?autoconnect=1&resize=off` | Stock noVNC, no capture and no sound. Useful for looking at the screen without grabbing your pointer. |
+| `/play.html?encoding=hextile` | The same page, with the picture compressed differently. For chasing stutter — see below. |
 
 `play.html` offers two ways in, and both capture the mouse with the Pointer
 Lock API — the cursor disappears into the game, so turning never runs out of
@@ -91,6 +92,28 @@ started, so Escape then click will not drop you into fullscreen unexpectedly.
 
 Either way that first click also starts the sound, which browsers will not
 play without one. See [Sound](#sound).
+
+### `?encoding=hextile`
+
+x11vnc and noVNC settle on Tight, which sends the busiest parts of a DOOM
+screen as JPEG. noVNC decodes those by handing each one to an `<img>` and
+waiting for the browser to decode it, and while it waits it reads nothing more
+off the socket and asks for no further frames. That is the one place in the
+client that can go quiet for an unbounded time with the browser itself
+perfectly responsive.
+
+Whether it is worth anything depends on the machine you are playing on, so the
+page measures it. Press Escape and read the picture note: *decoding held this
+page up for at most N ms of that*. If N is small, this switch will not help
+you and the stutter is somewhere else. If N is a large part of the *this page
+took at most N ms to ask for the next frame* figure beside it, this is the
+cause and the switch is the fix.
+
+`?encoding=hextile` drops Tight from what the browser offers, so the server
+falls back to Hextile, which noVNC writes straight into the framebuffer with
+nothing to wait for. It is not the default because it is not free — over the
+same 25 seconds of walking into a room, 873 KB/s with Tight against 2286 KB/s
+with Hextile. That is nothing over a wire and quite a lot over wifi.
 
 The picture is scaled up to fill the window, by the same factor in both
 directions, so it keeps its shape — black bars on whichever axis has room
