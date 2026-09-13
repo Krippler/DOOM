@@ -6,6 +6,38 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.34] — 2026-09-13
+
+### Added
+- **The page compares the two streams, which is what is left to ask.** The
+  field log cleared everything that had a measurement: nothing in the container
+  waited for a CPU in 160 seconds of play, the engine reported no late frames at
+  all, and the browser's own drawing never stopped. The browser was ready and
+  willing, and for 462 ms nothing arrived.
+
+  The picture and the sound are separate connections to the same proxy over the
+  same link, so what the sound was doing during that gap settles where it came
+  from. The note now says:
+
+  ```
+  ... longest gap 717 ms, 4 late. The sound, over the same link, went quiet for
+  at most 26 ms. The sound kept coming through the gap, so the link and the
+  proxy were working and the picture alone went quiet.
+  ```
+
+  Checked against both answers rather than assumed. Freezing x11vnc alone gives
+  a 717 ms picture gap against 26 ms of sound — the picture alone. Freezing the
+  whole container, which stops both by definition, gives 667 ms against 639 —
+  both together. Ordinary play gives 67 against 72, and no verdict at all,
+  because at that size the two figures are the normal lumpiness of two streams
+  through one proxy and comparing them announced "both stopped together" about
+  a perfectly healthy gap.
+
+  The first version of this counted *bytes* delivered during the gap rather
+  than timing, and reported a frozen container as "the picture alone went
+  quiet" — when a stall ends the backlog arrives in a burst, so the volume
+  comes out right and the stall is invisible. Only the timing shows it.
+
 ## [1.10.33] — 2026-09-13
 
 ### Changed
