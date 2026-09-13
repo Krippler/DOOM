@@ -431,11 +431,21 @@ cd "$STATE"
 #
 cpu_wait_watch () {
     (
-        prev=""
-        while sleep 5; do
-            now=""
-            line=""
+        # Sampled four times a second rather than once every five, because the
+        # total on its own cannot tell 275 ms spent in one stall from the same
+        # 275 ms spread over fifty. One of those stutters and the other does
+        # not, and that is the whole question. The worst single quarter-second
+        # is reported alongside the total.
+        #
+        # read is a builtin, so a sample is five file reads and no processes.
+        i=0
+        line=""
 
+        for name in doom x11vnc Xvfb noVNC audiostream; do
+            eval "prev_$name=''; tot_$name=0; worst_$name=0"
+        done
+
+        while sleep 0.25; do
             for entry in "doom:$DOOM_PID" "x11vnc:$VNC_PID" "Xvfb:$XVFB_PID" \
                          "noVNC:$WEB_PID" "audiostream:$AUDIO_PID"; do
                 name=${entry%%:*}
@@ -443,19 +453,35 @@ cpu_wait_watch () {
 
                 [ -n "$pid" ] && [ -r "/proc/$pid/schedstat" ] || continue
 
-                wait_ns=$(cut -d" " -f2 "/proc/$pid/schedstat" 2>/dev/null) || continue
-                now="$now $name=$wait_ns"
+                read -r _run wait_ns _rest < "/proc/$pid/schedstat" || continue
 
-                old_ns=$(echo "$prev" | tr " " "\n" | sed -n "s/^$name=//p")
+                eval "old_ns=\$prev_$name"
+                eval "prev_$name=\$wait_ns"
+
                 [ -n "$old_ns" ] || continue
 
-                # Report a process that spent more than 2% of the interval
-                # waiting for a core: 100 ms in 5 s.
                 ms=$(( (wait_ns - old_ns) / 1000000 ))
-                [ "$ms" -gt 100 ] 2>/dev/null && line="$line $name ${ms}ms"
+
+                eval "tot_$name=\$(( \$tot_$name + ms ))"
+                eval "worst=\$worst_$name"
+                [ "$ms" -gt "$worst" ] && eval "worst_$name=$ms"
             done
 
-            prev="$now"
+            i=$((i + 1))
+            [ "$i" -lt 20 ] && continue
+            i=0
+            line=""
+
+            for name in doom x11vnc Xvfb noVNC audiostream; do
+                eval "tot=\$tot_$name; worst=\$worst_$name"
+                eval "tot_$name=0; worst_$name=0"
+
+                # More than 2% of the interval waiting for a core, or a single
+                # quarter-second where it waited for most of one.
+                if [ "$tot" -gt 100 ] || [ "$worst" -gt 60 ]; then
+                    line="$line $name ${tot}ms (worst stretch ${worst}ms)"
+                fi
+            done
 
             [ -n "$line" ] && log "waiting for a CPU in the last 5s:$line"
         done
