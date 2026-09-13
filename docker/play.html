@@ -292,6 +292,124 @@ const rfb = new RFB(screenEl, `${scheme}://${location.host}`, {
   wsProtocols: ['binary'],
 });
 
+//
+// How the picture is compressed, and why there is a switch for it.
+//
+// x11vnc and noVNC settle on Tight, and Tight sends the busiest parts of a
+// DOOM screen as JPEG. noVNC decodes those by base64-encoding the bytes into
+// a data: URL, handing it to an <img>, and then STOPPING: the whole message
+// pump waits for that image to decode before it reads another byte off the
+// socket or asks for another frame. It is the one place in this client that
+// can go quiet for an unbounded time with the main thread still perfectly
+// responsive -- which is the exact shape of what the field reports, where the
+// browser sent nothing for 576 ms and the rAF loop below never missed 50 ms.
+//
+// Here it costs 2 ms a picture and never once blocked the pump, so whether it
+// is what stutters cannot be settled from a fast machine on loopback. The two
+// figures in the note say what it costs where it is actually being played.
+//
+// ?encoding=hextile drops Tight and lets the server fall back to Hextile,
+// which noVNC decodes synchronously -- no base64, no <img>, nothing to wait
+// for. It is not the default because it is not free: measured over the same
+// 25 seconds of walking into a room, 873 KB/s with Tight against 2286 KB/s
+// with Hextile. That is fine over a wire and probably not over wifi, so it
+// stays a switch to try rather than a change to everyone.
+//
+if (new URLSearchParams(location.search).get('encoding') === 'hextile') {
+  // 7 is Tight and -260 is TightPNG; both decode through an <img>. Filtering
+  // the list on its way out is the whole change -- the server picks the best
+  // of what is left, which is Hextile, and noVNC's Hextile decoder writes
+  // straight into the framebuffer.
+  const TIGHT = 7, TIGHT_PNG = -260;
+  const clientEncodings = RFB.messages.clientEncodings;
+
+  RFB.messages.clientEncodings = function (sock, encs) {
+    return clientEncodings.call(this, sock,
+      encs.filter((e) => e !== TIGHT && e !== TIGHT_PNG));
+  };
+}
+
+//
+// What the decoding above costs, measured where it matters.
+//
+// videoDecodeWorst is the longest a single picture took between being handed
+// to the browser and coming back decoded. videoBlockedWorst is the longest
+// the message pump actually sat waiting on one, which is the figure that
+// matters: while it is waiting, no frame is asked for, so every millisecond
+// here is a millisecond of the gap the container sees as "the browser asked
+// N ms in".
+//
+let videoDecodeWorst = 0;
+let videoBlockedWorst = 0;
+let videoDecoded = 0;         // pictures that went through the image decoder
+
+(function watchDecoding() {
+  const d = rfb._display;
+  if (!d || typeof d.imageRect !== 'function') return;
+
+  const imageRect = d.imageRect.bind(d);
+  d.imageRect = function (x, y, w, h, mime, arr) {
+    const started = performance.now();
+    const r = imageRect(x, y, w, h, mime, arr);
+
+    // imageRect queues exactly one entry. If it is not there, the queue
+    // drained synchronously and there was nothing to wait for; skip the
+    // sample rather than guess at which image this was.
+    const q = d._renderQ && d._renderQ[d._renderQ.length - 1];
+    if (q && q.type === 'img' && q.img) {
+      q.img.addEventListener('load', () => {
+        const took = performance.now() - started;
+        if (!playing()) return;
+        videoDecoded++;
+        if (took > videoDecodeWorst) videoDecodeWorst = took;
+      });
+    }
+    return r;
+  };
+
+  const flush = d.flush.bind(d);
+  let blockedAt = 0;
+  let blockedWhilePlaying = false;
+
+  d.flush = function () {
+    if (d._renderQ && d._renderQ.length) {
+      blockedAt = performance.now();
+
+      // Whether this counts is decided here, at the start of the block, as
+      // well as at the end of it. A long enough block stops frames being
+      // painted, videoBusy goes false, and playing() then reports that nobody
+      // was playing -- so asking only at the end would throw away exactly the
+      // worst blocks and keep the harmless ones. Same trap as the four before
+      // it, one layer further in.
+      //
+      // Asking only at the start is not enough either: that dropped a real
+      // 300 ms block in one calibration run out of three, because the paint
+      // rate had dipped under the ten-a-second mark in the instant the block
+      // began. Either end counts, which still needs the picture to have been
+      // moving within a second of the block and so keeps the hole this was
+      // guarding against shut.
+      blockedWhilePlaying = playing();
+    }
+    return flush();
+  };
+
+  // d.onflush, not rfb._onFlush: the constructor takes a bound copy of
+  // _onFlush and the display calls that, so replacing the method on rfb
+  // afterwards is replacing something nothing ever calls again. The first
+  // version of this did exactly that and would have reported a confident
+  // zero forever.
+  const onflush = d.onflush;
+  d.onflush = function () {
+    if (blockedAt) {
+      const held = performance.now() - blockedAt;
+      if ((blockedWhilePlaying || playing()) && held > videoBlockedWorst)
+        videoBlockedWorst = held;
+      blockedAt = 0;
+    }
+    return onflush.call(this);
+  };
+})();
+
 // The engine has one fixed resolution; never rescale it to the window.
 window.__rfb = rfb;   // for automated checks; harmless otherwise
 rfb.scaleViewport = false;
@@ -765,6 +883,19 @@ function videoNote() {
     + ` ${Math.round(videoMsgGap)} ms, and this page took at most`
     + ` ${Math.round(videoAskGap)} ms to ask for the next frame after one`
     + ` arrived.`
+    //
+    // Reported every time, not only when it is bad: a run where this is 2 ms
+    // rules the decoder out, and ruling something out is worth as much here
+    // as catching it. Nothing is asked for while the pump is held, so this
+    // figure comes straight off the front of the one above it.
+    //
+    + (videoDecoded
+         ? ` Decoding held this page up for at most`
+           + ` ${Math.round(videoBlockedWorst)} ms of that, the slowest of`
+           + ` ${videoDecoded} pictures taking`
+           + ` ${Math.round(videoDecodeWorst)} ms.`
+         : ` Nothing went through the browser's image decoder, so none of`
+           + ` that wait was decoding.`)
     + (videoWorstGap
          ? ` The sound, over the same link, went quiet for at most`
            + ` ${Math.round(audioWorstGap)} ms.`
@@ -795,6 +926,9 @@ function videoReset() {
   audioWorstGap = 0;
   videoMsgGap = 0;
   videoAskGap = 0;
+  videoDecodeWorst = 0;
+  videoBlockedWorst = 0;
+  videoDecoded = 0;
   if (window.__audioGapReset) window.__audioGapReset();
   videoWorstGap = 0;
   videoLate = 0;
@@ -817,6 +951,9 @@ window.__video = () => ({
   audioWorstGapMs: Math.round(audioWorstGap),
   msgGapMs: Math.round(videoMsgGap),
   askGapMs: Math.round(videoAskGap),
+  decoded: videoDecoded,
+  decodeWorstMs: Math.round(videoDecodeWorst),
+  blockedWorstMs: Math.round(videoBlockedWorst),
 });
 
 function audioURL() {
