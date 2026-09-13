@@ -65,6 +65,103 @@
 #define NSEC_PER_SEC	1000000000L
 
 
+//
+// A listener, and what is still owed to it.
+//
+// A socket write takes as much as it feels like -- any number of bytes, not
+// necessarily a whole 16-bit stereo frame. The first version of this dropped
+// whatever was left of the period when the socket filled, which leaves the
+// listener holding half a frame: every sample after that is assembled from
+// the wrong pair of bytes, which is not a glitch but full-scale noise that
+// never recovers. Reported from the field as the sound going "super loud,
+// then cut out completely, then back to normal" -- the last part being the
+// page's ring buffer giving up and resynchronising.
+//
+// So what the socket would not take is kept and offered again next period.
+// When the backlog is too old to be worth sending, whole frames are dropped
+// from the front of it: a gap in the sound is a click, and a gap that is not
+// a whole number of frames is noise for ever.
+//
+#define BACKLOG_PERIODS	8
+
+typedef struct
+{
+    int			fd;
+    unsigned char	pend[PERIOD * 4 * BACKLOG_PERIODS];
+    size_t		pendlen;
+} client_t;
+
+
+//
+// Adds bytes to what is owed, dropping the oldest whole frames if that is the
+// only way to make room.
+//
+static void
+Owe
+( client_t*		c,
+  const unsigned char*	buf,
+  size_t		len )
+{
+    if (len > sizeof(c->pend))
+	return;			// cannot happen: a period is far smaller
+
+    if (c->pendlen + len > sizeof(c->pend))
+    {
+	// Drop from the front, rounded up to a whole frame so what is left
+	// still starts on one.
+	size_t	drop = c->pendlen + len - sizeof(c->pend);
+
+	drop = (drop + 3) & ~(size_t) 3;
+
+	if (drop > c->pendlen)
+	    drop = c->pendlen & ~(size_t) 3;
+
+	memmove (c->pend, c->pend + drop, c->pendlen - drop);
+	c->pendlen -= drop;
+    }
+
+    memcpy (c->pend + c->pendlen, buf, len);
+    c->pendlen += len;
+}
+
+
+//
+// Hands over as much as the socket will take. Returns 0 if the listener has
+// gone away.
+//
+static int
+Flush (client_t* c)
+{
+    while (c->pendlen)
+    {
+	ssize_t	w = write (c->fd, c->pend, c->pendlen);
+
+	if (w > 0)
+	{
+	    c->pendlen -= (size_t) w;
+
+	    if (c->pendlen)
+		memmove (c->pend, c->pend + w, c->pendlen);
+
+	    continue;
+	}
+
+	if (w < 0 && errno == EINTR)
+	    continue;
+
+	// Full socket. What is left stays owed, still frame-aligned, and goes
+	// out next period.
+	if (w < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+	    return 1;
+
+	return 0;
+    }
+
+    return 1;
+}
+
+
+
 static int	out_rate = 22050;
 static int	upsample;		// out_rate / SFX_RATE, exactly
 static int	verbose = 0;
@@ -397,7 +494,7 @@ main
     source_t		music;
     int			havesfx = 0;
     int			lfd;
-    int			client[MAXCLIENTS];
+    client_t		client[MAXCLIENTS];
     int			nclients = 0;
 
     short		sfxup[PERIOD * 2];
@@ -543,14 +640,18 @@ main
 		hdr[14] = 16;		// bits per sample
 		hdr[15] = 0;
 
-		if (write (c, hdr, sizeof(hdr)) != (ssize_t) sizeof(hdr))
+		client[nclients].fd = c;
+		client[nclients].pendlen = 0;
+		Owe (&client[nclients], hdr, sizeof(hdr));
+
+		if (!Flush (&client[nclients]))
 		{
 		    close (c);
 		    continue;
 		}
 	    }
 
-	    client[nclients++] = c;
+	    nclients++;
 
 	    if (verbose)
 		fprintf (stderr, "audiostream: listener connected (%d)\n",
@@ -603,37 +704,11 @@ main
 
 	for (n = 0; n < nclients; n++)
 	{
-	    const char*	p = (const char*) out;
-	    size_t	left = sizeof(out);
-	    int		gone = 0;
+	    Owe (&client[n], (const unsigned char*) out, sizeof(out));
 
-	    while (left)
+	    if (!Flush (&client[n]))
 	    {
-		ssize_t	w = write (client[n], p, left);
-
-		if (w > 0)
-		{
-		    p += w;
-		    left -= (size_t) w;
-		    continue;
-		}
-
-		if (w < 0 && errno == EINTR)
-		    continue;
-
-		// Full socket: the listener is not keeping up, so drop what is
-		// left of this period rather than stall everyone else. Sound
-		// is worth nothing late.
-		if (w < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
-		    break;
-
-		gone = 1;
-		break;
-	    }
-
-	    if (gone)
-	    {
-		close (client[n]);
+		close (client[n].fd);
 		client[n] = client[--nclients];
 		n--;
 
