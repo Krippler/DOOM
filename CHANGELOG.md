@@ -8,6 +8,30 @@ The version follows the engine this is built from, linuxdoom-1.10.
 
 ## [Unreleased]
 
+### Fixed
+- **The picture figures were being wiped while you read them, which is how they
+  came to say the opposite of the truth.** They aged out on a 15-second timer
+  that kept running while the start screen was up — and the start screen can
+  only be read once you have stopped playing, so what you read was whatever had
+  survived the last wipe, measured against a motionless picture.
+
+  That made every reading of them incomparable, and one of those readings is
+  what I used to conclude the picture was bandwidth-limited. It is not: a
+  quarter-size run reported **8 frames a second where full size reported 22**,
+  which is the wrong way round for a bandwidth limit and should have been the
+  end of that theory rather than a puzzle.
+
+  The figures now describe the last spell of play and hold until play starts
+  again, so what is on screen is always the run just finished:
+
+  ```
+  Picture, while you were playing: best 35 frames a second of the 35 the game
+      draws, arriving at 1130 KB/s, longest gap 67 ms, 16 late.
+  ```
+
+  The advice about `DOOM_SCALE=1` that went with the old figures is gone with
+  them.
+
 ### Known
 
 - **Removing `-8to24` from x11vnc cuts the picture's bandwidth by 2.8x and
