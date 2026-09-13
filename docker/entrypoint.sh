@@ -62,6 +62,46 @@ fi
 # own log cannot tell you, because nothing about it is wrong.
 log "DOOM ${DOOM_VERSION:-dev}"
 
+#
+# How many cores this container is allowed, said out loud at startup.
+#
+# Not a diagnosis: starving these processes was tested and does not cause the
+# stutter. Pinned to a single core with a busy process competing for it,
+# x11vnc spent 2225 ms of every 5000 waiting for a core -- three times worse
+# than the machine this was chased on -- and answered every request inside
+# 48 ms with nothing over 200. The run-queue figures further down are worth
+# reading, but they are not this.
+#
+# It is here because it is the one thing about how the container was started
+# that the log could not tell you, and the first question anyone asks about a
+# slow container is how much of the machine it was given.
+#
+cpu_allowance () {
+    cores=$(nproc 2>/dev/null || echo '?')
+
+    # Pinning shows up in nproc, because it is an affinity mask. A quota does
+    # not: it is a share of time across whatever cores are visible, so it has
+    # to be read from the cgroup -- v2 first, then v1.
+    quota=''
+
+    if [ -r /sys/fs/cgroup/cpu.max ]; then
+        read -r q p _ < /sys/fs/cgroup/cpu.max 2>/dev/null || q=max
+        [ "$q" = max ] || quota=$(( q * 100 / p ))
+    elif [ -r /sys/fs/cgroup/cpu/cpu.cfs_quota_us ]; then
+        q=$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us 2>/dev/null || echo -1)
+        p=$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us 2>/dev/null || echo 100000)
+        [ "$q" -le 0 ] 2>/dev/null || quota=$(( q * 100 / p ))
+    fi
+
+    if [ -n "$quota" ]; then
+        log "${cores} core(s) visible, limited to ${quota}% of one"
+    else
+        log "${cores} core(s) available"
+    fi
+}
+
+cpu_allowance
+
 case "$SCALE" in
     1|2|3|4) ;;
     *) die "DOOM_SCALE must be 1, 2, 3 or 4 (got '$SCALE')" ;;

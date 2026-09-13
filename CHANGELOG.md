@@ -6,6 +6,55 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Added
+- **`doom-probe` runs from another machine too.** Inside the container both
+  paths came back clean on the machine that stutters — through the proxy,
+  worst 55 ms, nothing over 200 — while the browser talking to that same proxy
+  was seeing this:
+
+  ```
+  [doom] picture gap 1452 ms: the browser asked 0 ms in, x11vnc answered 1451 ms later
+  ```
+
+  The difference between those two is the network, and every measurement so far
+  has been over loopback where a client drains instantly. Give the probe a host
+  and it puts the real link in the path:
+
+  ```
+  python3 doom-probe.py your-nas
+  ```
+
+  x11vnc's port is usually not published, so that line says it could not
+  connect and the other still runs.
+
+- **The log says how much of the machine the container was given.** One line at
+  startup, `4 core(s) available` or `4 core(s) visible, limited to 150% of
+  one`. Read from the affinity mask and the cgroup, so both pinning and a quota
+  show up.
+
+### Fixed
+- **A shortage of CPU is not the cause, and the warning claiming it was got
+  written and then deleted.** The run-queue figures look damning — x11vnc
+  waiting 648 ms of every 5000 on the machine that stutters — and the first
+  version of the line above told people to give the container more cores.
+
+  Tested before shipping, which is the only reason it is not in this release:
+
+  | container | x11vnc waiting, per 5 s | worst answer | over 200 ms |
+  | --- | --- | --- | --- |
+  | 4 cores | — | 45 ms | 0 |
+  | pinned to 1 core | — | 40 ms | 0 |
+  | pinned to 1 core, busy process on it | **2225 ms** | 48 ms | 0 |
+
+  Forty-four percent of wall time on the run queue, more than three times the
+  worst real report, and not one answer over 200 ms. Starvation does not
+  produce this stall. The figures stay in the log because they are worth
+  reading; the advice is gone, and the comment above them now says outright
+  that it was ruled out, so nobody spends an evening rearranging CPU pinning
+  on the strength of them.
+
 ## [1.10.39] — 2026-09-13
 
 ### Added
