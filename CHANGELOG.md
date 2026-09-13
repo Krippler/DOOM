@@ -6,6 +6,54 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.26] — 2026-09-13
+
+### Added
+- **The page says how many frames it actually painted, next to what the sound
+  is doing.** The engine can report a healthy 35 frames a second while the
+  browser paints far fewer — VNC sends only what changed, websockify relays it
+  in Python, and the tab still has to decode and draw it. Nothing in the
+  container can see the far end of that. The overlay now reads:
+
+  ```
+  Picture: 35 frames a second painted (the game draws 35), worst wait 100 ms, 12 arrived late.
+  ```
+
+  It counts the canvas actually changing, which is the one measure a frame that
+  was sent and never arrived cannot fool, and it stops counting while the
+  overlay is up — otherwise reading the figures records the reader as the worst
+  stutter of the session, which is what the first version of this did.
+
+  With the engine's own line in the container log, the two together say which
+  half of the path a stutter is in. Not knowing that has cost two releases.
+
+### Changed
+- **The engine's frame report now counts frames that missed their slot, not
+  just outright slow ones.** A tic is 28.6 ms; a frame a quarter longer than
+  that means the engine runs two tics and draws once, and the picture jumps.
+  The old threshold was 50 ms, so a steady stream of 40 ms frames — a judder —
+  read as a clean log.
+
+  It also reports how late the kernel was handing the CPU back. The wait for
+  the next tic sleeps about 28 times a tic, and every one of those asks to be
+  woken at a particular moment. A frame that misses its slot while the engine
+  is using three per cent of a core was not the engine's doing, and that
+  number says so.
+
+### Known
+
+- **Two things were tried against the remaining stutter and both were worse.**
+  Written down because the measurements cost more than the changes would have.
+
+  | Tried | Result |
+  | --- | --- |
+  | Sleeping straight to the tic boundary — one sleep a tic instead of 28, so one moment for the kernel to be late with | **Much worse.** Lands a whole tic past the boundary half the time: 88 frames in every 176 took 57 ms instead of 28, against 0 with the millisecond poll. A judder, introduced deliberately. Not kept. |
+  | x11vnc at its own `-wait 20 -defer 20` instead of the 5 ms 1.10.21 set | **Much worse.** Median gap between painted frames 44 ms against 33, p90 65 against 34, and 1471 frames delivered in 60 seconds against 2054. The aggressive polling is what delivers 35 a second. Kept. |
+
+  The second is worth stating plainly: 1.10.21 set those flags on the strength
+  of a latency figure that turned out to be wrong, and 1.10.22 said as much.
+  They are right anyway, for a different reason than the one given.
+
 ## [1.10.25] — 2026-09-13
 
 ### Fixed

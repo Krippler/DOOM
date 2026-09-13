@@ -114,19 +114,37 @@ byte* I_ZoneBase (int*	size)
 //
 // I_Sleep
 //
-// Sleeps for about this many milliseconds. Used by the loop that waits out
-// the rest of a tic, which otherwise spins.
+// Sleeps for about this many milliseconds, and keeps the worst overshoot it
+// has seen. The tic wait calls this about 28 times a tic, and each call asks
+// the kernel to hand the CPU back at a particular moment -- which on a machine
+// with other work to do it may not manage. When frames miss their slot while
+// the engine is using three per cent of a core, this is the number that says
+// whose fault that was.
 //
+double	I_SleepLate;		// worst overshoot since last read, milliseconds
+
 void I_Sleep (int ms)
 {
-    struct timespec	ts;
+    struct timespec	ts, before, after;
+    double		late;
 
     ts.tv_sec  = ms / 1000;
     ts.tv_nsec = (long) (ms % 1000) * 1000000L;
 
-    // A signal cutting the sleep short is not worth handling: the caller is a
-    // polling loop and will come straight back here.
+    clock_gettime (CLOCK_MONOTONIC, &before);
+
+    // A signal cutting the sleep short is not worth handling: every caller is
+    // a polling loop and will come straight back here.
     nanosleep (&ts, NULL);
+
+    clock_gettime (CLOCK_MONOTONIC, &after);
+
+    late = (after.tv_sec - before.tv_sec) * 1000.0
+	 + (after.tv_nsec - before.tv_nsec) / 1e6
+	 - ms;
+
+    if (late > I_SleepLate)
+	I_SleepLate = late;
 }
 
 

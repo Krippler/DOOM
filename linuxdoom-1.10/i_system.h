@@ -49,6 +49,12 @@ int I_GetTime (void);
 // loop had nothing like this, because in 1997 there was nothing else on the
 // machine worth yielding to.
 //
+// I_SleepLate is the worst the kernel has been late handing the CPU back, which
+// is what separates a frame the engine was slow to draw from one it was not
+// given the chance to.
+//
+extern double	I_SleepLate;
+
 void I_Sleep (int ms);
 
 
