@@ -77,6 +77,12 @@ current gcc and glibc. Behaviour is otherwise left alone.
   unchanged (156 ms keypress-to-picture either way) while a container held to
   one core goes from 27 frames a second reaching the browser to 35. The melt
   between screens had the same spin in its own loop and gets the same fix.
+  Since 1.10.28 the wait is split rather than purely slept: a millisecond at a
+  time while there is time to spare, holding the CPU through the last few
+  milliseconds, sized to how late this machine has actually handed the CPU
+  back. Sleeping only is free but depends on the kernel being punctual, and in
+  the field it was 43 ms late; spinning only is punctual but costs the core
+  this note is about.
 - **`i_system.c`, `m_misc.c`** — the zone allocator was getting two megabytes.
   `mb_used` is initialised to 6, but `M_LoadDefaults` runs before `Z_Init` and
   overwrites it from the config table, whose default was 2; every config file

@@ -926,6 +926,38 @@ screenEl.addEventListener('click', () => {
 
 document.addEventListener('fullscreenchange', fitCanvas);
 
+//
+// Esc, handled here rather than left to the browser.
+//
+// Releasing the mouse on Esc was the browser's own behaviour, and the page
+// only watched for the result. That works until it does not: a browser that
+// keeps the key, a client that swallows it, a fullscreen that eats the first
+// press. Two releases have now gone by with Esc still not bringing this screen
+// back for somebody, and every one of them was a guess about what the browser
+// would do. So the page does it itself, in the capture phase before noVNC sees
+// the key, and asks for the same thing the browser would have: drop the
+// pointer, leave fullscreen.
+//
+// The browser's own handling still runs; both arriving at the same end is
+// harmless, since exitPointerLock on an already-released pointer does nothing.
+//
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' && e.keyCode !== 27) return;
+  if (!locked() && !document.fullscreenElement) return;
+
+  // The game's menu is on `, so Esc is not the game's to handle.
+  e.preventDefault();
+  e.stopPropagation();
+
+  try { if (document.exitPointerLock) document.exitPointerLock(); } catch (err) {}
+  try { if (document.fullscreenElement && document.exitFullscreen)
+          document.exitFullscreen(); } catch (err) {}
+
+  // Belt and braces: if neither of those produced an event -- which is the
+  // failure this exists for -- show the screen anyway.
+  setTimeout(() => { if (!locked()) overlayEl.hidden = false; }, 150);
+}, true);
+
 document.addEventListener('pointerlockchange', () => {
   overlayEl.hidden = locked();
   if (locked()) {

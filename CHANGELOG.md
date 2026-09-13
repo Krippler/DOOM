@@ -6,6 +6,56 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **Esc is handled by the page now, instead of hoping the browser does it.**
+  Releasing the mouse on Esc was always the browser's own behaviour; the page
+  only watched for the result. Two releases went by trying to fix Esc by
+  reasoning about what browsers do, and both were wrong, because the whole
+  mechanism lived somewhere neither I nor any test here could reach — a
+  synthetic keypress does not trigger the browser's native pointer-lock
+  release, so every test passed on a build that was broken in the field.
+
+  The page now takes the key in the capture phase and asks for the release
+  itself, with a fallback that shows the start screen anyway if neither the
+  pointer lock nor fullscreen produced an event. That is the failure this
+  exists for. Verified with a real Esc keypress in all four combinations —
+  fullscreen and windowed, with and without Keyboard Lock — which is the first
+  time this behaviour has been testable at all.
+
+### Changed
+- **The engine holds on to the CPU through the end of each tic, instead of
+  sleeping and hoping to be woken on time.** 1.10.26 added a report of how
+  late the kernel hands the CPU back, and the field answer was **22, 32 and 43
+  ms** — against under a millisecond here. A machine consistently a few
+  milliseconds late runs every frame late, and the same logs show stretches of
+  126 to 142 frames per five seconds where 176 is the full rate: 28 a second
+  instead of 35, which is a shudder rather than an occasional hitch.
+
+  So the wait is now split. While there is time to spare it sleeps a
+  millisecond at a time and costs nothing; through the last stretch — where
+  being handed the CPU late is what costs a frame — it holds on. The stretch is
+  as long as that machine has actually been late and no longer, capped at 8 ms,
+  so a punctual machine spins one millisecond in twenty-eight:
+
+  | | engine CPU, playing |
+  | --- | --- |
+  | 1997 (spin the whole wait) | 96.5% of a core |
+  | 1.10.25–27 (sleep only) | 5% |
+  | now, on a punctual machine | 9% |
+  | now, worst case on a late one | ~28% |
+
+  `DOOM_TIC_SPIN_MS=0` turns it off and restores the 1.10.25 behaviour.
+
+  **This is not demonstrated to fix the stutter.** It cannot be: the fault is a
+  property of the host's scheduler, and this machine does not have it — 24
+  competing processes at raised priority against a container held to 0.6 of a
+  core still produced not one late frame. What is measured is the mechanism, on
+  the reporting machine, and that the countermeasure costs 4 points of CPU
+  where it is not needed. Frame delivery here is unchanged: median gap 33 ms,
+  p90 34, p99 52.
+
 ## [1.10.27] — 2026-09-13
 
 ### Fixed

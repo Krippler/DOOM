@@ -746,18 +746,16 @@ void TryRunTics (void)
 	// worst exactly when a lot of the screen changes at once, because
 	// that is when they need the CPU most.
 	//
-	// A millisecond is 35 times finer than the tic being waited for, so it
-	// costs nothing that can be perceived; input is sampled at tic
-	// boundaries either way.
+	// How it waits is in I_WaitForTic: a millisecond at a time while there
+	// is time to spare, holding the CPU through the last stretch, where
+	// being handed it back late is what costs a frame.
 	//
 	// Sleeping straight to the tic boundary instead -- one sleep rather
-	// than twenty-eight, so one moment for the kernel to be late with --
-	// was tried and is worse: it lands a whole tic past the boundary half
-	// the time, and the engine then runs two tics and draws once. Measured
-	// at 88 frames in every 176 taking 57 ms instead of 28, which is a
-	// judder rather than the smooth cadence this gives.
+	// than many -- was tried and is worse: it lands a whole tic past the
+	// boundary half the time, and the engine then runs two tics and draws
+	// once. Measured at 88 frames in every 176 taking 57 ms instead of 28.
 	//
-	I_Sleep (1);
+	I_WaitForTic ();
     }
     
     // run the count * ticdup dics

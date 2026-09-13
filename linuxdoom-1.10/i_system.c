@@ -114,37 +114,142 @@ byte* I_ZoneBase (int*	size)
 //
 // I_Sleep
 //
-// Sleeps for about this many milliseconds, and keeps the worst overshoot it
-// has seen. The tic wait calls this about 28 times a tic, and each call asks
-// the kernel to hand the CPU back at a particular moment -- which on a machine
-// with other work to do it may not manage. When frames miss their slot while
-// the engine is using three per cent of a core, this is the number that says
-// whose fault that was.
+// Sleeps for about this many milliseconds.
 //
-double	I_SleepLate;		// worst overshoot since last read, milliseconds
-
 void I_Sleep (int ms)
 {
-    struct timespec	ts, before, after;
-    double		late;
+    struct timespec	ts;
 
     ts.tv_sec  = ms / 1000;
     ts.tv_nsec = (long) (ms % 1000) * 1000000L;
 
-    clock_gettime (CLOCK_MONOTONIC, &before);
-
     // A signal cutting the sleep short is not worth handling: every caller is
     // a polling loop and will come straight back here.
     nanosleep (&ts, NULL);
+}
 
-    clock_gettime (CLOCK_MONOTONIC, &after);
 
-    late = (after.tv_sec - before.tv_sec) * 1000.0
-	 + (after.tv_nsec - before.tv_nsec) / 1e6
-	 - ms;
+//
+// Waiting for the next tic.
+//
+// The engine spends five sixths of every tic waiting for it, and how it waits
+// decides two things that pull against each other: how much CPU is left for
+// everything else getting the picture out, and how promptly the engine notices
+// the tic has arrived.
+//
+// Spinning notices instantly and costs a whole core -- that was the 1997
+// behaviour, and it starved the X server, the VNC server and the proxy badly
+// enough to drop a quarter of the frames. Sleeping a millisecond at a time
+// costs nothing and notices within a millisecond, PROVIDED the kernel hands
+// the CPU back when asked. On a busy host it does not: measured in the field
+// at 43 ms late, and a machine that is consistently a few milliseconds late
+// runs every frame late, which is 28 frames a second instead of 35 and looks
+// like a shudder.
+//
+// So: sleep while there is time to spare, and hold the CPU through the last
+// stretch, where being handed it late is what costs a frame. The stretch is
+// as long as this machine has actually been late, and no longer -- a punctual
+// one spins a millisecond in twenty-eight and uses three per cent of a core,
+// the same as before. DOOM_TIC_SPIN_MS overrides it; 0 turns it off.
+//
+#define SPIN_MIN_MS	1.0
+#define SPIN_MAX_MS	8.0
 
-    if (late > I_SleepLate)
-	I_SleepLate = late;
+double	I_SleepLate;		// worst overshoot since last read, milliseconds
+double	I_SpinMs = SPIN_MIN_MS;	// how much of the tic end is held, not slept
+
+static double
+I_NowMs (void)
+{
+    struct timespec	ts;
+
+    clock_gettime (CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
+}
+
+
+//
+// Microseconds until I_GetTime would return something new.
+//
+static long
+I_UsecToTic (void)
+{
+    struct timeval	tp;
+    long		tic, next;
+
+    gettimeofday (&tp, NULL);
+
+    // The same arithmetic I_GetTime uses, solved for the earliest microsecond
+    // that reads as the following tic.
+    tic  = (long) tp.tv_usec * TICRATE / 1000000;
+    next = ((tic + 1) * 1000000L + TICRATE - 1) / TICRATE;
+
+    return next - tp.tv_usec;
+}
+
+
+void I_WaitForTic (void)
+{
+    static int	configured = 0;
+    static double spin_max = SPIN_MAX_MS;
+    long	left;
+
+    if (!configured)
+    {
+	char*	e = getenv ("DOOM_TIC_SPIN_MS");
+
+	configured = 1;
+
+	if (e && *e)
+	{
+	    spin_max = atof (e);
+	    if (spin_max < 0)
+		spin_max = 0;
+	    I_SpinMs = spin_max < SPIN_MIN_MS ? spin_max : SPIN_MIN_MS;
+	}
+    }
+
+    left = I_UsecToTic ();
+
+    if (left <= 0)
+	return;
+
+    if (left > (long) (I_SpinMs * 1000.0))
+    {
+	double	before, late;
+
+	before = I_NowMs ();
+	I_Sleep (1);
+	late = I_NowMs () - before - 1.0;
+
+	// How late the CPU came back. The spin window grows to cover it, so
+	// the next tic end is held rather than slept through, and decays so a
+	// machine that settles down stops paying for a bad minute.
+	if (late > I_SleepLate)
+	    I_SleepLate = late;
+
+	if (late > I_SpinMs)
+	    I_SpinMs = late < spin_max ? late : spin_max;
+	else
+	    I_SpinMs -= (I_SpinMs - SPIN_MIN_MS) * 0.0005;
+
+	if (I_SpinMs < SPIN_MIN_MS)
+	    I_SpinMs = SPIN_MIN_MS;
+
+	return;
+    }
+
+    // Inside the window: hold on to the CPU rather than hand it back and hope.
+    //
+    // Spin on the tic itself, not on the microseconds left to it -- the latter
+    // is a countdown that resets to a full tic the moment the boundary passes,
+    // so waiting for it to reach zero waits for ever. It did, once.
+    {
+	int	start = I_GetTime ();
+
+	while (I_GetTime () == start)
+	    ;
+    }
 }
 
 
