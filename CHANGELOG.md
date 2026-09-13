@@ -6,6 +6,51 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Changed
+- **The CPU-wait line says the worst single stretch, not just the total.**
+  Reported from the field:
+
+  ```
+  [doom] waiting for a CPU in the last 5s: doom 120ms x11vnc 275ms Xvfb 124ms
+  ```
+
+  That is real starvation — x11vnc is the one process here doing work per
+  frame, and it is being denied a core — but 275 ms in five seconds is 5% of
+  the time, and a total cannot tell 275 ms spent in one stall from the same
+  275 ms spread over fifty. One of those stutters; the other does not. It is
+  sampled four times a second now and reports both:
+
+  ```
+  [doom] waiting for a CPU in the last 5s: x11vnc 328ms (worst stretch 43ms)
+  ```
+
+  Measured under sixteen competing processes at raised priority, the waiting
+  turns out to be spread thin — 300 to 360 ms in total, never more than 46 ms
+  at a stretch. A host that produces a 483 ms gap in the picture would have to
+  look very different from that.
+
+### Added
+- **The page says when the browser's own drawing stopped.** Everything the page
+  does happens on one thread: noVNC decoding the picture, the sound where it
+  runs through the `ScriptProcessorNode` fallback rather than a worklet, and
+  the probe that counts painted frames. If that thread is busy, frames that
+  arrived perfectly well are never painted — and from inside the container that
+  is indistinguishable from frames that never arrived. It was the last link in
+  the chain with nothing watching it:
+
+  ```
+  Picture, while you were playing: best 36 frames a second of the 35 the game
+      draws, arriving at 1137 KB/s, longest gap 83 ms, 16 late. This browser's
+      own drawing stopped 1 times, worst 67 ms — frames that arrive during one
+      of those are never painted.
+  ```
+
+  One stall of 67 ms in twenty seconds is this machine being healthy. The
+  figure to compare against a 483 ms gap in the picture is the one from the
+  machine that has the gap.
+
 ## [1.10.32] — 2026-09-13
 
 ### Added

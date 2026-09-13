@@ -530,6 +530,8 @@ let videoBest = 0;            // the best second lately, which is the real test
 let videoWorstGap = 0;        // longest wait between two of them, ms
 let videoLate = 0;            // paints that took over a tic and a quarter
 let videoBusy = false;        // was the last second one where anything moved?
+let videoStalls = 0;          // times the browser's own frame loop went away
+let videoWorstStall = 0;      // ... and for how long, ms
 const VIDEO_TIC_MS = 1000 / 35;
 
 // VNC sends what changed and nothing else, so a player standing still paints
@@ -548,9 +550,28 @@ const VIDEO_BUSY_RATE = 10;
   probe.height = 30;
   const g = probe.getContext('2d', { willReadFrequently: true });
 
-  let last = 0, prev = null, secondStart = 0;
+  let last = 0, prev = null, secondStart = 0, lastTick = 0;
 
   function frame(now) {
+    //
+    // How late this callback itself was.
+    //
+    // Everything the page does happens on one thread: noVNC decoding the
+    // picture, the sound when it is running through the fallback rather than a
+    // worklet, and this probe. If that thread is busy, frames that arrived
+    // perfectly well never reach the screen -- and from the container's side
+    // that is indistinguishable from frames that never arrived. It is the last
+    // link in the chain with nothing measuring it.
+    //
+    // The browser aims for one of these every 16 ms; 50 is late enough to mean
+    // something held the thread.
+    //
+    if (lastTick && now - lastTick > 50) {
+      videoStalls++;
+      if (now - lastTick > videoWorstStall) videoWorstStall = now - lastTick;
+    }
+    lastTick = now;
+
     const cv = screenEl && screenEl.querySelector('canvas');
 
     // Nothing counts while the overlay is up. It covers the picture, so the
@@ -561,6 +582,7 @@ const VIDEO_BUSY_RATE = 10;
       last = 0;
       prev = null;
       secondStart = 0;
+      lastTick = 0;
       requestAnimationFrame(frame);
       return;
     }
@@ -634,7 +656,12 @@ function videoNote() {
     + (videoWorstGap
          ? `, longest gap ${Math.round(videoWorstGap)} ms, ${videoLate} late`
          : '')
-    + '.';
+    + '.'
+    + (videoStalls
+         ? ` This browser's own drawing stopped ${videoStalls} times, worst`
+           + ` ${Math.round(videoWorstStall)} ms — frames that arrive during`
+           + ` one of those are never painted.`
+         : '');
 }
 
 setInterval(videoNote, 500);
@@ -642,6 +669,8 @@ setInterval(videoNote, 500);
 // Cleared when play starts, so every figure describes one spell of play.
 function videoReset() {
   videoBest = 0;
+  videoStalls = 0;
+  videoWorstStall = 0;
   videoWorstGap = 0;
   videoLate = 0;
   videoPlayBytes = 0;
@@ -658,6 +687,8 @@ window.__video = () => ({
   busy: videoBusy,
   worstGapMs: Math.round(videoWorstGap),
   late: videoLate,
+  stalls: videoStalls,
+  worstStallMs: Math.round(videoWorstStall),
 });
 
 function audioURL() {
