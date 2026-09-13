@@ -32,6 +32,53 @@ The version follows the engine this is built from, linuxdoom-1.10.
   line below is the one that matters. The closing note no longer talks about
   "both lines" when only one of them ran.
 
+## [Unreleased]
+
+### Fixed
+- **`doom-probe` measured the two paths one after the other, and the second one
+  got the blame.** Run in the field it looked damning — x11vnc worst 333 ms
+  against the proxy's 951, and on this machine 34 ms against 1357 — and the
+  obvious reading was that websockify's pure-Python relay was the amplifier.
+
+  It was the running order. Swapped, with the same container under the same
+  load, the stall moved to whichever path now ran second:
+
+  | order | straight to x11vnc | through the proxy |
+  | --- | --- | --- |
+  | x11vnc first | worst 34 ms | worst **1357 ms** |
+  | proxy first | worst **1449 ms** | worst 29 ms |
+
+  What is actually there is roughly one stall every couple of minutes, landing
+  wherever it likes, and twenty seconds of measurement either catches it or
+  does not. Both orderings were noise dressed as a finding.
+
+  The two paths are now measured in alternating halves, so each gets the same
+  share of whatever the minute holds. On the run that caught a stall it showed
+  up in both lines at once — 424 ms and 691 ms — which is the honest answer and
+  the one that matters: it is not the proxy, and it is not path-specific.
+
+  Also closes each connection before opening the next. It never did, so the
+  second measurement always ran with an extra idle client attached to x11vnc.
+
+### Notes
+- **Ruled out, with the reproduction in hand.** The stall was reproduced
+  locally at last, which made it possible to test the things that had only been
+  argued about:
+
+  - **Not the gap watcher in the proxy.** Built without it, the stalls stay
+    (worst 453 ms) — so the instrumentation is not paying for itself in
+    stutter.
+  - **Not Nagle on the socket to x11vnc.** A 300 ms silence spent entirely in
+    `select`, with nothing written anywhere, is exactly what a delayed tiny
+    request looks like. websockify already sets `TCP_NODELAY` on both sockets.
+  - **Not a WebSocket-capable x11vnc waiting to be used.** This libvncserver
+    does not answer an upgrade on the RFB port; checked rather than assumed.
+
+  Where the silence goes, measured by timing each phase of the relay loop: 301,
+  301, 279 and 430 ms, every millisecond of it idle in `select`, nothing spent
+  writing to the browser, reading from it, or writing to x11vnc. The proxy had
+  already passed the request on and x11vnc said nothing.
+
 ## [1.10.40] — 2026-09-13
 
 ### Added

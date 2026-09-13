@@ -292,28 +292,69 @@ def main():
     print('Leave the game moving while this runs -- its own demo is enough.')
     print()
 
+    #
+    # The two paths are measured in alternating halves, not one after the other.
+    #
+    # Measured back to back, the second one gets the blame for anything that
+    # happens while it is running -- and what happens here is roughly one stall
+    # every couple of minutes, landing wherever it likes. Run in one order the
+    # proxy looked twenty times worse than x11vnc; run in the other, same
+    # container and same load, the stall moved to x11vnc and the proxy came
+    # back clean. Neither reading meant a thing.
+    #
+    # Alternating halves gives each path the same share of whatever the minute
+    # holds, so a difference between the two lines is a difference between the
+    # paths rather than between two minutes.
+    #
+    paths = (('straight to x11vnc',
+              lambda: Link(socket.create_connection((host, vnc), 10))),
+             ('through the proxy',
+              lambda: WSLink(host, web, '/websockify')))
+
+    gathered = dict((name, ([], 0)) for name, _ in paths)
+    failed = {}
+
+    for _turn in range(2):
+        for name, make in paths:
+            if name in failed:
+                continue
+            link = None
+            try:
+                link = make()
+                width, height = handshake(link)
+                waits, total = measure(link, width, height, SECONDS / 2.0)
+                had, so_far = gathered[name]
+                gathered[name] = (had + waits, so_far + total)
+            except ConnectionRefusedError:
+                failed[name] = None
+            except Exception as exc:
+                failed[name] = str(exc)
+            finally:
+                if link is not None:
+                    try:
+                        link.s.close()
+                    except Exception:
+                        pass
+
     results = {}
 
-    for name, make in (('straight to x11vnc',
-                        lambda: Link(socket.create_connection((host, vnc), 10))),
-                       ('through the proxy',
-                        lambda: WSLink(host, web, '/websockify'))):
-        try:
-            link = make()
-            width, height = handshake(link)
-            waits, total = measure(link, width, height, SECONDS)
-            results[name] = report(name, waits, total, SECONDS)
-        except ConnectionRefusedError:
-            # The ordinary case when this is run from another machine:
-            # x11vnc's port is almost never published, and does not need to be.
-            print('%-22s nothing listening on %s:%d%s'
-                  % (name + ':', host, vnc if 'x11vnc' in name else web,
-                     ' (expected from another machine -- the line below is'
-                     ' the one that matters)' if 'x11vnc' in name else ''))
+    for name, _make in paths:
+        if name in failed:
+            reason = failed[name]
+            if reason is None:
+                # The ordinary case from another machine: x11vnc's port is
+                # almost never published, and does not need to be.
+                print('%-22s nothing listening on %s:%d%s'
+                      % (name + ':', host, vnc if 'x11vnc' in name else web,
+                         ' (expected from another machine -- the line below is'
+                         ' the one that matters)' if 'x11vnc' in name else ''))
+            else:
+                print('%-22s could not measure: %s' % (name + ':', reason))
             results[name] = None
-        except Exception as exc:
-            print('%-22s could not measure: %s' % (name + ':', exc))
-            results[name] = None
+            continue
+
+        waits, total = gathered[name]
+        results[name] = report(name, waits, total, SECONDS)
 
     print()
 
