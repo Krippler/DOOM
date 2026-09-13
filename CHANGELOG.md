@@ -6,6 +6,38 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.32] — 2026-09-13
+
+### Added
+- **The container says who is waiting for a CPU rather than using one.** A
+  process that is ready to run but not scheduled looks exactly like a slow
+  process from the outside, and everything here shares the host's cores with
+  whatever else that host is running. `/proc/PID/schedstat` says which: its
+  second field is nanoseconds spent on the run queue wanting to run. A line
+  every five seconds when something waited more than 2% of the interval, and
+  nothing when nothing did:
+
+  ```
+  [doom] waiting for a CPU in the last 5s: doom 450ms x11vnc 430ms
+  [doom] waiting for a CPU in the last 5s: doom 420ms x11vnc 286ms Xvfb 255ms audiostream 114ms
+  ```
+
+  This is the question left after the first trustworthy picture-side reading:
+
+  ```
+  Picture, while you were playing: best 36 frames a second of the 35 the game
+      draws, arriving at 457 KB/s, longest gap 613 ms, 165 late.
+  ```
+
+  Best 36 of 35 means the path can carry the full rate, so it is not bandwidth
+  and not throughput — 457 KB/s at 320×200 is the whole stream. What it is, is
+  full speed punctuated by stalls: 165 frames of about 1600 arriving late, one
+  gap of 613 ms. The sound over the same link in the same session underran
+  three times while holding 20 ms, which a 613 ms stall would have destroyed,
+  so the stall is not the network either. That leaves the one process in this
+  container that does real work per frame, and whether it is being starved or
+  stalling on its own is exactly what the new line answers.
+
 ## [1.10.31] — 2026-09-13
 
 ### Fixed
@@ -43,9 +75,10 @@ The version follows the engine this is built from, linuxdoom-1.10.
   a second — and noVNC, which has no colour-map support, renders it as a green
   and black mess. The bandwidth was real; the picture was not.
 
-  What does work is `DOOM_SCALE=1`: 474 KB/s against 1265, and 34.4 frames a
-  second painted against 35.0. A quarter of the pixels, nearly all of the
-  frames, and a picture that is correct.
+  `DOOM_SCALE=1` does measure smaller here — 474 KB/s against 1265, at 34.4
+  frames a second against 35.0 — but it does not follow that it helps, and in
+  the field it did not: see the fix above. The bandwidth numbers on this page
+  are measurements of this machine and nothing more.
 
 ## [1.10.30] — 2026-09-13
 

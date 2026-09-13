@@ -275,6 +275,7 @@ VNC_PID=""
 WEB_PID=""
 AUDIO_PID=""
 DOOM_PID=""
+CPUWATCH_PID=""
 
 cleanup() {
     trap - EXIT INT TERM
@@ -291,7 +292,7 @@ cleanup() {
         kill -TERM "$DOOM_PID" 2>/dev/null || true
     fi
 
-    for pid in "$WEB_PID" "$AUDIO_PID" "$VNC_PID" "$XVFB_PID"; do
+    for pid in "$CPUWATCH_PID" "$WEB_PID" "$AUDIO_PID" "$VNC_PID" "$XVFB_PID"; do
         if [ -n "$pid" ]; then
             kill "$pid" 2>/dev/null || true
         fi
@@ -414,12 +415,62 @@ case " $* " in
 esac
 
 cd "$STATE"
+#
+# Who is waiting for a CPU rather than using one.
+#
+# Everything in here shares the host's cores with whatever else it is running,
+# and a process that is ready but not scheduled looks exactly like a slow
+# process from the outside. /proc/PID/schedstat says which: its second field is
+# nanoseconds spent on the run queue wanting to run.
+#
+# This matters because the stall that shows up as a stuttering picture is not
+# in the engine -- the engine reports itself healthy while the browser paints
+# in fits -- and x11vnc is the one process here that does real work per frame.
+# Quiet unless something actually waited, like every other report in this
+# container.
+#
+cpu_wait_watch () {
+    (
+        prev=""
+        while sleep 5; do
+            now=""
+            line=""
+
+            for entry in "doom:$DOOM_PID" "x11vnc:$VNC_PID" "Xvfb:$XVFB_PID" \
+                         "noVNC:$WEB_PID" "audiostream:$AUDIO_PID"; do
+                name=${entry%%:*}
+                pid=${entry#*:}
+
+                [ -n "$pid" ] && [ -r "/proc/$pid/schedstat" ] || continue
+
+                wait_ns=$(cut -d" " -f2 "/proc/$pid/schedstat" 2>/dev/null) || continue
+                now="$now $name=$wait_ns"
+
+                old_ns=$(echo "$prev" | tr " " "\n" | sed -n "s/^$name=//p")
+                [ -n "$old_ns" ] || continue
+
+                # Report a process that spent more than 2% of the interval
+                # waiting for a core: 100 ms in 5 s.
+                ms=$(( (wait_ns - old_ns) / 1000000 ))
+                [ "$ms" -gt 100 ] 2>/dev/null && line="$line $name ${ms}ms"
+            done
+
+            prev="$now"
+
+            [ -n "$line" ] && log "waiting for a CPU in the last 5s:$line"
+        done
+    ) &
+    CPUWATCH_PID=$!
+}
+
 log "running: linuxxdoom $*"
 
 # Run in the background and wait: a foreground child would block every trap
 # until it exited, so `docker stop` could not shut the stack down.
 "$DOOM_BIN" "$@" &
 DOOM_PID=$!
+
+cpu_wait_watch
 
 status=0
 wait "$DOOM_PID" || status=$?

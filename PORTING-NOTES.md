@@ -260,8 +260,11 @@ So there is a program of its own for that case:
   the wire traffic from 1268 KB/s to 457, at the same 35 frames a second, which
   looks like the obvious win and is not one: noVNC has no colour-map support
   and renders the result as a green and black mess. The screenshot is
-  unambiguous. So the picture costs what it costs, and the lever that actually
-  works is `DOOM_SCALE=1` -- 474 KB/s against 1265, for a quarter of the pixels.
+  unambiguous. So the picture costs what it costs. `DOOM_SCALE=1` does measure
+  smaller -- 474 KB/s against 1265, for a quarter of the pixels -- but smaller
+  is not the same as faster: tried in the field it delivered fewer frames, not
+  more, which is what ended the idea that the picture was bandwidth-limited at
+  all.
 
 - **`docker/doom-wsproxy.py`** is websockify with the sound alongside the
   picture on the one port, so no second port has to be published. websockify
