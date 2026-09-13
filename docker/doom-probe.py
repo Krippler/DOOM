@@ -31,6 +31,7 @@ result, which is a mistake this project has made more than once.
 """
 
 import base64
+import glob
 import os
 import select
 import socket
@@ -42,6 +43,7 @@ import time
 SECONDS   = float(os.environ.get('DOOM_PROBE_SECONDS', '30'))
 QUIET_S   = 0.015        # a picture is over once nothing has come for this long
 MOVING_KB = 40           # below this the picture is not moving enough to judge
+SCREEN_SAMPLE_S = 0.05   # how often the screen itself is read, for the above
 
 
 class Link:
@@ -241,6 +243,96 @@ def report(name, waits, total, seconds):
     return kb
 
 
+def watch_screen(changes, stop, socket_path=None):
+    """Record when the screen actually changes, by reading it from X.
+
+    Without this the probe cannot tell the two things apart that matter most:
+    x11vnc being slow, and x11vnc correctly having nothing to send. VNC answers
+    a request only when the picture has moved, so a still screen produces
+    silences of any length and they are the protocol working.
+
+    It matters because the silences measured here turned out to be exactly
+    that. Five stalls of 233 to 1612 ms, every one of them 98 to 100 per cent
+    inside a stretch where the screen was not changing, each ending the
+    millisecond it changed again -- the attract demo standing still, reported
+    as x11vnc stalling. Two strips across the middle of the view are sampled
+    rather than one small patch, because a patch can sit still while the rest
+    of the screen moves.
+    """
+    if socket_path is None:
+        found = sorted(glob.glob('/tmp/.X11-unix/X*'))
+        if not found:
+            return                      # not in the container; nothing to read
+        socket_path = found[0]
+
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(5.0)
+        s.connect(socket_path)
+        s.sendall(struct.pack('<BBHHHH2x', 0x6C, 0, 11, 0, 0, 0))
+
+        head = s.recv(8)
+        if not head or head[0] != 1:
+            return
+        extra = struct.unpack('<H', head[6:8])[0] * 4
+        body = b''
+        while len(body) < extra:
+            d = s.recv(extra - len(body))
+            if not d:
+                return
+            body += d
+
+        vendor_len = struct.unpack('<H', body[16:18])[0]
+        nformats = body[21]
+        off = 32 + ((vendor_len + 3) & ~3) + 8 * nformats
+        root = struct.unpack('<I', body[off:off + 4])[0]
+
+        # GetImage, ZPixmap. The length is in 4-byte words and the request is
+        # 20 bytes, so 5 -- declaring 6 leaves X waiting for four bytes that
+        # never arrive and wedges the connection for good.
+        strips = [struct.pack('<BBHIhhHHI', 73, 2, 5, root, 0, y, 640, 16,
+                              0xFFFFFFFF)
+                  for y in (60, 200)]
+
+        last = None
+        nxt = time.time()
+
+        while not stop.is_set():
+            now = time.time()
+            if now < nxt:
+                time.sleep(min(nxt - now, 0.005))
+                continue
+            nxt += SCREEN_SAMPLE_S
+
+            shot = b''
+            for req in strips:
+                s.sendall(req)
+                hdr = b''
+                while len(hdr) < 32:
+                    d = s.recv(32 - len(hdr))
+                    if not d:
+                        return
+                    hdr += d
+                if hdr[0] != 1:
+                    return
+                n = struct.unpack('<I', hdr[4:8])[0] * 4
+                data = b''
+                while len(data) < n:
+                    d = s.recv(min(65536, n - len(data)))
+                    if not d:
+                        return
+                    data += d
+                shot += data
+
+            if last is not None and shot != last:
+                changes.append(time.time())
+            last = shot
+    except (OSError, struct.error):
+        # A diagnostic that brings the probe down with it is worse than no
+        # diagnostic. Whatever went wrong, the rest of the run still stands.
+        return
+
+
 def parse_where(arg, default_port):
     """Take the address however it was typed.
 
@@ -340,11 +432,21 @@ def main():
                 except Exception:
                     pass
 
+    # Read the screen alongside, so a silence can be told from a still picture.
+    changes = []
+    stop = threading.Event()
+    watcher = threading.Thread(target=watch_screen, args=(changes, stop))
+    watcher.daemon = True
+    watcher.start()
+
     threads = [threading.Thread(target=run, args=(n, m)) for n, m in paths]
     for t in threads:
         t.start()
     for t in threads:
         t.join()
+
+    stop.set()
+    watcher.join(timeout=6)
 
     results = {}
     stalls = {}
@@ -368,10 +470,37 @@ def main():
         stalls[name] = when
         results[name] = report(name, waits, total, SECONDS)
 
+    watching = bool(changes)
+
+    #
+    # The change that ENDS a wait does not mean the picture was moving during
+    # it.
+    #
+    # x11vnc answers the moment something moves, so every wait is terminated by
+    # a change, and that change falls inside the window by definition. Counting
+    # it turned "the picture was still for 1.5 seconds" into "moving, 1 change"
+    # and reversed the verdict on the same stalls the previous run had called
+    # correctly. Only motion comfortably before the end counts, which at a
+    # 20 Hz sample rate means leaving the last 150 ms out.
+    #
+    TAIL_S = 0.15
+
+    def was_moving(at, ms):
+        until = at + ms / 1000.0 - TAIL_S
+        return sum(1 for c in changes if at <= c <= until)
+
     for name in stalls:
         for at, ms in stalls[name]:
-            print('      %-18s stall %5.0f ms at t+%.1fs'
-                  % (name, ms, at - started_at))
+            moved = was_moving(at, ms)
+            if not watching:
+                verdict = ''
+            elif moved:
+                verdict = ('  -- picture moving (%d changes), so this is a stall'
+                           % moved)
+            else:
+                verdict = '  -- picture STILL, so x11vnc had nothing to send'
+            print('      %-18s %5.0f ms at t+%.1fs%s'
+                  % (name, ms, at - started_at, verdict))
 
     if len(stalls) == 2:
         a, b = (stalls[n] for n, _ in paths)
@@ -382,6 +511,28 @@ def main():
             print('%d of those hit both paths at the same moment, so they are'
                   % together)
             print('one thing upstream of the proxy rather than two problems.')
+
+    all_still = False
+
+    if watching:
+        every = [(at, ms) for n in stalls for at, ms in stalls[n]]
+        real = [1 for at, ms in every if was_moving(at, ms)]
+        print()
+        if every and not real:
+            all_still = True
+            print('Every one of those happened while the picture was not')
+            print('changing, which is VNC working rather than failing: it')
+            print('answers when something moves and not before. Nothing here')
+            print('is a fault. Play, or watch something move, and run it again.')
+        elif real:
+            print('%d of %d happened while the picture was moving. Those are'
+                  % (len(real), len(every)))
+            print('real: x11vnc had something to send and did not send it.')
+    elif any(v is not None for v in results.values()):
+        print()
+        print('The screen itself could not be read from here, so a silence')
+        print('cannot be told from a still picture -- run this inside the')
+        print('container for that.')
 
 
     print()
@@ -399,14 +550,22 @@ def main():
         return 1
 
     measured = sum(1 for kb in results.values() if kb is not None)
+    # The closing note has to agree with the verdict above it. Saying "a worst
+    # of several hundred is the stutter" straight after explaining that every
+    # one of them was a still picture is how a tool teaches someone the wrong
+    # thing.
+    if all_still:
+        return 0
+
+    print()
     if measured > 1:
         print('On a machine with nothing wrong both lines read about 10 ms in')
         print('the middle and never pass 60 at the worst, with nothing over')
     else:
         print('On a machine with nothing wrong this reads about 10 ms in the')
         print('middle and never passes 60 at the worst, with nothing over')
-    print('200 ms. A worst of several hundred here is the stutter, measured')
-    print('with no browser anywhere near it.')
+    print('200 ms. A worst of several hundred with the picture moving is the')
+    print('stutter, measured with no browser anywhere near it.')
 
     if host not in ('127.0.0.1', 'localhost'):
         print()
