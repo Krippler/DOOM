@@ -493,9 +493,20 @@ const videoNoteEl = document.getElementById('video-note');
 
 let videoPainted = 0;         // canvas changes seen in the current second
 let videoRate = 0;            // ... and in the last full second
+let videoBest = 0;            // the best second lately, which is the real test
 let videoWorstGap = 0;        // longest wait between two of them, ms
 let videoLate = 0;            // paints that took over a tic and a quarter
+let videoBusy = false;        // was the last second one where anything moved?
 const VIDEO_TIC_MS = 1000 / 35;
+
+// VNC sends what changed and nothing else, so a player standing still paints
+// nothing and every figure here reads as a catastrophe -- 1 frame a second,
+// worst wait 1467 ms -- when the truth is that nothing moved. The first
+// version of this said exactly that, and it is the same mistake that made an
+// earlier test harness report its own robot standing still as a 200 ms stall.
+// So: gaps are only counted while the picture is actually changing, and a
+// still screen is reported as a still screen.
+const VIDEO_BUSY_RATE = 10;
 
 (function watchPicture() {
   const screenEl = document.getElementById('screen');
@@ -529,7 +540,7 @@ const VIDEO_TIC_MS = 1000 / 35;
         for (let i = 0; i < d.length; i += 4) sum += d[i] * 3 + d[i+1] * 5 + d[i+2];
 
         if (prev !== null && sum !== prev) {
-          if (last) {
+          if (last && videoBusy) {
             const gap = now - last;
             if (gap > videoWorstGap) videoWorstGap = gap;
             if (gap > VIDEO_TIC_MS * 1.25) videoLate++;
@@ -546,6 +557,8 @@ const VIDEO_TIC_MS = 1000 / 35;
     if (!secondStart) secondStart = now;
     else if (now - secondStart >= 1000) {
       videoRate = videoPainted * 1000 / (now - secondStart);
+      videoBusy = videoRate >= VIDEO_BUSY_RATE;
+      if (videoRate > videoBest) videoBest = videoRate;
       videoPainted = 0;
       secondStart = now;
     }
@@ -559,26 +572,40 @@ const VIDEO_TIC_MS = 1000 / 35;
 function videoNote() {
   if (!videoNoteEl) return;
 
-  if (!videoRate) {
+  if (!videoBest) {
     videoNoteEl.textContent = 'Picture: not started.';
+    return;
+  }
+
+  // Standing still is not a fault, and the best second lately is the honest
+  // answer to whether this path can carry 35 a second.
+  if (!videoBusy) {
+    videoNoteEl.textContent =
+      `Picture: still — nothing is changing on screen. Best lately`
+      + ` ${videoBest.toFixed(0)} frames a second, of the 35 the game draws.`;
     return;
   }
 
   videoNoteEl.textContent =
     `Picture: ${videoRate.toFixed(0)} frames a second painted`
-    + ` (the game draws 35), worst wait ${Math.round(videoWorstGap)} ms`
-    + `, ${videoLate} arrived late.`;
+    + ` (the game draws 35), best lately ${videoBest.toFixed(0)}`
+    + (videoWorstGap
+         ? `, longest gap ${Math.round(videoWorstGap)} ms, ${videoLate} late`
+         : '')
+    + '.';
 }
 
 setInterval(videoNote, 500);
 
-// Reset the worst-case figures, so they describe what is happening rather than
-// the worst thing that ever happened -- including the pause while the page was
-// in another tab.
-setInterval(() => { videoWorstGap = 0; videoLate = 0; }, 10000);
+// Let the worst cases age out, so they describe what is happening now rather
+// than the worst thing that ever happened -- a pause while the page sat in
+// another tab included.
+setInterval(() => { videoWorstGap = 0; videoLate = 0; videoBest = 0; }, 15000);
 
 window.__video = () => ({
   painted: videoRate,
+  best: videoBest,
+  busy: videoBusy,
   worstGapMs: Math.round(videoWorstGap),
   late: videoLate,
 });
@@ -809,16 +836,20 @@ function stopAudio() {
 window.addEventListener('pagehide', stopAudio);
 
 //
-// Escape belongs to the game, not to the browser.
+// Escape belongs to the browser: it releases the mouse and brings this screen
+// back, in both modes and in every browser.
 //
-// Pointer Lock hands Escape to the browser: it cancels the capture, and the
-// game never sees the key it uses for its own menu. The Keyboard Lock API
-// exists for exactly this and gives Escape back to the page -- but only while
-// the document is fullscreen, so going fullscreen is part of starting play.
-// Holding Escape still leaves, which is the browser's guaranteed way out and
-// cannot be taken away.
+// It used to be taken from the browser with the Keyboard Lock API, because
+// Escape was the game's own menu key and Pointer Lock hands Escape to the
+// browser. That reasoning stopped being true in 1.10.14, when the menu moved
+// to ` -- but the lock stayed, and with it a way out that behaved differently
+// depending on whether you had started fullscreen and whether the browser
+// granted the lock at all. Keyboard Lock needs a secure context, so the same
+// container answered Esc one way over HTTPS and another over plain HTTP on a
+// LAN, which is not something anyone should have to know.
 //
-let keyboardLocked = false;
+// So: ` opens the game menu, Esc gets you out. Nothing to explain.
+//
 
 // Which way play was last started, so clicking the picture after Esc resumes
 // the same way rather than surprising anyone with fullscreen.
@@ -854,12 +885,9 @@ function enterPlay(fullscreen) {
     }
   }
 
-  fs.then(lockKeyboard).catch(() => {
-    // Fullscreen refused: an iframe without permission, or a browser that
-    // says no. Playable, but Escape stays the browser's.
-    keyboardLocked = false;
-    updateEscNote();
-  });
+  // Fullscreen may be refused -- an iframe without permission, or a browser
+  // that says no -- and it is playable either way.
+  fs.then(fitCanvas).catch(() => {});
 
   rfb.focus();
   fitCanvas();
@@ -877,39 +905,12 @@ function enterPlay(fullscreen) {
   }, 700);
 }
 
-function lockKeyboard() {
-  fitCanvas();
-  // Keyboard Lock only takes effect in fullscreen, so windowed play always
-  // leaves Escape to the browser. The note below says so.
-  if (!document.fullscreenElement
-      || !(navigator.keyboard && navigator.keyboard.lock)) {
-    keyboardLocked = false;
-    updateEscNote();
-    return;
-  }
-  navigator.keyboard.lock(['Escape'])
-    .then(() => { keyboardLocked = true;  updateEscNote(); })
-    .catch(() => { keyboardLocked = false; updateEscNote(); });
-}
-
 function updateEscNote() {
   const note = document.getElementById('esc-note');
   if (!note) return;
-  if (keyboardLocked) {
-    note.textContent =
-      'Esc or ` opens the game menu. Hold Esc to release the mouse and leave'
-      + ' fullscreen.';
-  } else if (locked() && !document.fullscreenElement) {
-    note.textContent =
-      'Playing in the window, so Esc releases the mouse. Press ` for the game'
-      + ' menu — Options → Setup → Controls moves it to another key.'
-      + ' Fullscreen keeps Esc for the game.';
-  } else {
-    note.textContent =
-      'This browser will not let the page keep Esc, so Esc releases the mouse.'
-      + ' Press ` for the game menu — Options → Setup → Controls moves it'
-      + ' to another key.';
-  }
+  note.textContent =
+    'Esc releases the mouse and brings this screen back. Press ` for the game'
+    + ' menu — Options → Setup → Controls moves it to another key.';
 }
 
 document.getElementById('play-fullscreen')
@@ -923,13 +924,7 @@ screenEl.addEventListener('click', () => {
   if (!locked()) enterPlay(wantFullscreen);
 });
 
-document.addEventListener('fullscreenchange', () => {
-  if (!document.fullscreenElement) {
-    if (navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock();
-    keyboardLocked = false;
-    updateEscNote();
-  }
-});
+document.addEventListener('fullscreenchange', fitCanvas);
 
 document.addEventListener('pointerlockchange', () => {
   overlayEl.hidden = locked();

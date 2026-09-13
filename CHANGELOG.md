@@ -6,6 +6,42 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.27] — 2026-09-13
+
+### Fixed
+- **Esc now releases the mouse and brings the start screen back, in both modes
+  and every browser.** It did not, in fullscreen, on a browser that granted
+  Keyboard Lock: the page deliberately kept Esc for the game there, and getting
+  out meant *holding* it.
+
+  That behaviour was correct for a premise that stopped being true in 1.10.14.
+  Esc was taken from the browser because Esc was the game's own menu key and
+  Pointer Lock hands Esc to the browser — but the menu moved to `` ` `` in
+  1.10.14 and the lock stayed behind. Keyboard Lock also needs a secure
+  context, so the same container answered Esc one way over HTTPS and another
+  over plain HTTP on a LAN, which is not something anyone should have to know
+  about. The lock is gone: `` ` `` opens the game menu, Esc gets you out, and
+  the note on the start screen says so in one sentence instead of three
+  depending on circumstances.
+
+- **The picture readout added in 1.10.26 reported a player standing still as a
+  disaster.** VNC sends what changed and nothing else, so a still screen paints
+  nothing — and the line read `1 frames a second painted, worst wait 1467 ms`,
+  which is true and completely misleading. It now says a still screen is still,
+  counts gaps only while the picture is actually changing, and reports the best
+  second lately, which is the honest answer to whether the path can carry 35 a
+  second:
+
+  ```
+  Picture: 35 frames a second painted (the game draws 35), best lately 36, longest gap 67 ms, 6 late.
+  Picture: still — nothing is changing on screen. Best lately 35 frames a second, of the 35 the game draws.
+  ```
+
+  This is the same mistake a test harness in this project made a release
+  earlier, when it reported its own robot standing still as a 200 ms stall. It
+  is worth naming twice: anything that measures a VNC screen has to know the
+  difference between nothing arriving and nothing happening.
+
 ## [1.10.26] — 2026-09-13
 
 ### Added
