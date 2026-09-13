@@ -6,6 +6,54 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.42] — 2026-09-13
+
+### Fixed
+- **`doom-probe` could not tell a stall from a still picture, and every stall
+  it has ever reported here was the latter.** VNC answers a request only when
+  something has moved, so a motionless screen produces silences of any length
+  and they are the protocol working, not a fault. The probe measured the
+  silences and called them all faults.
+
+  Reading the framebuffer directly and lining the two up settles it. Five
+  silences over five minutes, 233 to 1612 ms:
+
+  | silence | overlap with a screen that was not changing |
+  | --- | --- |
+  | 233 ms | 100%, inside a 0.4 s still stretch |
+  | 469 ms | 100%, inside a 0.7 s still stretch |
+  | 1535 ms | 99%, inside a **6.0 s** still stretch |
+  | 1612 ms | 98%, inside a **6.0 s** still stretch |
+  | 714 ms | 100%, inside a 5.2 s still stretch |
+
+  Each one ends the millisecond the screen changes again. It is the attract
+  demo standing still, reported as x11vnc stalling — and it is what "it is
+  x11vnc" was based on in the previous release's notes. That conclusion is
+  withdrawn.
+
+  The probe now reads two strips across the middle of the view twenty times a
+  second while it measures, and says of each silence whether the picture was
+  moving:
+
+  ```
+  straight to x11vnc  1399 ms at t+140.1s  -- picture STILL, so x11vnc had nothing to send
+  ```
+
+  Two strips rather than one patch, because a patch can sit still while the
+  rest of the screen moves. It only works from inside the container, where the
+  X socket is; run from another machine it says so rather than guessing.
+
+- **The change that ends a silence is no longer counted as motion during it.**
+  x11vnc answers the moment something moves, so every silence is terminated by
+  a change and that change falls inside the window by definition. Counting it
+  turned "still for 1.4 seconds" into "moving, 1 change" and reversed the
+  verdict on the same silences a previous run had called correctly. Motion in
+  the last 150 ms no longer counts.
+
+- **The closing advice no longer contradicts the verdict above it.** It used to
+  print "a worst of several hundred here is the stutter" directly after
+  explaining that every one of them was a still picture.
+
 ## [1.10.41] — 2026-09-13
 
 ### Fixed
