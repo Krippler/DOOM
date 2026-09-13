@@ -6,6 +6,32 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **The screen watcher only worked at one screen size, which was not the one in
+  the field.** 1.10.42 added a check for whether the picture was moving during
+  each silence, and it came back from a real machine saying the screen could not
+  be read at all — from inside the container, where it certainly could.
+
+  `DOOM_SCALE` decides the screen size, so it is 320x200 as often as 640x400,
+  and the two sample strips were hardcoded at 640 wide and 200 down. On a
+  320x200 screen that is off the end of it: X answers BadMatch, and the thread
+  died on the spot. The size is read from X now, and the strips are placed a
+  quarter and a half of the way down whatever it says. Checked at `DOOM_SCALE`
+  1, 2 and 4 — 320x200, 640x400 and 1280x800 — and by freezing the engine at
+  320x200, where the silence that follows is correctly called still.
+
+- **And it died silently, which is why a one-line bug survived a release.** Any
+  failure now says what happened rather than falling back to "the screen could
+  not be read": no X socket, X refusing the connection, X refusing the image, or
+  the error itself.
+
+### Notes
+- A silence longer than two seconds is measured short, because the probe gives
+  up waiting after two and asks again. Worth knowing when reading "worst": it is
+  a floor, not a ceiling.
+
 ## [1.10.42] — 2026-09-13
 
 ### Fixed
