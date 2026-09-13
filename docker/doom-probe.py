@@ -36,6 +36,7 @@ import select
 import socket
 import struct
 import sys
+import threading
 import time
 
 SECONDS   = float(os.environ.get('DOOM_PROBE_SECONDS', '30'))
@@ -199,6 +200,7 @@ def measure(link, width, height, seconds):
 
     ask(0)
     waits, total, first = [], 0, True
+    when = []                       # (wall clock, ms) for the long ones
     end = time.time() + seconds
 
     while time.time() < end:
@@ -211,12 +213,14 @@ def measure(link, width, height, seconds):
                 ms = (time.time() - started) * 1000
                 if not first:                   # the first is the full screen
                     waits.append(ms)
+                    if ms > 200:
+                        when.append((started, ms))
                 first = False
             got += len(data)
         total += got
         ask()
 
-    return waits, total
+    return waits, total, when
 
 
 def report(name, waits, total, seconds):
@@ -287,56 +291,63 @@ def main():
     # localhost and the container is not where the probe is.
     where = 'from here' if host in ('127.0.0.1', 'localhost') \
             else 'from here to %s' % host
-    print('Timing how long x11vnc takes to answer, %s, %.0f seconds each way.'
-          % (where, SECONDS))
+    print('Timing how long x11vnc takes to answer, %s, %.0f seconds, both'
+          ' paths at once.' % (where, SECONDS))
     print('Leave the game moving while this runs -- its own demo is enough.')
     print()
 
     #
-    # The two paths are measured in alternating halves, not one after the other.
+    # Both paths at the same instant, in two threads -- not one after the other.
     #
-    # Measured back to back, the second one gets the blame for anything that
-    # happens while it is running -- and what happens here is roughly one stall
-    # every couple of minutes, landing wherever it likes. Run in one order the
-    # proxy looked twenty times worse than x11vnc; run in the other, same
-    # container and same load, the stall moved to x11vnc and the proxy came
-    # back clean. Neither reading meant a thing.
+    # Measured in sequence, the second one wears whatever the minute brings.
+    # That produced two confident and opposite findings from the same container
+    # under the same load: run x11vnc first and the proxy looked twenty times
+    # worse, run the proxy first and the stall moved to x11vnc. Splitting each
+    # into halves did not fix it either, because both halves still ran in the
+    # same order and the proxy stayed in second place.
     #
-    # Alternating halves gives each path the same share of whatever the minute
-    # holds, so a difference between the two lines is a difference between the
-    # paths rather than between two minutes.
+    # Run together there is nothing left to confound. If a stall belongs to one
+    # path it shows in that stream alone; if it belongs to x11vnc, both streams
+    # stall at the same moment by the same amount, which is what actually
+    # happens:
+    #
+    #     straight to x11vnc:  1387 ms at t+150.7s
+    #     through the proxy:   1384 ms at t+150.7s
     #
     paths = (('straight to x11vnc',
               lambda: Link(socket.create_connection((host, vnc), 10))),
              ('through the proxy',
               lambda: WSLink(host, web, '/websockify')))
 
-    gathered = dict((name, ([], 0)) for name, _ in paths)
+    gathered = {}
     failed = {}
+    started_at = time.time()
 
-    for _turn in range(2):
-        for name, make in paths:
-            if name in failed:
-                continue
-            link = None
-            try:
-                link = make()
-                width, height = handshake(link)
-                waits, total = measure(link, width, height, SECONDS / 2.0)
-                had, so_far = gathered[name]
-                gathered[name] = (had + waits, so_far + total)
-            except ConnectionRefusedError:
-                failed[name] = None
-            except Exception as exc:
-                failed[name] = str(exc)
-            finally:
-                if link is not None:
-                    try:
-                        link.s.close()
-                    except Exception:
-                        pass
+    def run(name, make):
+        link = None
+        try:
+            link = make()
+            width, height = handshake(link)
+            gathered[name] = measure(link, width, height, SECONDS)
+        except ConnectionRefusedError:
+            failed[name] = None
+        except Exception as exc:
+            failed[name] = str(exc)
+        finally:
+            if link is not None:
+                try:
+                    link.s.close()
+                except Exception:
+                    pass
+
+    threads = [threading.Thread(target=run, args=(n, m)) for n, m in paths]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
 
     results = {}
+    stalls = {}
 
     for name, _make in paths:
         if name in failed:
@@ -353,8 +364,25 @@ def main():
             results[name] = None
             continue
 
-        waits, total = gathered[name]
+        waits, total, when = gathered[name]
+        stalls[name] = when
         results[name] = report(name, waits, total, SECONDS)
+
+    for name in stalls:
+        for at, ms in stalls[name]:
+            print('      %-18s stall %5.0f ms at t+%.1fs'
+                  % (name, ms, at - started_at))
+
+    if len(stalls) == 2:
+        a, b = (stalls[n] for n, _ in paths)
+        together = sum(1 for at, _ms in a
+                       if any(abs(at - bt) < 0.25 for bt, _bms in b))
+        if a and b and together:
+            print()
+            print('%d of those hit both paths at the same moment, so they are'
+                  % together)
+            print('one thing upstream of the proxy rather than two problems.')
+
 
     print()
 
@@ -371,11 +399,14 @@ def main():
         return 1
 
     measured = sum(1 for kb in results.values() if kb is not None)
-    print('On a machine with nothing wrong %s about 10 ms in the middle and'
-          % ('both lines read' if measured > 1 else 'this reads'))
-    print('never passes 60 at the worst, with nothing over 200 ms. A worst of')
-    print('several hundred here is the stutter, measured with no browser')
-    print('anywhere near it.')
+    if measured > 1:
+        print('On a machine with nothing wrong both lines read about 10 ms in')
+        print('the middle and never pass 60 at the worst, with nothing over')
+    else:
+        print('On a machine with nothing wrong this reads about 10 ms in the')
+        print('middle and never passes 60 at the worst, with nothing over')
+    print('200 ms. A worst of several hundred here is the stutter, measured')
+    print('with no browser anywhere near it.')
 
     if host not in ('127.0.0.1', 'localhost'):
         print()

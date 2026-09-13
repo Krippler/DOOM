@@ -9,75 +9,52 @@ The version follows the engine this is built from, linuxdoom-1.10.
 ## [Unreleased]
 
 ### Fixed
-- **`doom-probe` takes the address the way you would type it.** It wanted a
-  bare host and the published port in an environment variable, which is two
-  things to know before it will run and one of them is spelled differently in
-  fish than in bash. The port is hardly ever 6080 — it is whatever the
-  container was published as — so that was the normal case, not the corner.
-
-  A host, a host and port, or the whole URL all work now, with or without a
-  scheme and with or without a path on the end:
-
-  ```
-  python3 doom-probe.py 192.168.10.37:380
-  python3 doom-probe.py http://192.168.10.37:380/play.html
-  ```
-
-  Ten forms tested, IPv6 in brackets among them.
-
-- **It says what it means when x11vnc's port is not published.** That is the
-  ordinary case from another machine and it was printing `[Errno 111]
-  Connection refused`, which reads like a fault. It now says nothing is
-  listening there, that this is expected from another machine, and that the
-  line below is the one that matters. The closing note no longer talks about
-  "both lines" when only one of them ran.
-
-## [Unreleased]
-
-### Fixed
-- **`doom-probe` measured the two paths one after the other, and the second one
-  got the blame.** Run in the field it looked damning — x11vnc worst 333 ms
-  against the proxy's 951, and on this machine 34 ms against 1357 — and the
-  obvious reading was that websockify's pure-Python relay was the amplifier.
-
-  It was the running order. Swapped, with the same container under the same
-  load, the stall moved to whichever path now ran second:
+- **`doom-probe` measures both paths at the same instant, and that settles
+  whose stall it is.** Measured one after the other, the second path wears
+  whatever the minute brings, and this produced two confident and opposite
+  findings from the same container under the same load:
 
   | order | straight to x11vnc | through the proxy |
   | --- | --- | --- |
   | x11vnc first | worst 34 ms | worst **1357 ms** |
   | proxy first | worst **1449 ms** | worst 29 ms |
 
-  What is actually there is roughly one stall every couple of minutes, landing
-  wherever it likes, and twenty seconds of measurement either catches it or
-  does not. Both orderings were noise dressed as a finding.
+  Splitting each into halves did not fix it, and believing that it had was the
+  worse mistake: both halves still ran in the same order, so the proxy stayed
+  in second place and kept the bias. Over five minutes and twenty thousand
+  samples it looked conclusive — six stalls against zero, twice over, with and
+  without `-8to24` — and the conclusion was that websockify's pure-Python relay
+  was the amplifier. It was the running order again, just better dressed.
 
-  The two paths are now measured in alternating halves, so each gets the same
-  share of whatever the minute holds. On the run that caught a stall it showed
-  up in both lines at once — 424 ms and 691 ms — which is the honest answer and
-  the one that matters: it is not the proxy, and it is not path-specific.
+  Run in two threads at once there is nothing left to confound, and the answer
+  is not subtle:
 
-  Also closes each connection before opening the next. It never did, so the
-  second measurement always ran with an extra idle client attached to x11vnc.
+  ```
+  straight to x11vnc:  279 ms at t+104.0s,  463 ms at t+104.5s
+  through the proxy:   278 ms at t+104.0s,  463 ms at t+104.5s
+  ```
+
+  The same stalls, to the millisecond, at the same instants, in both streams.
+  **It is one thing upstream of the proxy, hitting every client at once** — so
+  the proxy is not the amplifier and never was. The probe now says so itself
+  when it sees stalls coincide, and prints when each one happened so the
+  coincidence is visible rather than asserted.
 
 ### Notes
-- **Ruled out, with the reproduction in hand.** The stall was reproduced
-  locally at last, which made it possible to test the things that had only been
-  argued about:
+- **`-8to24` is not the cause.** It looked strong: x11vnc's own manual says the
+  mode walks the window tree three levels deep, polls it with `XGetImage()`
+  every 50 ms, transforms the whole screen, and "does hog resources" — and our
+  Xvfb is depth 8, so every frame goes through it. Built without it and
+  measured against the shipping build concurrently, twice, five minutes each:
+  six stalls against four, then six against three. No difference. The
+  bandwidth is nearly the same too (713 against 676 KB/s), which makes the
+  note in PORTING-NOTES.md about `-8to24` being where the bandwidth goes worth
+  re-checking.
 
-  - **Not the gap watcher in the proxy.** Built without it, the stalls stay
-    (worst 453 ms) — so the instrumentation is not paying for itself in
-    stutter.
-  - **Not Nagle on the socket to x11vnc.** A 300 ms silence spent entirely in
-    `select`, with nothing written anywhere, is exactly what a delayed tiny
-    request looks like. websockify already sets `TCP_NODELAY` on both sockets.
-  - **Not a WebSocket-capable x11vnc waiting to be used.** This libvncserver
-    does not answer an upgrade on the RFB port; checked rather than assumed.
-
-  Where the silence goes, measured by timing each phase of the relay loop: 301,
-  301, 279 and 430 ms, every millisecond of it idle in `select`, nothing spent
-  writing to the browser, reading from it, or writing to x11vnc. The proxy had
-  already passed the request on and x11vnc said nothing.
+- Also worth recording: the stalls arrive in **clusters** — 104.0 and 104.5 s,
+  or 114.4, 114.9, 146.4 and 150.7 s — rather than evenly. Whatever this is,
+  it happens in bursts, and a twenty-second measurement will often miss it
+  entirely.
 
 ## [1.10.40] — 2026-09-13
 
