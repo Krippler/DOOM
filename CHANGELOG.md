@@ -6,7 +6,7 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
-## [Unreleased]
+## [1.10.28] — 2026-09-13
 
 ### Fixed
 - **Esc is handled by the page now, instead of hoping the browser does it.**
