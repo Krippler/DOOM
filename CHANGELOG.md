@@ -6,6 +6,23 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Known
+
+- **Removing `-8to24` from x11vnc cuts the picture's bandwidth by 2.8x and
+  breaks it.** Worth writing down, because it looks like the obvious answer to
+  a link that cannot carry the picture. x11vnc is given a depth-8 display and
+  presents it to clients as 32-bit truecolor, so four times as much has to be
+  compressed as the engine actually produced. Serving the colour-mapped
+  framebuffer instead measured **457 KB/s against 1268**, at the same 35 frames
+  a second — and noVNC, which has no colour-map support, renders it as a green
+  and black mess. The bandwidth was real; the picture was not.
+
+  What does work is `DOOM_SCALE=1`: 474 KB/s against 1265, and 34.4 frames a
+  second painted against 35.0. A quarter of the pixels, nearly all of the
+  frames, and a picture that is correct.
+
 ## [1.10.30] — 2026-09-13
 
 ### Fixed
