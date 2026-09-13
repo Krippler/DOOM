@@ -378,11 +378,21 @@ fi
 } > "$STATE/ws-targets"
 
 log "starting noVNC on port $WEB_PORT"
+#
+# websockify's own chatter goes to its log; the lines it prints about the
+# picture going quiet are lifted into this one, because that is where anyone
+# reading a stutter report is looking.
+#
 "$WSPROXY_BIN" --web="$NOVNC_ROOT" \
        --token-plugin=websockify.token_plugins.ReadOnlyTokenFile \
        --token-source="$STATE/ws-targets" \
-       "$WEB_PORT" \
-       >"$STATE/websockify.log" 2>&1 &
+       "$WEB_PORT" 2>&1 |
+    while IFS= read -r wsline; do
+        case "$wsline" in
+            "picture gap"*) log "$wsline" ;;
+            *) printf '%s\n' "$wsline" >>"$STATE/websockify.log" ;;
+        esac
+    done &
 WEB_PID=$!
 
 log ""
@@ -443,6 +453,7 @@ cpu_wait_watch () {
 
         for name in doom x11vnc Xvfb noVNC audiostream; do
             eval "prev_$name=''; tot_$name=0; worst_$name=0"
+            eval "prevrun_$name=''; run_$name=0"
         done
 
         while sleep 0.25; do
@@ -453,16 +464,18 @@ cpu_wait_watch () {
 
                 [ -n "$pid" ] && [ -r "/proc/$pid/schedstat" ] || continue
 
-                read -r _run wait_ns _rest < "/proc/$pid/schedstat" || continue
+                read -r run_ns wait_ns _rest < "/proc/$pid/schedstat" || continue
 
-                eval "old_ns=\$prev_$name"
-                eval "prev_$name=\$wait_ns"
+                eval "old_ns=\$prev_$name; oldrun=\$prevrun_$name"
+                eval "prev_$name=\$wait_ns; prevrun_$name=\$run_ns"
 
                 [ -n "$old_ns" ] || continue
 
                 ms=$(( (wait_ns - old_ns) / 1000000 ))
+                runms=$(( (run_ns - oldrun) / 1000000 ))
 
                 eval "tot_$name=\$(( \$tot_$name + ms ))"
+                eval "run_$name=\$(( \$run_$name + runms ))"
                 eval "worst=\$worst_$name"
                 [ "$ms" -gt "$worst" ] && eval "worst_$name=$ms"
             done
@@ -472,18 +485,28 @@ cpu_wait_watch () {
             i=0
             line=""
 
+            busyline=""
+
             for name in doom x11vnc Xvfb noVNC audiostream; do
-                eval "tot=\$tot_$name; worst=\$worst_$name"
-                eval "tot_$name=0; worst_$name=0"
+                eval "tot=\$tot_$name; worst=\$worst_$name; used=\$run_$name"
+                eval "tot_$name=0; worst_$name=0; run_$name=0"
 
                 # More than 2% of the interval waiting for a core, or a single
                 # quarter-second where it waited for most of one.
                 if [ "$tot" -gt 100 ] || [ "$worst" -gt 60 ]; then
                     line="$line $name ${tot}ms (worst stretch ${worst}ms)"
                 fi
+
+                # Waiting is only half of it. A process using most of a core is
+                # not starved and can still be the thing that stalls, and the
+                # first version of this could not see that at all.
+                if [ "$used" -gt 2500 ]; then
+                    busyline="$busyline $name $(( used / 50 ))%"
+                fi
             done
 
             [ -n "$line" ] && log "waiting for a CPU in the last 5s:$line"
+            [ -n "$busyline" ] && log "using a lot of CPU in the last 5s:$busyline"
         done
     ) &
     CPUWATCH_PID=$!
