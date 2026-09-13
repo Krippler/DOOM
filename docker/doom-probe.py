@@ -13,6 +13,12 @@ moves the picture quite enough, and sending keys would play the game for you.
 
     docker exec <container> doom-probe
 
+It also runs from another machine, which is the more interesting case: give it
+a host and everything between that machine and the container is in the path
+too, which is where a browser actually sits.
+
+    python3 doom-probe.py nas.local
+
 What it cannot do is conclude anything about a still picture. VNC sends what
 changed and nothing else, so a motionless screen produces silences of any
 length that are not faults -- this refuses to report rather than call that a
@@ -227,12 +233,18 @@ def report(name, waits, total, seconds):
 
 
 def main():
-    host = '127.0.0.1'
+    # Inside the container both ports are on localhost. From another machine
+    # the web port is the one that is published, and x11vnc's usually is not --
+    # which is fine: the run that cannot connect says so and the other still
+    # happens.
+    host = sys.argv[1] if len(sys.argv) > 1 else '127.0.0.1'
     vnc  = int(os.environ.get('DOOM_VNC_PORT', '5900'))
     web  = int(os.environ.get('DOOM_WEB_PORT', '6080'))
 
-    print('Timing how long x11vnc takes to answer, %.0f seconds each way.'
-          % SECONDS)
+    where = 'in the container' if host in ('127.0.0.1', 'localhost') \
+            else 'from here to %s' % host
+    print('Timing how long x11vnc takes to answer, %s, %.0f seconds each way.'
+          % (where, SECONDS))
     print('Leave the game moving while this runs -- its own demo is enough.')
     print()
 
@@ -269,6 +281,12 @@ def main():
     print('middle and never pass 60 at the worst, with nothing over 200 ms.')
     print('A worst of several hundred here is the stutter, measured with no')
     print('browser anywhere near it.')
+
+    if host not in ('127.0.0.1', 'localhost'):
+        print()
+        print('This run had the network in it. If it stalls here and not when')
+        print('run inside the container, the link and the proxy that feeds it')
+        print('are the thing to fix, not x11vnc.')
     return 0
 
 

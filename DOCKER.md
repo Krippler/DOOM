@@ -494,6 +494,19 @@ Leave the game moving while it runs — its own attract-mode demo is enough, and
 the probe deliberately sends no input, so it will not play the game for you. It
 takes a minute (thirty seconds each way); `DOOM_PROBE_SECONDS` changes that.
 
+It also runs from another machine, which is the more interesting case — that
+puts the network in the path, where a browser actually sits:
+
+```bash
+curl -sO https://raw.githubusercontent.com/Krippler/DOOM/master/docker/doom-probe.py
+python3 doom-probe.py your-nas
+```
+
+x11vnc's port is usually not published, so the first of the two lines will say
+it could not connect; the second still runs. If it stalls from another machine
+and not from inside the container, the link and the proxy feeding it are the
+thing to look at rather than x11vnc.
+
 To run it against a container that is already up, without pulling a new image
 or restarting anything:
 
@@ -511,7 +524,10 @@ through the proxy:      496 answers,  665 KB/s   median  12 ms   p90  16   p99  
 ```
 
 A worst of several hundred milliseconds is the stutter, caught with nothing
-but x11vnc in the picture. If only the second line is slow, it is the proxy.
+but x11vnc in the picture. It is not a shortage of CPU: pinned to one core
+with a busy process competing for it, x11vnc spent 2225 ms of every 5000
+waiting for a core — far worse than any real report — and still answered
+everything inside 48 ms. If only the second line is slow, it is the proxy.
 If the picture was not moving the probe says so and refuses to report, because
 VNC sends what changed and nothing else — a still screen goes quiet for as
 long as it likes and that is not a fault. It needs a server without a password
