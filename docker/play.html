@@ -172,20 +172,54 @@ let videoPlayBytes = 0;     // ... and over the whole spell of play, which is
 let videoPlayMs = 0;        //     what the note reports
 let videoPlayKB = 0;
 
-(function countScreenBytes() {
+//
+// Both streams are counted, because the interesting question is what the sound
+// was doing while the picture was not arriving.
+//
+// The picture and the sound are separate connections to the same proxy over
+// the same link. If the picture stops for half a second and the sound keeps
+// coming, the link and the proxy are fine and it is x11vnc that went quiet. If
+// they stop together, it is the link or the proxy. Nothing else distinguishes
+// those two, and they need completely different answers.
+//
+let audioBytes = 0;
+let audioWorstGap = 0;        // longest the sound went without a message, ms
+
+(function countBytes() {
   const Native = window.WebSocket;
+  let audioLast = 0;
+
   window.WebSocket = function (...a) {
     const sock = new Native(...a);
+    const isAudio = String(a[0]).indexOf('token=audio') >= 0;
     sock.addEventListener('message', (e) => {
-      videoBytes += (e.data && e.data.byteLength) || 0;
+      const n = (e.data && e.data.byteLength) || 0;
+
+      if (!isAudio) { videoBytes += n; return; }
+
+      audioBytes += n;
+
+      //
+      // How long the sound went quiet, not how much of it eventually turned
+      // up. Counting bytes over the window was the first attempt and it is
+      // wrong: when a stall ends, the backlog arrives in a burst, so the
+      // volume comes out right and the stall is invisible. Freezing the whole
+      // container -- which stops both streams by definition -- was reported as
+      // "the picture alone went quiet". Only the timing shows it.
+      //
+      const now = performance.now();
+
+      if (audioLast && now - audioLast > audioWorstGap)
+        audioWorstGap = now - audioLast;
+
+      audioLast = now;
     });
     return sock;
   };
   window.WebSocket.prototype = Native.prototype;
   Object.assign(window.WebSocket, Native);
 
-  // Put it back once noVNC has its socket, so the sound's is left alone.
-  setTimeout(() => { window.WebSocket = Native; }, 0);
+  window.__audioGapReset = () => { audioLast = 0; };
 })();
 
 const rfb = new RFB(screenEl, `${scheme}://${location.host}`, {
@@ -661,6 +695,24 @@ function videoNote() {
          ? ` This browser's own drawing stopped ${videoStalls} times, worst`
            + ` ${Math.round(videoWorstStall)} ms — frames that arrive during`
            + ` one of those are never painted.`
+         : '')
+    + (videoWorstGap
+         ? ` The sound, over the same link, went quiet for at most`
+           + ` ${Math.round(audioWorstGap)} ms.`
+           //
+           // Only worth a conclusion when there is a real stall to explain.
+           // Below that the two figures are both just the ordinary lumpiness
+           // of two streams through one proxy, and comparing them said "both
+           // stopped together" about a perfectly healthy 83 ms gap.
+           //
+           + (videoWorstGap > 200
+                ? (audioWorstGap > videoWorstGap * 0.5
+                     ? ' Both stopped together, so it is the link or the proxy,'
+                       + ' not the picture.'
+                     : ' The sound kept coming through the gap, so the link and'
+                       + ' the proxy were working and the picture alone went'
+                       + ' quiet.')
+                : '')
          : '');
 }
 
@@ -671,6 +723,8 @@ function videoReset() {
   videoBest = 0;
   videoStalls = 0;
   videoWorstStall = 0;
+  audioWorstGap = 0;
+  if (window.__audioGapReset) window.__audioGapReset();
   videoWorstGap = 0;
   videoLate = 0;
   videoPlayBytes = 0;
@@ -689,6 +743,7 @@ window.__video = () => ({
   late: videoLate,
   stalls: videoStalls,
   worstStallMs: Math.round(videoWorstStall),
+  audioWorstGapMs: Math.round(audioWorstGap),
 });
 
 function audioURL() {
