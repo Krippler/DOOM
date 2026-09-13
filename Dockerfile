@@ -106,6 +106,12 @@ COPY docker/entrypoint.sh /usr/local/bin/doom-entrypoint
 # websockify, taught to carry the sound alongside the picture on one port.
 COPY docker/doom-wsproxy.py /usr/local/bin/doom-wsproxy
 
+# A stopwatch on x11vnc, for when the picture stutters on a machine that is
+# not this one. It asks for frames the way the browser does, straight to
+# x11vnc and then through the proxy, so the two can be told apart with no
+# browser in the way: docker exec <container> doom-probe
+COPY docker/doom-probe.py /usr/local/bin/doom-probe
+
 # Which build this is. Stamped into the client and printed at startup, so a
 # report of "no sound" can be told apart from a browser quietly running the
 # client from two releases ago -- the container's log looks identical either
@@ -134,6 +140,7 @@ COPY shareware/doom1.wad /usr/share/doom/doom1.wad
 # The directories come first so useradd does not warn about a home it
 # cannot chown yet.
 RUN chmod +x /usr/local/bin/doom-entrypoint /usr/local/bin/doom-wsproxy \
+             /usr/local/bin/doom-probe \
  && mkdir -p /wads /doom/state \
  && useradd --create-home --home-dir /doom/state --uid 1001 doomer \
  && chown -R doomer:doomer /doom

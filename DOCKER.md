@@ -478,6 +478,45 @@ beside it and `ca_profile.xml` at the repo root for the maintainer card.
 do before the template can be submitted. It can be tried without CA by pasting
 its raw URL into the *Template* field of **Docker → Add Container**.
 
+## Measuring a stutter
+
+If the picture stutters, the question is which end is late, and the page's own
+note answers half of it (press Escape and read it). `doom-probe` answers the
+other half from inside the container, with no browser involved at all: it asks
+x11vnc for pictures the way the browser does, first straight to x11vnc and
+then through websockify and the proxy, and times the answers.
+
+```bash
+docker exec <container> doom-probe
+```
+
+Leave the game moving while it runs — its own attract-mode demo is enough, and
+the probe deliberately sends no input, so it will not play the game for you. It
+takes a minute (thirty seconds each way); `DOOM_PROBE_SECONDS` changes that.
+
+To run it against a container that is already up, without pulling a new image
+or restarting anything:
+
+```bash
+curl -sL https://raw.githubusercontent.com/Krippler/DOOM/master/docker/doom-probe.py \
+  | docker exec -i <container> python3 -
+```
+
+On a machine with nothing wrong both lines read about 10 ms in the middle and
+never pass 60 at the worst, with nothing over 200 ms:
+
+```
+straight to x11vnc:     496 answers,  757 KB/s   median  11 ms   p90  16   p99   34   worst   37   over 200 ms: 0
+through the proxy:      496 answers,  665 KB/s   median  12 ms   p90  16   p99   28   worst   32   over 200 ms: 0
+```
+
+A worst of several hundred milliseconds is the stutter, caught with nothing
+but x11vnc in the picture. If only the second line is slow, it is the proxy.
+If the picture was not moving the probe says so and refuses to report, because
+VNC sends what changed and nothing else — a still screen goes quiet for as
+long as it likes and that is not a fault. It needs a server without a password
+(`DOOM_VNC_PASSWORD` unset); it says so plainly rather than guessing.
+
 ## Troubleshooting
 
 **It starts, crashes immediately and keeps restarting.** Almost always a bad
