@@ -43,9 +43,10 @@ The version follows the engine this is built from, linuxdoom-1.10.
   a second — and noVNC, which has no colour-map support, renders it as a green
   and black mess. The bandwidth was real; the picture was not.
 
-  What does work is `DOOM_SCALE=1`: 474 KB/s against 1265, and 34.4 frames a
-  second painted against 35.0. A quarter of the pixels, nearly all of the
-  frames, and a picture that is correct.
+  `DOOM_SCALE=1` does measure smaller here — 474 KB/s against 1265, at 34.4
+  frames a second against 35.0 — but it does not follow that it helps, and in
+  the field it did not: see the fix above. The bandwidth numbers on this page
+  are measurements of this machine and nothing more.
 
 ## [1.10.30] — 2026-09-13
 
