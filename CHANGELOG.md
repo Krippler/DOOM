@@ -6,6 +6,25 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.45] — 2026-09-14
+
+### Added
+- **`DOOM_VNC_8TO24=0`, so the most expensive thing x11vnc does can be turned
+  off for a measurement.** With the stall now confirmed — 931 ms with 31 of 87
+  looks at the screen showing it changing, x11vnc silent throughout — the
+  question is which part of x11vnc is holding it, and `-8to24` is the obvious
+  suspect by cost alone. It was hardcoded, so testing it meant a custom build.
+
+  `-noxdamage` and `-threads` need nothing new: `DOOM_VNC_ARGS` already carries
+  them. All three are documented in DOCKER.md as diagnostics rather than
+  settings, and all four configurations are checked to start and serve a
+  picture.
+
+  An earlier A/B of `-8to24` found no difference and that result is withdrawn:
+  it counted silences without knowing whether the picture was moving, and on
+  that machine nearly all of them were still. Any retest has to count only the
+  MOVING ones.
+
 ## [1.10.44] — 2026-09-14
 
 ### Fixed
