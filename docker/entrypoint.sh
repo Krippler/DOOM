@@ -381,6 +381,25 @@ fi
 # adjustable because the next person to look at this will want to try them.
 # What the delay actually is, and everything that was ruled out, is in
 # PORTING-NOTES.md.
+#
+# Catch the option that is not one before x11vnc does.
+#
+# x11vnc answers anything it does not recognise by printing "unrecognized
+# option(s)" into its own log and exiting, which leaves the game running, the
+# container looking healthy, and a browser saying "connection lost" with no
+# explanation anywhere anyone thinks to look. A value of "noxdamage" instead
+# of "-noxdamage" is enough to do it, and that is an easy thing to type into a
+# template field that does not show you the dash.
+#
+for vnc_arg in ${DOOM_VNC_ARGS:-}; do
+    case "$vnc_arg" in
+        -*) ;;
+        *)  die "DOOM_VNC_ARGS has '$vnc_arg', which x11vnc will not accept:
+       options need their leading dash, as in '-$vnc_arg'. x11vnc exits on an
+       option it does not know, and then nothing can connect." ;;
+    esac
+done
+
 log "starting x11vnc on port $VNC_PORT"
 # shellcheck disable=SC2086
 #
@@ -569,6 +588,57 @@ cpu_wait_watch () {
     CPUWATCH_PID=$!
 }
 
+#
+# Notice when one of the supporting processes dies, and say so.
+#
+# Only the engine was waited on, so if x11vnc exited -- a mistyped
+# DOOM_VNC_ARGS is enough, and Unraid's template will hand over the quotes as
+# part of the value -- the container carried on looking healthy. The engine
+# kept drawing, the log kept reporting frames, and the only sign was a browser
+# saying "connection lost" with nothing in the container log to explain it.
+# The reason was sitting in x11vnc's own log the whole time, which nobody knew
+# to look at.
+#
+watch_helpers () {
+    (
+        while sleep 1; do
+            for entry in "x11vnc:$VNC_PID:$STATE/x11vnc.log" \
+                         "Xvfb:$XVFB_PID:$STATE/xvfb.log" \
+                         "noVNC:$WEB_PID:$STATE/websockify.log" \
+                         "audiostream:$AUDIO_PID:"; do
+                name=${entry%%:*}
+                rest=${entry#*:}
+                pid=${rest%%:*}
+                logfile=${rest#*:}
+
+                [ -n "$pid" ] || continue
+                kill -0 "$pid" 2>/dev/null && continue
+
+                log "$name has exited -- nothing works without it"
+
+                # The reason, from its own log: the first line that looks like
+                # a complaint, or the last few if none of them do.
+                if [ -n "$logfile" ] && [ -r "$logfile" ]; then
+                    said=$(grep -m1 -iE "unrecognized|invalid|error|fatal|cannot|refused|no such" \
+                           "$logfile" 2>/dev/null)
+                    [ -n "$said" ] || said=$(tail -n 2 "$logfile" 2>/dev/null)
+
+                    printf '%s\n' "$said" | while IFS= read -r said_line; do
+                        [ -n "$said_line" ] && log "  $said_line"
+                    done
+
+                    log "  the rest is in $logfile"
+                fi
+
+                # Bring the whole thing down rather than sit here looking well.
+                kill "$DOOM_PID" 2>/dev/null
+                exit 0
+            done
+        done
+    ) &
+    HELPERWATCH_PID=$!
+}
+
 log "running: linuxxdoom $*"
 
 # Run in the background and wait: a foreground child would block every trap
@@ -577,6 +647,7 @@ log "running: linuxxdoom $*"
 DOOM_PID=$!
 
 cpu_wait_watch
+watch_helpers
 
 status=0
 wait "$DOOM_PID" || status=$?
