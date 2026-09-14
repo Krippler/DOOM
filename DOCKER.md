@@ -537,6 +537,24 @@ VNC sends what changed and nothing else — a still screen goes quiet for as
 long as it likes and that is not a fault. It needs a server without a password
 (`DOOM_VNC_PASSWORD` unset); it says so plainly rather than guessing.
 
+### Narrowing a confirmed stall
+
+If `doom-probe` reports silences with **picture MOVING**, x11vnc had something
+to send and did not send it, and the next question is which part of it is
+responsible. Three things are worth trying, each one run the same way — start
+the container with the setting, play for three minutes, and compare the count
+of MOVING silences against a run without it. Still ones do not count.
+
+| | what it changes |
+| --- | --- |
+| `DOOM_VNC_ARGS=-noxdamage` | Stops x11vnc trusting the X DAMAGE extension to tell it what changed, and makes it compare the framebuffer itself. DOOM draws through MIT-SHM, and if those writes are not reported as damage, x11vnc only notices on a later pass. |
+| `DOOM_VNC_ARGS=-threads` | Gives each client its own thread in libvncserver. x11vnc is single-threaded by default, so anything that blocks its one loop stops every client at once — which is the shape of what the probe sees. |
+| `DOOM_VNC_8TO24=0` | Turns off the depth 8 to truecolor translation, the most expensive thing x11vnc does here. A diagnostic only: the picture becomes colormapped depth 8 and not every client renders that properly. |
+
+None of these is a recommended setting. They are there to find out which part
+of x11vnc is holding the picture, on a machine where that is actually
+happening.
+
 ## Troubleshooting
 
 **It starts, crashes immediately and keeps restarting.** Almost always a bad

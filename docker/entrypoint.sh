@@ -383,8 +383,25 @@ fi
 # PORTING-NOTES.md.
 log "starting x11vnc on port $VNC_PORT"
 # shellcheck disable=SC2086
+#
+# -8to24 is how a depth 8 display is presented as truecolor, and it is the most
+# expensive thing x11vnc does here: its own manual says the mode walks the
+# window tree, polls it with XGetImage, transforms the whole screen, and "does
+# hog resources". Turning it off is a diagnostic, not a supported way to play
+# -- the picture goes to a colormapped depth 8 that not every client renders
+# properly -- so it is an environment variable rather than an option anyone is
+# steered towards.
+#
+if [ "${DOOM_VNC_8TO24:-1}" = "0" ]; then
+    log "  -8to24 off by request; colours may be wrong in some clients"
+    vnc_8to24=""
+else
+    vnc_8to24="-8to24"
+fi
+
+# shellcheck disable=SC2086
 x11vnc -display "$DISP" -rfbport "$VNC_PORT" -forever -shared -quiet \
-       -8to24 \
+       $vnc_8to24 \
        -nonap -wait "${DOOM_VNC_WAIT:-5}" -defer "${DOOM_VNC_DEFER:-5}" \
        ${DOOM_VNC_ARGS:-} \
        $vnc_auth >"$STATE/x11vnc.log" 2>&1 &
