@@ -43,7 +43,8 @@ import time
 SECONDS   = float(os.environ.get('DOOM_PROBE_SECONDS', '30'))
 QUIET_S   = 0.015        # a picture is over once nothing has come for this long
 MOVING_KB = 40           # below this the picture is not moving enough to judge
-SCREEN_SAMPLE_S = 0.05   # how often the screen itself is read, for the above
+SCREEN_SAMPLE_S = 0.01   # how often the screen itself is read, for the above
+SCREEN_TAIL_S   = 0.06   # motion this close to the end does not count -- see below
 
 
 class Link:
@@ -243,7 +244,7 @@ def report(name, waits, total, seconds):
     return kb
 
 
-def watch_screen(changes, why, stop, socket_path=None):
+def watch_screen(changes, samples, why, stop, socket_path=None):
     """Record when the screen actually changes, by reading it from X.
 
     Without this the probe cannot tell the two things apart that matter most:
@@ -338,8 +339,10 @@ def watch_screen(changes, why, stop, socket_path=None):
                     data += d
                 shot += data
 
+            seen_at = time.time()
+            samples.append(seen_at)
             if last is not None and shot != last:
-                changes.append(time.time())
+                changes.append(seen_at)
             last = shot
     except (OSError, struct.error) as exc:
         # A diagnostic that brings the probe down with it is worse than no
@@ -451,9 +454,11 @@ def main():
 
     # Read the screen alongside, so a silence can be told from a still picture.
     changes = []
+    samples = []
     why = []
     stop = threading.Event()
-    watcher = threading.Thread(target=watch_screen, args=(changes, why, stop))
+    watcher = threading.Thread(target=watch_screen,
+                               args=(changes, samples, why, stop))
     watcher.daemon = True
     watcher.start()
 
@@ -488,7 +493,7 @@ def main():
         stalls[name] = when
         results[name] = report(name, waits, total, SECONDS)
 
-    watching = bool(changes)
+    watching = bool(samples)
 
     #
     # The change that ENDS a wait does not mean the picture was moving during
@@ -501,22 +506,31 @@ def main():
     # correctly. Only motion comfortably before the end counts, which at a
     # 20 Hz sample rate means leaving the last 150 ms out.
     #
-    TAIL_S = 0.15
-
+    # At twenty samples a second and a 150 ms tail, a 220 ms silence left one
+    # sample to judge by, and every short silence came back "still" whether it
+    # was or not. A hundred a second leaves about sixteen, which is evidence
+    # rather than a coin toss. X answers these in a tenth of a millisecond, so
+    # the extra reads cost nothing that matters.
     def was_moving(at, ms):
-        until = at + ms / 1000.0 - TAIL_S
-        return sum(1 for c in changes if at <= c <= until)
+        until = at + ms / 1000.0 - SCREEN_TAIL_S
+        seen = sum(1 for t in samples if at <= t <= until)
+        moved = sum(1 for c in changes if at <= c <= until)
+        return moved, seen
 
     for name in stalls:
         for at, ms in stalls[name]:
-            moved = was_moving(at, ms)
+            moved, seen = was_moving(at, ms)
             if not watching:
                 verdict = ''
             elif moved:
-                verdict = ('  -- picture moving (%d changes), so this is a stall'
-                           % moved)
+                verdict = ('  -- picture MOVING (%d of %d looks changed), a stall'
+                           % (moved, seen))
+            elif seen < 3:
+                verdict = ('  -- too short to judge (%d looks at the screen)'
+                           % seen)
             else:
-                verdict = '  -- picture STILL, so x11vnc had nothing to send'
+                verdict = ('  -- picture STILL (%d looks, none changed), so'
+                           ' x11vnc had nothing to send' % seen)
             print('      %-18s %5.0f ms at t+%.1fs%s'
                   % (name, ms, at - started_at, verdict))
 
@@ -534,7 +548,7 @@ def main():
 
     if watching:
         every = [(at, ms) for n in stalls for at, ms in stalls[n]]
-        real = [1 for at, ms in every if was_moving(at, ms)]
+        real = [1 for at, ms in every if was_moving(at, ms)[0]]
         print()
         if every and not real:
             all_still = True

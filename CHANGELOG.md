@@ -6,6 +6,42 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.44] — 2026-09-14
+
+### Fixed
+- **A silence shorter than about 250 ms could not be judged, and was called
+  still regardless.** The screen was read twenty times a second and motion in
+  the last 150 ms was discounted, because the change that ends a silence is
+  inside it by definition. That left a 220 ms silence with a single sample to
+  decide on, and every short one came back "still" whether it was or not — on
+  the machine in the field, where two of six were labelled from one sample
+  apiece.
+
+  A hundred samples a second and a 60 ms tail leaves about sixteen looks at a
+  220 ms silence instead of one. X answers these in a tenth of a millisecond,
+  so the extra reads cost nothing worth counting. The verdict now shows its
+  working:
+
+  ```
+  straight to x11vnc   331 ms at t+119.7s  -- picture MOVING (19 of 27 looks changed), a stall
+  straight to x11vnc   249 ms at t+64.9s   -- picture STILL (18 looks, none changed), so x11vnc had nothing to send
+  ```
+
+  A silence too short to judge at all now says so rather than guessing.
+
+### Notes
+- **The fault does not reproduce here with the picture genuinely moving, and
+  that is worth recording.** Every silence this machine produces is a still
+  one: the attract demo stands still for seconds at a stretch, and pressing a
+  key to stop it doing that aborts the demo and leaves the title screen, which
+  is stiller still — twenty-five silences of 234 ms apiece, correctly called
+  still, from a script written to create motion.
+
+  Starting an actual level and holding a turn key gives ninety seconds with the
+  picture never stopping, 2933 answers, worst 76 ms and **nothing over 200 ms
+  at all**. So whatever is stalling x11vnc in the field is not in the stack
+  alone; iterating on it has to happen there rather than here.
+
 ## [1.10.43] — 2026-09-14
 
 ### Fixed
