@@ -243,7 +243,7 @@ def report(name, waits, total, seconds):
     return kb
 
 
-def watch_screen(changes, stop, socket_path=None):
+def watch_screen(changes, why, stop, socket_path=None):
     """Record when the screen actually changes, by reading it from X.
 
     Without this the probe cannot tell the two things apart that matter most:
@@ -262,7 +262,8 @@ def watch_screen(changes, stop, socket_path=None):
     if socket_path is None:
         found = sorted(glob.glob('/tmp/.X11-unix/X*'))
         if not found:
-            return                      # not in the container; nothing to read
+            why.append('there is no X socket here, so this is not the container')
+            return
         socket_path = found[0]
 
     try:
@@ -273,6 +274,7 @@ def watch_screen(changes, stop, socket_path=None):
 
         head = s.recv(8)
         if not head or head[0] != 1:
+            why.append('X would not accept the connection')
             return
         extra = struct.unpack('<H', head[6:8])[0] * 4
         body = b''
@@ -287,12 +289,22 @@ def watch_screen(changes, stop, socket_path=None):
         off = 32 + ((vendor_len + 3) & ~3) + 8 * nformats
         root = struct.unpack('<I', body[off:off + 4])[0]
 
+        # The screen's real size, not an assumed one. DOOM_SCALE decides it, so
+        # it is 320x200 as often as 640x400, and asking for a 640 wide strip on
+        # a 320 wide screen is a BadMatch that killed this thread outright --
+        # silently, which is how it came back from the field reporting that the
+        # screen could not be read at all.
+        width, height = struct.unpack('<HH', body[off + 20:off + 24])
+
+        band = max(4, min(16, height // 12))
+        rows = (height // 4, height // 2)
+
         # GetImage, ZPixmap. The length is in 4-byte words and the request is
         # 20 bytes, so 5 -- declaring 6 leaves X waiting for four bytes that
         # never arrive and wedges the connection for good.
-        strips = [struct.pack('<BBHIhhHHI', 73, 2, 5, root, 0, y, 640, 16,
+        strips = [struct.pack('<BBHIhhHHI', 73, 2, 5, root, 0, y, width, band,
                               0xFFFFFFFF)
-                  for y in (60, 200)]
+                  for y in rows]
 
         last = None
         nxt = time.time()
@@ -314,6 +326,8 @@ def watch_screen(changes, stop, socket_path=None):
                         return
                     hdr += d
                 if hdr[0] != 1:
+                    why.append('X refused to hand over the screen (error %d)'
+                               % (hdr[1] if len(hdr) > 1 else 0))
                     return
                 n = struct.unpack('<I', hdr[4:8])[0] * 4
                 data = b''
@@ -327,9 +341,12 @@ def watch_screen(changes, stop, socket_path=None):
             if last is not None and shot != last:
                 changes.append(time.time())
             last = shot
-    except (OSError, struct.error):
+    except (OSError, struct.error) as exc:
         # A diagnostic that brings the probe down with it is worse than no
-        # diagnostic. Whatever went wrong, the rest of the run still stands.
+        # diagnostic. Whatever went wrong, the rest of the run still stands --
+        # but it says what went wrong, because a silent fallback to "could not
+        # be read" is what hid a one-line bug for a whole release.
+        why.append('reading the screen failed: %s' % exc)
         return
 
 
@@ -434,8 +451,9 @@ def main():
 
     # Read the screen alongside, so a silence can be told from a still picture.
     changes = []
+    why = []
     stop = threading.Event()
-    watcher = threading.Thread(target=watch_screen, args=(changes, stop))
+    watcher = threading.Thread(target=watch_screen, args=(changes, why, stop))
     watcher.daemon = True
     watcher.start()
 
@@ -530,9 +548,8 @@ def main():
             print('real: x11vnc had something to send and did not send it.')
     elif any(v is not None for v in results.values()):
         print()
-        print('The screen itself could not be read from here, so a silence')
-        print('cannot be told from a still picture -- run this inside the')
-        print('container for that.')
+        print('A silence cannot be told from a still picture in this run:')
+        print('%s.' % (why[0] if why else 'the screen was never read'))
 
 
     print()
