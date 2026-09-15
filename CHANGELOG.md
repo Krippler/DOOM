@@ -6,7 +6,7 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
-## [Unreleased]
+## [1.10.53] — 2026-09-15
 
 ### Added
 - **The controller readout is on screen while you play.** 1.10.52 put it in the
