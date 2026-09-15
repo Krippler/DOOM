@@ -6,6 +6,44 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.54] — 2026-09-15
+
+### Fixed
+- **A controller that worked in the menus and did nothing in the game.** The
+  field report across 1.10.51 to 1.10.53 was "left and right work, the menu
+  button works, nothing else does", and then the detail that settled it: *up and
+  down do work in the menu, along with A*.
+
+  The engine splits exactly along that line. `m_menu.c` **hardcodes**
+  `KEY_UPARROW`, `KEY_DOWNARROW` and `KEY_ENTER`, so a pad pressing those
+  navigates menus whatever `.doomrc` says. Play reads *configurable* bindings for
+  everything — `key_up`, `key_down`, `key_fire`, `key_use`, `key_speed`,
+  `key_strafe` — so once those have been changed under Options → Setup →
+  Controls, a pad sending the defaults does nothing at all in a level. The
+  container cannot see the controller and the page cannot see `.doomrc`, so
+  neither end could notice the mismatch.
+
+  Two details of the report that looked like more of the same fault and were
+  not: **turning kept working** because the sticks send pointer motion rather
+  than a key, and the mouse is not rebindable — it is the one input that cannot
+  break this way. And **most weapon buttons legitimately do nothing** at the
+  start of a level, because the engine ignores a weapon you are not carrying and
+  E1M1 hands you a fist and a pistol.
+
+  So each action can now be told which key to press, learned from the keyboard:
+  the panel's third column shows the key, **Key** on that row captures the next
+  keypress, and **Default key** puts it back. The keysym and code name come from
+  noVNC's own translation of the event, so what the pad sends afterwards is byte
+  for byte what pressing that key sends. The panel says all this at the top,
+  because "it presses keys, not intentions" was documented in 1.10.51 and
+  documenting it turned out not to be the same as handling it.
+
+  Verified in Chromium: the panel lists the key every action sends, pressing
+  **Key** on Fire and then W makes the trigger send `w`/`KeyW` down and up
+  instead of `Control_L`, it survives a reload, **Default key** restores
+  `Control_L`, **Reset to defaults** clears every learned key, and an unknown
+  action or a null keysym is ignored rather than stored.
+
 ## [1.10.53] — 2026-09-15
 
 ### Added

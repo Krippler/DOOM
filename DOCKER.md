@@ -244,6 +244,28 @@ only has *select weapon N*, and the page cannot cycle on your behalf since it
 has no idea which weapons you are carrying. A digit for a weapon you have not
 picked up is ignored, so a cycle would stick on the gaps.
 
+#### The pad works in the menus but not in the game
+
+This is the common one, and it is not a fault in the pad. The engine **hardcodes
+the arrow keys and Return in its menus** but reads *configurable* bindings during
+play — `key_up`, `key_down`, `key_fire`, `key_use`, `key_speed`, `key_strafe`,
+all of them from `.doomrc`. So a pad that presses the defaults navigates menus
+perfectly and does nothing in the game the moment those bindings have been
+changed under **Options → Setup → Controls**.
+
+The panel's third column is the key each action presses, and **Key** on that row
+changes it: press **Key**, then press the key you actually use. From then on the
+pad presses that. **Default key** puts it back.
+
+Two things that look like the same fault and are not:
+
+- **Turning still works** when everything else has stopped, because the sticks
+  turn by sending pointer motion rather than a key, and the mouse is not
+  rebindable. It is the one input that cannot be broken this way.
+- **Most weapon buttons do nothing at the start of a level**, correctly: the
+  engine ignores a weapon you are not carrying, and E1M1 starts with a fist and
+  a pistol.
+
 **Rebinding** is in that panel: pick a line, press **Bind**, press the button.
 The sticks have a deadzone, a turn speed, invert, a swap, and a switch for
 whether a full push runs. Everything is saved in the browser — not in
@@ -302,7 +324,7 @@ moment it is hidden.
 | `pads 0` | the pad is not reaching the page; nothing here can help |
 | `pressed —` while you hold the button | the browser is not reporting that button |
 | `pressed 7=RT` but `last key none sent yet` | the page saw it and sent nothing — it is unbound |
-| `pressed 7=RT` and `holding Control_L` | the key went out. The fault is past this page, and almost always the engine's own binding was changed under **Options → Setup → Controls** |
+| `pressed 7=RT` and `holding Control_L` | the key went out — see **the pad works in menus but not in the game** below |
 
 `?stats=1` also shows the controller line when no pad has been seen, so the panel
 and its readout are reachable when the fault is that nothing is detected. The
