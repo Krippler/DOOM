@@ -147,7 +147,26 @@
     border-radius: 4px; padding: 8px;
   }
   #pad-raw b { color: #d8d8d8; font-weight: normal; }
+  #pad-copy-row { display: flex; gap: 8px; align-items: center; }
+  #pad-copy-row .dim { color: #808080; font-size: 12px; }
   #pad-foot { display: flex; gap: 8px; justify-content: flex-end; }
+  /* The controller strip, on screen while playing.
+     The panel cannot answer "why did that button do nothing": it is only
+     visible when the game is not, so the one moment worth watching is the one
+     moment it is hidden. This sits over the picture instead. */
+  #pad-live {
+    position: absolute;
+    top: 0; left: 0;
+    max-width: 100%;
+    padding: 4px 8px;
+    background: rgba(0, 0, 0, 0.78);
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 11px; line-height: 1.5; color: #9a9a9a;
+    white-space: pre-wrap; word-break: break-word;
+    pointer-events: none;
+  }
+  #pad-live[hidden] { display: none; }
+  #pad-live b { color: #d8d8d8; font-weight: normal; }
   #status {
     position: absolute;
     left: 0; right: 0; bottom: 0;
@@ -181,6 +200,10 @@
     <div id="pad-sticks"></div>
     <h2>What the pad is reporting</h2>
     <pre id="pad-raw"></pre>
+    <div id="pad-copy-row">
+      <button type="button" id="pad-copy">Copy this</button>
+      <span class="dim" id="pad-copied"></span>
+    </div>
     <div id="pad-foot">
       <button type="button" id="pad-reset">Reset to defaults</button>
       <button type="button" id="pad-done">Done</button>
@@ -192,6 +215,8 @@
   <p class="dim" id="video-note" hidden>Picture: not started.</p>
   <p class="dim" id="build-note">__DOOM_VERSION__</p>
 </div>
+
+<div id="pad-live" hidden></div>
 
 <div id="status" hidden></div>
 
@@ -781,10 +806,58 @@ function padMayTurn() {
 (function padLoop() {
   function step() {
     gamepad.poll(padActive());
+    padLive();
     requestAnimationFrame(step);
   }
   requestAnimationFrame(step);
 })();
+
+//
+// The strip, updated ten times a second while playing.
+//
+// Only with `?stats=1`, which is already this page's switch for "show me the
+// instruments". It answers the one question the panel cannot, because it is
+// readable at the instant a button fails: did the page see the button, and did
+// it put a key on the wire? If both, whatever is wrong is past this page. If
+// neither, the pad is not reaching the page and nothing here can rebind it.
+//
+const padLiveEl = document.getElementById('pad-live');
+let padLiveAt = 0;
+let padSentTotal = 0;
+
+function padLive() {
+  if (!padLiveEl) return;
+  if (!SHOW_STATS || !padActive()) {
+    if (!padLiveEl.hidden) padLiveEl.hidden = true;
+    return;
+  }
+
+  const now = performance.now();
+  if (now - padLiveAt < 100) return;
+  padLiveAt = now;
+
+  const s = gamepad.snapshot();
+  padSentTotal = Math.max(padSentTotal, s.log.length);
+
+  const bits = ['pads ' + s.pads];
+  if (s.pads) {
+    bits.push('layout ' + s.mapping);
+    bits.push('pressed ' + (s.active.length
+      ? s.active.map(b => b.i + (BUTTON_NAMES[b.i] ? '=' + BUTTON_NAMES[b.i] : '')).join(',')
+      : '\u2014'));
+    bits.push('holding ' + (s.held.length ? s.held.map(keyName).join(',') : '\u2014'));
+    const last = s.log[s.log.length - 1];
+    bits.push('last key ' + (last
+      ? keyName(last.keysym) + (last.down ? ' down' : ' up')
+      : 'none sent yet'));
+  }
+
+  padLiveEl.textContent = '';
+  const b = document.createElement('b');
+  b.textContent = bits.join('  \u00b7  ');
+  padLiveEl.append(b);
+  padLiveEl.hidden = false;
+}
 
 // Same hazard as a held mouse button: a key the pad is holding when the tab
 // goes away is a key the engine goes on obeying.
@@ -1056,6 +1129,25 @@ function closePad() {
   if (padRawTimer) { clearInterval(padRawTimer); padRawTimer = 0; }
   renderPad();
 }
+
+document.getElementById('pad-copy').addEventListener('click', async () => {
+  const said = document.getElementById('pad-copied');
+  const text = (padRawEl && padRawEl.textContent) || '';
+  try {
+    await navigator.clipboard.writeText(text);
+    said.textContent = 'copied';
+  } catch (e) {
+    // A clipboard a browser will not give up is not worth an error: select it
+    // instead and let the ordinary copy do it.
+    const r = document.createRange();
+    r.selectNodeContents(padRawEl);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+    said.textContent = 'selected \u2014 copy it';
+  }
+  setTimeout(() => { said.textContent = ''; }, 2500);
+});
 
 document.getElementById('pad-done').addEventListener('click', closePad);
 document.getElementById('pad-reset').addEventListener('click', () => {
