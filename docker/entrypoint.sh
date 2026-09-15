@@ -489,6 +489,54 @@ fi
     [ "$AUDIO_TO_BROWSER" = "1" ] && printf 'audio: localhost:%s\n' "$AUDIO_PORT"
 } > "$STATE/ws-targets"
 
+#
+# Hand the browser the engine's own key bindings.
+#
+# The controller in the page presses keys, so it has to press the keys *this*
+# engine listens for -- and those live in .doomrc, which only this side can see.
+# Without them a pad works perfectly in the menus, where the engine hardcodes
+# the arrows and Return, and does nothing at all in a level as soon as anybody
+# has been through Options -> Setup -> Controls.
+#
+# Read at startup, which is the right moment: the engine writes .doomrc when it
+# exits, so what is on disk now is what it is about to load.
+#
+write_key_map() {
+    rc="$STATE/.doomrc"
+    out="$STATE/doom-keys.json"
+
+    if [ ! -r "$rc" ]; then
+        # No config yet: a first run, so the engine will use its own defaults,
+        # which are the page's defaults too. An empty object says "nothing to
+        # override" rather than leaving a stale file from a previous container.
+        printf '{}\n' >"$out" 2>/dev/null || true
+        return
+    fi
+
+    # Only the key_* integers. Anything else in there is none of the page's
+    # business, and a value that is not a plain number is skipped rather than
+    # guessed at.
+    if awk '
+        /^key_[a-z_]+[ \t]+-?[0-9]+[ \t]*$/ {
+            keys[$1] = $2
+        }
+        END {
+            printf "{"
+            n = 0
+            for (k in keys) printf "%s\"%s\":%s", (n++ ? "," : ""), k, keys[k]
+            printf "}\n"
+        }' "$rc" >"$out.tmp" 2>/dev/null; then
+        mv -f "$out.tmp" "$out" 2>/dev/null || rm -f "$out.tmp"
+    else
+        rm -f "$out.tmp"
+        printf '{}\n' >"$out" 2>/dev/null || true
+    fi
+
+    log "controller keys: $(cat "$out" 2>/dev/null | cut -c1-120)"
+}
+
+write_key_map
+
 log "starting noVNC on port $WEB_PORT"
 #
 # websockify's own chatter goes to its log; the lines it prints about the

@@ -6,6 +6,54 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **The controller presses the keys *this* engine listens for, read from its own
+  config.** 1.10.54 made each action's key settable by hand, which was the right
+  diagnosis and the wrong remedy: it asked somebody to find out what their own
+  `.doomrc` says and copy it into a panel a row at a time, and the next report
+  was unchanged.
+
+  The container can just read it. `.doomrc` is in the state directory; the
+  entrypoint parses its `key_*` settings at startup into `doom-keys.json`, and a
+  symlink in the noVNC root serves it — so nothing has to be writable at runtime
+  and the page fetches the bindings the engine is about to load. `doomKeyToX()`
+  is `i_video.c`'s `xlatekey` read backwards, so a stored `120` becomes `x`/`KeyX`
+  and a stored `172` becomes `ArrowLeft`.
+
+  Precedence: a key set by hand beats the config, the config beats the built-in
+  default, and a missing, empty or unparsable file leaves the defaults alone.
+  `Open / use` keeps Return alongside whatever `key_use` says, because menus
+  hardcode Return. The panel's third column says where each key came from — green
+  from the config, grey the default, pink set by hand.
+
+  Read at startup, so a binding changed in the game reaches the pad on the next
+  restart: the engine writes `.doomrc` when it exits. **Key** on a row still
+  overrides immediately.
+
+### Notes
+- **This was found by running the stack rather than by asking for a reading.**
+  Three releases went out asking for one off an instrument, and none came back,
+  which is a fair verdict on asking. Xvfb, x11vnc and websockify install in one
+  command, so the whole path was rebuilt here: the real x11vnc with the flags the
+  entrypoint uses, the real page, a synthetic pad injected into headless
+  Chromium, and a raw-X `QueryKeymap` watcher reporting which keycodes are
+  physically held on the server.
+
+  That settled in one run what three rounds of questions had not. Holding the
+  trigger held `Control_L(37)` at the X server for exactly the two seconds it was
+  down — one key-down, no spurious release — so the pad, the page, `sendKey`,
+  x11vnc and XTEST were all correct, and the only thing left was which key the
+  engine listens for. With a rebound `.doomrc` in place the same test holds
+  `x(53)` instead, which is the fix demonstrated rather than argued.
+
+  Two early attempts at that watcher reported "the key never went down" and were
+  wrong both times: the X connection setup request is 12 bytes and 10 were sent,
+  so the server was still waiting for the rest, and Python was block-buffering
+  the watcher's output into a file that was read too early. Worth recording
+  because both failures looked exactly like the bug being hunted.
+
 ## [1.10.54] — 2026-09-15
 
 ### Fixed
