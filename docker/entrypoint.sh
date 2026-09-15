@@ -369,6 +369,30 @@ else
     log "no VNC password set (export DOOM_VNC_PASSWORD to require one)"
 fi
 
+#
+# -wireframe and -scrollcopyrect are both on by default, and both are for a
+# desktop: they watch for a window being dragged or a pane being scrolled while
+# a mouse button is held, and hold back the picture while they decide. A game
+# holds the fire button down. There is one window, it never moves, and there is
+# nothing to scroll.
+#
+# Measured with the fire button held and the player turning, 80 seconds each:
+#
+#                            answers   KB/s   median   p90   p99   worst   >200ms
+#   both on (the default)       1271    257    41 ms    62    91     118        0
+#   -nowireframe only           1079    250    43 ms    62    94     118        0
+#   -noscrollcopyrect only      1029    121    15 ms   140   306     341       41
+#   both off                    2774    554    12 ms    15    24      44        0
+#
+# Without the button held, the default is fine -- 2752 answers, 539 KB/s,
+# median 12 ms. So this costs nothing until someone fires, and then it halves
+# the frame rate and triples the median. The two do different damage:
+# -scrollcopyrect slows everything down evenly, which hides the other one, and
+# -wireframe holds the picture for about 300 ms at a time -- t2 in its own
+# default timing string, "0.15+0.30+5.0+0.125", is how long it waits for a
+# window to start moving after a button goes down, and it repaints nothing
+# while it waits. Those 300 ms holds are the stutter this was chased for.
+#
 # x11vnc's timing defaults are tuned for a desktop, where nothing is waiting
 # on the next frame: -nap lengthens the poll interval when activity is low,
 # which is the state of a DOOM screen in the moment before you press fire, and
@@ -423,6 +447,7 @@ fi
 # shellcheck disable=SC2086
 x11vnc -display "$DISP" -rfbport "$VNC_PORT" -forever -shared -quiet \
        $vnc_8to24 \
+       -nowireframe -noscrollcopyrect \
        -nonap -wait "${DOOM_VNC_WAIT:-5}" -defer "${DOOM_VNC_DEFER:-5}" \
        ${DOOM_VNC_ARGS:-} \
        $vnc_auth >"$STATE/x11vnc.log" 2>&1 &
