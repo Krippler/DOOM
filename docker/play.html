@@ -140,6 +140,13 @@
   #pad-sticks input[type=range] { width: 100%; }
   #pad-sticks .val { color: #808080; font-size: 12px; min-width: 3em; }
   #pad-sticks .wide { grid-column: 1 / -1; color: #b0b0b0; }
+  #pad-raw {
+    margin: 0; font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 11px; line-height: 1.5; color: #9a9a9a; white-space: pre-wrap;
+    word-break: break-word; background: #0b0b0b; border: 1px solid #2a2a2a;
+    border-radius: 4px; padding: 8px;
+  }
+  #pad-raw b { color: #d8d8d8; font-weight: normal; }
   #pad-foot { display: flex; gap: 8px; justify-content: flex-end; }
   #status {
     position: absolute;
@@ -172,6 +179,8 @@
     <table id="pad-binds"><tbody></tbody></table>
     <h2>Sticks</h2>
     <div id="pad-sticks"></div>
+    <h2>What the pad is reporting</h2>
+    <pre id="pad-raw"></pre>
     <div id="pad-foot">
       <button type="button" id="pad-reset">Reset to defaults</button>
       <button type="button" id="pad-done">Done</button>
@@ -192,7 +201,7 @@
 
 <script type="module">
 import RFB from './core/rfb.js';
-import { DoomGamepad, ACTIONS, BUTTON_NAMES } from './doom-gamepad.js';
+import { DoomGamepad, ACTIONS, BUTTON_NAMES, keyName } from './doom-gamepad.js';
 
 const screenEl  = document.getElementById('screen');
 const overlayEl = document.getElementById('overlay');
@@ -718,6 +727,19 @@ function releaseButtons() {
 }
 
 //
+// The figures below are diagnostics, and they are off unless asked for.
+//
+// They are what finally placed the stutter, after eleven releases of not
+// placing it -- but that hunt is over, and answering Esc with three paragraphs
+// of measurements is no use to somebody who only wanted to stop playing for a
+// moment. `?stats=1` brings them back in full. Without it the page stays quiet
+// while things are well and still says what is wrong when they are not, which
+// is the half that was ever load-bearing.
+//
+const SHOW_STATS = new URLSearchParams(location.search).get('stats') === '1';
+
+
+//
 // The controller.
 //
 // It presses the same keys a keyboard would and moves the view with the same
@@ -726,12 +748,13 @@ function releaseButtons() {
 // bindings and the stick maths; this is the part that needs the connection.
 //
 const gamepad = new DoomGamepad({
-  // `code` is null on purpose: noVNC sends a QEMU extended key event instead
-  // of a plain keysym when it has a scancode for the name, and x11vnc does not
-  // speak that extension. Without a name there is no scancode and it takes the
-  // ordinary path, which is the one the engine reads.
-  press:    (keysym) => rfb.sendKey(keysym, null, true),
-  release:  (keysym) => rfb.sendKey(keysym, null, false),
+  // The code name is passed through, so this is the same call the keyboard
+  // handler makes for the same key -- same branch inside sendKey, same bytes on
+  // the wire. Leaving it off worked in the lab and made this path the only one
+  // in the page that could not be compared against a keyboard that is known to
+  // work, which is not a difference worth keeping.
+  press:    (keysym, code) => rfb.sendKey(keysym, code, true),
+  release:  (keysym, code) => rfb.sendKey(keysym, code, false),
   turn:     (dx) => { pendingX += dx; queueFlush(); },
   onChange: () => renderPad(),
 });
@@ -817,19 +840,26 @@ function renderPadNote() {
   if (!padNoteEl) return;
 
   const pad = gamepad.pad();
-  if (!pad) {
+
+  // With ?stats=1 the line is there whether a pad was found or not, because
+  // that is the switch for "show me the instruments" -- and a pad that is not
+  // being seen at all is precisely the fault the readout has to explain.
+  if (!pad && !SHOW_STATS) {
     padNoteEl.hidden = true;
     padNoteEl.textContent = '';
     padNoteState = null;
     return;
   }
 
-  const state = pad.id + '|' + (padPanelEl && !padPanelEl.hidden ? 'open' : 'shut');
+  const state = (pad ? pad.id : 'none') + '|'
+              + (padPanelEl && !padPanelEl.hidden ? 'open' : 'shut');
   if (state === padNoteState) return;
   padNoteState = state;
 
   padNoteEl.textContent = '';
-  padNoteEl.append('Controller: ' + padName(pad.id) + '. ');
+  padNoteEl.append(pad
+    ? 'Controller: ' + padName(pad.id) + '. '
+    : 'Controller: none seen \u2014 press a button on it. ');
 
   const open = document.createElement('button');
   open.type = 'button';
@@ -956,10 +986,66 @@ function renderPadSticks() {
   check('autoRun', 'Push the stick all the way to run');
 }
 
+//
+// The readout.
+//
+// Live, because the useful question is "does this button reach the page at
+// all", and the answer has to be visible while the button is being held. The
+// key log is not live -- it cannot be, since nothing is sent while this panel
+// is up -- so it is kept from the last spell of play: press things, press
+// Escape, open this, read what actually went out.
+//
+const padRawEl = document.getElementById('pad-raw');
+let padRawTimer = 0;
+
+function renderPadRaw() {
+  if (!padRawEl || !padPanelEl || padPanelEl.hidden) return;
+  const s = gamepad.snapshot();
+  const line = (label, value) => {
+    padRawEl.append(label + ' ');
+    const b = document.createElement('b');
+    b.textContent = value;
+    padRawEl.append(b, '\n');
+  };
+
+  padRawEl.textContent = '';
+  line('pads seen  ', String(s.pads));
+  if (!s.pads) {
+    padRawEl.append('\nNothing is being reported. A browser hides a gamepad'
+      + ' until a button on it has been pressed, so press one now. If this'
+      + ' stays at 0 the page is not being given the pad at all and no'
+      + ' binding here can help.\n');
+    return;
+  }
+  line('name       ', String(s.id));
+  line('layout     ', String(s.mapping));
+  line('buttons    ', s.buttonCount + ' reported');
+  line('axes       ', s.axisCount + ': ' + s.axes.join(', '));
+  line('pressed now', s.active.length
+    ? s.active.map(b => b.i + (BUTTON_NAMES[b.i] ? '=' + BUTTON_NAMES[b.i] : '')
+                        + (b.pressed ? '' : ' (' + b.value + ')')).join('  ')
+    : '\u2014');
+  line('enabled    ', s.enabled ? 'yes' : 'no \u2014 switch it on above');
+  line('holding    ', s.held.length ? s.held.map(keyName).join(' ') : '\u2014');
+
+  padRawEl.append('\nkeys sent while last playing\n');
+  if (!s.log.length) {
+    padRawEl.append('  nothing. If a button showed up as "pressed now" but'
+      + ' nothing is listed here after a spell of play, the page saw the'
+      + ' button and did not send a key. If keys are listed and the game did'
+      + ' not react, they reached the far end and the engine ignored them.\n');
+  } else {
+    for (const e of s.log)
+      padRawEl.append('  ' + keyName(e.keysym) + (e.down ? ' down' : ' up') + '\n');
+  }
+}
+
 function openPad() {
   if (!padPanelEl) return;
   padPanelEl.hidden = false;
   renderPad();
+  renderPadRaw();
+  if (!padRawTimer) padRawTimer = setInterval(renderPadRaw, 120);
 }
 
 function closePad() {
@@ -967,6 +1053,7 @@ function closePad() {
   gamepad.cancelCapture();
   padBinding = null;
   padPanelEl.hidden = true;
+  if (padRawTimer) { clearInterval(padRawTimer); padRawTimer = 0; }
   renderPad();
 }
 
@@ -1065,19 +1152,6 @@ function audioFailed(why) {
             + 'the controls do not depend on it.');
   audioNote();
 }
-
-//
-// The figures below are diagnostics, and they are off unless asked for.
-//
-// They are what finally placed the stutter, after eleven releases of not
-// placing it -- but that hunt is over, and answering Esc with three paragraphs
-// of measurements is no use to somebody who only wanted to stop playing for a
-// moment. `?stats=1` brings them back in full. Without it the page stays quiet
-// while things are well and still says what is wrong when they are not, which
-// is the half that was ever load-bearing.
-//
-const SHOW_STATS = new URLSearchParams(location.search).get('stats') === '1';
-
 
 //
 // What the sound is actually doing, on the page rather than in a console.

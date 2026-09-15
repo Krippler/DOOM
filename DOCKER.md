@@ -265,6 +265,30 @@ desk cannot empty a chaingun into a room nobody is watching, and a pad that
 disconnects mid-game lets go of whatever it was holding rather than leaving the
 trigger down.
 
+#### When only some of it works
+
+The panel ends with **what the pad is reporting**, which exists because "some
+buttons work and the rest do nothing" has three completely different causes and
+they cannot be told apart by playing. It shows, live, how many pads the browser
+admits to, the name and layout it claims, how many buttons and axes it has,
+which button indices are pressed *right now*, and — kept from the last spell of
+play, since nothing is sent while you are reading it — the keys that actually
+went out.
+
+Play, press the things that do not work, press Escape, open the panel and read
+the bottom of it:
+
+| | |
+| --- | --- |
+| `pads seen 0` | The browser is not giving the page the pad at all. Press a button on it; if it stays at 0, no binding here can help. |
+| A button you pressed never appears in `pressed now` | The browser is not reporting that button. If `layout` is not `standard` the indices will not match the names, and rebinding by pressing is the fix. |
+| It appears in `pressed now`, but no key is listed | The page saw the button and sent nothing — the action is unbound. Bind it. |
+| The key is listed and the game ignored it | It reached the far end. Almost always the engine's own binding was changed under **Options → Setup → Controls**, so the key the panel sends is no longer the key the game listens for. |
+
+`/play.html?stats=1` shows the controller line even when no pad has been seen,
+so the panel and this readout are reachable when the fault is that nothing is
+being detected.
+
 ## Loading WADs from the game
 
 **Options → Setup → Load WAD** lists everything in the mounted WAD directory,
