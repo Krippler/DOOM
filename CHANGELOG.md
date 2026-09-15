@@ -6,6 +6,85 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.51] — 2026-09-15
+
+### Added
+- **A game controller works, on a phone as well as a desktop.** An Xbox pad, a
+  Backbone One, or anything else the browser reports as a standard gamepad.
+
+  The engine needed no change for any of it, and could not have been given one
+  usefully: input reaches it as X keysyms and pointer reports over the same VNC
+  connection the picture comes back on, so a controller is entirely the page's
+  business. Buttons become key presses. The right stick becomes the same
+  relative pointer motion the captured mouse produces, which is what makes
+  turning analog — a nudge turns slowly, where a key can only turn or not.
+  Measured over the same 400 ms, a stick at 40% travels 24 mouse pixels against
+  321 at full push.
+
+  Sensible out of the box: left stick moves and sidesteps and breaks into a run
+  when pushed all the way, right stick turns, RT fires, LT runs, A opens doors
+  and confirms in menus, B backs out, the face and shoulder buttons are weapons,
+  the d-pad works the menus.
+
+  Two of those needed a decision rather than a default. **A sends space and
+  Return together**, because one button has to open a door and choose a menu
+  item and the page cannot tell which screen is up; each key is meaningless on
+  the other one. And **there is no next-weapon button**, because the 1997 engine
+  has no such key — only *select weapon N* — and a page cannot cycle for you
+  when it has no idea which weapons you are carrying. A digit for a weapon you
+  have not got is ignored, so a cycle would stall on the gaps.
+
+- **Every button is rebindable, from the start screen.** A *Controller* line
+  appears under the play buttons once a pad has been seen, with a panel behind
+  it: pick an action, press Bind, press the button. The sticks get a deadzone,
+  a turn speed, invert, a swap, and a switch for whether a full push runs.
+
+  It is saved in the browser rather than in `.doomrc`, which is not a shortcut:
+  the container never sees the controller, so it has nothing to write, and the
+  pad on a phone and the pad on a desk are different browsers that usually want
+  different layouts. It follows that the panel sends **keys, not intentions** —
+  rebind fire in the game's own Options → Setup → Controls and the controller's
+  *Fire* has to be pointed at the new key too. The panel says so.
+
+  The line says when it has *not* found a pad as well as when it has, because a
+  browser reports no gamepad until a button on it has been pressed: a pad that
+  is paired, charged and idle is invisible, and there is no way to tell that
+  apart from broken without being told.
+
+  Verified against a synthetic pad in Chromium rather than by inspection: the
+  trigger sends `XK_Control_L` down and up, a full push forward sends the arrow
+  and the run key together and a half push only the arrow, A sends both of its
+  keysyms, B sends the game's Escape without the page's own Escape handler
+  taking it, turning produces pointer reports and no key events, inverting
+  turns the other way, rebinding moves a binding rather than duplicating it and
+  survives a reload, and *Reset to defaults* puts it back.
+
+- **Nothing reaches the game when it should not.** Checked, because a key the
+  engine is told to hold is one it goes on obeying: a pad is not read at all
+  while the start screen is up, so one knocked off a desk cannot empty a
+  chaingun into a room nobody is watching, and losing focus, hiding the tab or
+  unplugging the pad mid-game releases whatever it was holding — the same
+  hazard the mouse buttons already guarded against, and the same fix.
+
+### Changed
+- **The start screen is quiet again.** Pressing Escape mid-game brought back
+  the title and then three paragraphs of measurements — sample rates, buffer
+  growth, underrun counts, frame rates, byte rates, decode times, gap
+  attributions — followed by a sentence explaining that Escape brings the start
+  screen back. On a screen you can only be reading because you pressed Escape.
+
+  All of it was built to find the stutter and all of it earned its place doing
+  that. None of it earns a place in front of somebody who stopped playing for a
+  moment. The figures move behind `?stats=1`, unchanged, and DOCKER.md points
+  everything that reads them at the switch. The Escape hint is shown before the
+  first game, where it is worth something, and retired once it has been taken.
+
+  One thing still speaks without being asked: sound that is **not** working.
+  A refused connection, a worklet the browser would not load, a stream that
+  opens and stays quiet — the page still says which, because that is the only
+  thing on that screen you cannot check by looking at the game. Sound that is
+  working now says nothing.
+
 ## [1.10.50] — 2026-09-15
 
 ### Fixed

@@ -70,6 +70,7 @@
   }
   #overlay p { margin: 0; max-width: 34em; }
   #overlay .dim { color: #808080; font-size: 13px; }
+  #overlay .dim[hidden] { display: none; }
   #overlay #build-note { color: #555; font-size: 11px; letter-spacing: 0.08em; }
   #overlay kbd { font: inherit; color: #d0d0d0; border: 1px solid #555;
                  border-radius: 3px; padding: 0 4px; }
@@ -91,6 +92,55 @@
   #choices button:hover { background: #262626; border-color: #b33; }
   #choices button:focus-visible { outline: 2px solid #b33; outline-offset: 2px; }
   #play-fullscreen { border-color: #b33; }
+  /* The controller panel. An ordinary flex child of the start screen rather
+     than a dialog: it can only be open while that screen is up, which is the
+     one time the game is not reading the pad anyway. */
+  #pad-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: min(540px, 100%);
+    max-height: min(68vh, 560px);
+    overflow-y: auto;
+    text-align: left;
+    background: #111;
+    border: 1px solid #4a4a4a;
+    border-radius: 6px;
+    padding: 14px 16px;
+    cursor: default;
+  }
+  #pad-panel[hidden] { display: none; }
+  #pad-panel h2 {
+    margin: 0; font-size: 12px; letter-spacing: 0.14em;
+    color: #b33; text-transform: uppercase; font-weight: normal;
+  }
+  #pad-note button, #pad-panel button {
+    font: inherit; font-size: 12px; color: #d8d8d8; background: #1a1a1a;
+    border: 1px solid #4a4a4a; border-radius: 3px; padding: 2px 8px;
+    cursor: pointer;
+  }
+  #pad-note button:hover, #pad-panel button:hover {
+    background: #262626; border-color: #b33;
+  }
+  #pad-note button:focus-visible, #pad-panel button:focus-visible {
+    outline: 2px solid #b33; outline-offset: 1px;
+  }
+  #pad-panel button.waiting { border-color: #b33; color: #b33; }
+  #pad-binds { width: 100%; border-collapse: collapse; font-size: 13px; }
+  #pad-binds td { padding: 3px 0; vertical-align: baseline; }
+  #pad-binds td.key { color: #d8d8d8; width: 7.5em; }
+  #pad-binds td.key.none { color: #666; }
+  #pad-binds td.act { width: 1%; white-space: nowrap; text-align: right; }
+  #pad-binds small { color: #666; }
+  #pad-sticks {
+    display: grid; grid-template-columns: auto 1fr auto;
+    gap: 7px 10px; align-items: center; font-size: 13px;
+  }
+  #pad-sticks label { color: #b0b0b0; }
+  #pad-sticks input[type=range] { width: 100%; }
+  #pad-sticks .val { color: #808080; font-size: 12px; min-width: 3em; }
+  #pad-sticks .wide { grid-column: 1 / -1; color: #b0b0b0; }
+  #pad-foot { display: flex; gap: 8px; justify-content: flex-end; }
   #status {
     position: absolute;
     left: 0; right: 0; bottom: 0;
@@ -112,10 +162,25 @@
     <button id="play-fullscreen" type="button">Play fullscreen</button>
     <button id="play-windowed" type="button">Play in this window</button>
   </div>
-  <p class="dim" id="esc-note">The <kbd>`</kbd> key opens the game menu. Keys and
-     the mouse are configured there, under Options → Setup.</p>
+  <p class="dim" id="esc-note"><kbd>Esc</kbd> releases the mouse and brings this
+     screen back. The <kbd>`</kbd> key opens the game menu — keys and the mouse
+     are configured there, under Options → Setup.</p>
+  <p class="dim" id="pad-note" hidden></p>
+  <div id="pad-panel" hidden>
+    <h2>Buttons</h2>
+    <p class="dim" id="pad-which"></p>
+    <table id="pad-binds"><tbody></tbody></table>
+    <h2>Sticks</h2>
+    <div id="pad-sticks"></div>
+    <div id="pad-foot">
+      <button type="button" id="pad-reset">Reset to defaults</button>
+      <button type="button" id="pad-done">Done</button>
+    </div>
+  </div>
   <p class="dim" id="audio-note">Sound: not started.</p>
-  <p class="dim" id="video-note">Picture: not started.</p>
+  <!-- Hidden until asked for: videoNote() shows it when ?stats=1, and its
+       first tick is 500 ms away, which is long enough to be seen. -->
+  <p class="dim" id="video-note" hidden>Picture: not started.</p>
   <p class="dim" id="build-note">__DOOM_VERSION__</p>
 </div>
 
@@ -127,6 +192,7 @@
 
 <script type="module">
 import RFB from './core/rfb.js';
+import { DoomGamepad, ACTIONS, BUTTON_NAMES } from './doom-gamepad.js';
 
 const screenEl  = document.getElementById('screen');
 const overlayEl = document.getElementById('overlay');
@@ -582,7 +648,9 @@ function resetPointer() {
 //
 function flushMouse() {
   flushQueued = false;
-  if (!locked()) return;
+  // A captured pointer is the usual driver, but not the only one: the gamepad
+  // turns by feeding this same queue, and a phone has no pointer to lock.
+  if (!locked() && !padMayTurn()) return;
   if (pendingX === 0 && pendingY === 0) return;
 
   const c = canvas();
@@ -648,6 +716,272 @@ function releaseButtons() {
   buttons = 0;
   sendButtons();
 }
+
+//
+// The controller.
+//
+// It presses the same keys a keyboard would and moves the view with the same
+// relative pointer reports the captured mouse produces, so the engine is told
+// nothing new and needed no change for any of this. doom-gamepad.js holds the
+// bindings and the stick maths; this is the part that needs the connection.
+//
+const gamepad = new DoomGamepad({
+  // `code` is null on purpose: noVNC sends a QEMU extended key event instead
+  // of a plain keysym when it has a scancode for the name, and x11vnc does not
+  // speak that extension. Without a name there is no scancode and it takes the
+  // ordinary path, which is the one the engine reads.
+  press:    (keysym) => rfb.sendKey(keysym, null, true),
+  release:  (keysym) => rfb.sendKey(keysym, null, false),
+  turn:     (dx) => { pendingX += dx; queueFlush(); },
+  onChange: () => renderPad(),
+});
+
+// Whether the pad should be reaching the game at all: play is on, and this tab
+// is in front. A pad knocked off the desk while the start screen is up should
+// not empty a chaingun into a room nobody is looking at.
+function padActive() {
+  return !!overlayEl && overlayEl.hidden && !document.hidden;
+}
+
+function padMayTurn() {
+  return gamepad.settings.enabled && gamepad.available() && padActive();
+}
+
+//
+// Its own frame loop.
+//
+// The Gamepad API has no events -- button state only exists in the snapshot
+// getGamepads() hands back -- so something has to look every frame. It cannot
+// share the measuring loop above, which stops while the start screen is up;
+// binding a button needs polling to carry on precisely then.
+//
+(function padLoop() {
+  function step() {
+    gamepad.poll(padActive());
+    requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+})();
+
+// Same hazard as a held mouse button: a key the pad is holding when the tab
+// goes away is a key the engine goes on obeying.
+window.addEventListener('blur', () => gamepad.releaseAll());
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) gamepad.releaseAll();
+});
+
+//
+// Binding it, on the start screen.
+//
+// The bindings cannot live in the game's own Options → Setup → Controls: that
+// menu writes `.doomrc` in the container, and the container has never heard of
+// a controller. So the panel is here, and what it saves stays in this browser
+// -- which is also the right place for it, because the pad on a phone and the
+// pad on a desk want different layouts and they are different browsers.
+//
+const padNoteEl   = document.getElementById('pad-note');
+const padPanelEl  = document.getElementById('pad-panel');
+const padWhichEl  = document.getElementById('pad-which');
+const padBindsEl  = document.querySelector('#pad-binds tbody');
+const padSticksEl = document.getElementById('pad-sticks');
+
+// "Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13)"
+// is the name the browser gives; the useful half is in front of the bracket.
+function padName(id) {
+  const s = String(id || '');
+  const cut = s.indexOf(' (');
+  return (cut > 0 ? s.slice(0, cut) : s).trim() || 'controller';
+}
+
+function renderPad() {
+  renderPadNote();
+  if (padPanelEl && !padPanelEl.hidden) {
+    renderPadWhich();
+    renderPadBinds();
+    renderPadSticks();
+  }
+}
+
+//
+// One line, and only once there is a controller to say it about.
+//
+// Not a word before then. The alternative was a line explaining that a browser
+// reports no gamepad until a button on it has been pressed -- true, and the
+// reason a paired, charged, idle pad is invisible -- but that is a sentence
+// every keyboard player would read for ever to spare a pad owner one press of
+// a button that they are about to make anyway. It is in DOCKER.md instead.
+//
+let padNoteState = null;
+
+function renderPadNote() {
+  if (!padNoteEl) return;
+
+  const pad = gamepad.pad();
+  if (!pad) {
+    padNoteEl.hidden = true;
+    padNoteEl.textContent = '';
+    padNoteState = null;
+    return;
+  }
+
+  const state = pad.id + '|' + (padPanelEl && !padPanelEl.hidden ? 'open' : 'shut');
+  if (state === padNoteState) return;
+  padNoteState = state;
+
+  padNoteEl.textContent = '';
+  padNoteEl.append('Controller: ' + padName(pad.id) + '. ');
+
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.textContent = padPanelEl && !padPanelEl.hidden ? 'Close' : 'Buttons';
+  open.addEventListener('click', () => {
+    if (padPanelEl.hidden) openPad(); else closePad();
+  });
+  padNoteEl.append(open);
+  padNoteEl.hidden = false;
+}
+
+function renderPadWhich() {
+  if (!padWhichEl) return;
+  const pad = gamepad.pad();
+  if (!pad) {
+    padWhichEl.textContent = 'No controller seen yet. Press a button on it and'
+                           + ' this will fill in.';
+    return;
+  }
+  padWhichEl.textContent = pad.mapping === 'standard'
+    ? padName(pad.id) + ' \u2014 standard layout, so the names below are the'
+      + ' names on the pad.'
+    : padName(pad.id) + ' \u2014 this browser does not report a standard'
+      + ' layout for it, so the button names below are guesses. Rebinding still'
+      + ' works: bind by pressing.';
+}
+
+let padBinding = null;
+
+function renderPadBinds() {
+  if (!padBindsEl) return;
+  padBindsEl.textContent = '';
+
+  for (const a of ACTIONS) {
+    const tr = document.createElement('tr');
+
+    const name = document.createElement('td');
+    name.textContent = a.label;
+    if (a.note) {
+      const s = document.createElement('small');
+      s.textContent = ' \u2014 ' + a.note;
+      name.append(s);
+    }
+
+    const i = gamepad.buttonFor(a.id);
+    const key = document.createElement('td');
+    key.className = 'key' + (i === null ? ' none' : '');
+    key.textContent = i === null
+      ? 'not bound'
+      : (BUTTON_NAMES[i] || 'Button ' + i);
+
+    const act = document.createElement('td');
+    act.className = 'act';
+    const bind = document.createElement('button');
+    bind.type = 'button';
+    bind.textContent = padBinding === a.id ? 'press\u2026' : 'Bind';
+    if (padBinding === a.id) bind.classList.add('waiting');
+    bind.addEventListener('click', () => beginBind(a.id));
+    act.append(bind);
+    if (i !== null) {
+      const clear = document.createElement('button');
+      clear.type = 'button';
+      clear.textContent = 'Clear';
+      clear.addEventListener('click', () => gamepad.bindAction(a.id, null));
+      act.append(' ', clear);
+    }
+
+    tr.append(name, key, act);
+    padBindsEl.append(tr);
+  }
+}
+
+async function beginBind(actionId) {
+  gamepad.cancelCapture();
+  padBinding = actionId;
+  renderPadBinds();
+  const i = await gamepad.captureButton();
+  padBinding = null;
+  // bindAction re-renders through onChange; a cancelled capture does not.
+  if (i === null) renderPadBinds();
+  else gamepad.bindAction(actionId, i);
+}
+
+function renderPadSticks() {
+  if (!padSticksEl) return;
+  padSticksEl.textContent = '';
+  const s = gamepad.settings;
+
+  const check = (key, label) => {
+    const wrap = document.createElement('label');
+    wrap.className = 'wide';
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = !!s[key];
+    box.addEventListener('change', () => gamepad.set(key, box.checked));
+    wrap.append(box, ' ' + label);
+    padSticksEl.append(wrap);
+  };
+
+  const slider = (key, label, min, max, step, fmt) => {
+    const l = document.createElement('label');
+    l.textContent = label;
+    const r = document.createElement('input');
+    r.type = 'range';
+    r.min = min; r.max = max; r.step = step; r.value = s[key];
+    const v = document.createElement('span');
+    v.className = 'val';
+    v.textContent = fmt(s[key]);
+    r.addEventListener('input', () => {
+      v.textContent = fmt(Number(r.value));
+      // Straight onto settings while dragging; saved on release, so a drag is
+      // not a hundred writes to localStorage.
+      s[key] = Number(r.value);
+    });
+    r.addEventListener('change', () => gamepad.set(key, Number(r.value)));
+    padSticksEl.append(l, r, v);
+  };
+
+  check('enabled', 'Use the controller');
+  slider('turnSpeed', 'Turn speed', 2, 40, 1, v => String(Math.round(v)));
+  slider('deadzone', 'Deadzone', 0, 0.5, 0.01, v => Math.round(v * 100) + '%');
+  check('invertTurn', 'Invert turning');
+  check('swapSticks', 'Swap sticks (left turns, right moves)');
+  check('autoRun', 'Push the stick all the way to run');
+}
+
+function openPad() {
+  if (!padPanelEl) return;
+  padPanelEl.hidden = false;
+  renderPad();
+}
+
+function closePad() {
+  if (!padPanelEl) return;
+  gamepad.cancelCapture();
+  padBinding = null;
+  padPanelEl.hidden = true;
+  renderPad();
+}
+
+document.getElementById('pad-done').addEventListener('click', closePad);
+document.getElementById('pad-reset').addEventListener('click', () => {
+  gamepad.reset();
+  renderPad();
+});
+
+// The pad appears and disappears without a page load, so the line has to be
+// kept honest on a timer as well as on the connect and disconnect events --
+// Safari has been known not to fire them.
+renderPad();
+setInterval(renderPadNote, 1000);
+
 
 //
 // Sound.
@@ -733,6 +1067,19 @@ function audioFailed(why) {
 }
 
 //
+// The figures below are diagnostics, and they are off unless asked for.
+//
+// They are what finally placed the stutter, after eleven releases of not
+// placing it -- but that hunt is over, and answering Esc with three paragraphs
+// of measurements is no use to somebody who only wanted to stop playing for a
+// moment. `?stats=1` brings them back in full. Without it the page stays quiet
+// while things are well and still says what is wrong when they are not, which
+// is the half that was ever load-bearing.
+//
+const SHOW_STATS = new URLSearchParams(location.search).get('stats') === '1';
+
+
+//
 // What the sound is actually doing, on the page rather than in a console.
 //
 // Twice now a silent game has been indistinguishable from a broken one from
@@ -753,6 +1100,10 @@ function audioNote() {
     text = 'Sound: not started — click to play.';
   else if (!audioNode)
     text = 'Sound: connecting…';
+  else if (!SHOW_STATS)
+    // Arriving and playing, so there is nothing the page has to explain. The
+    // rates, the buffer and the underrun count are all diagnostics.
+    text = '';
   else
     text = `Sound: on — ${audioSrcRate} Hz in, ${Math.round(audioCtx.sampleRate)}`
          + ` Hz out, ${(audioFrames / (audioSrcRate || 1)).toFixed(1)} s received`
@@ -766,6 +1117,7 @@ function audioNote() {
          + (audioCtx.state === 'running' ? '.' : `, context ${audioCtx.state}.`);
 
   audioNoteEl.textContent = text;
+  audioNoteEl.hidden = !text;
 }
 
 setInterval(audioNote, 500);
@@ -893,6 +1245,13 @@ const VIDEO_BUSY_RATE = 10;
 
 function videoNote() {
   if (!videoNoteEl) return;
+
+  if (!SHOW_STATS) {
+    videoNoteEl.textContent = '';
+    videoNoteEl.hidden = true;
+    return;
+  }
+  videoNoteEl.hidden = false;
 
   if (!videoBest) {
     videoNoteEl.textContent = 'Picture: nothing measured yet — play for a few'
@@ -1285,7 +1644,8 @@ function enterPlay(fullscreen) {
 
   rfb.focus();
   fitCanvas();
-  updateEscNote();
+  retireEscNote();
+  closePad();
 
   // Nothing reports a refused pointer lock reliably, so check.
   setTimeout(() => {
@@ -1299,12 +1659,11 @@ function enterPlay(fullscreen) {
   }, 700);
 }
 
-function updateEscNote() {
+// Told once. Anybody reading this screen again got here with Esc, so
+// explaining Esc to them is just something else to read.
+function retireEscNote() {
   const note = document.getElementById('esc-note');
-  if (!note) return;
-  note.textContent =
-    'Esc releases the mouse and brings this screen back. Press ` for the game'
-    + ' menu — Options → Setup → Controls moves it to another key.';
+  if (note) note.hidden = true;
 }
 
 document.getElementById('play-fullscreen')
@@ -1361,9 +1720,6 @@ document.addEventListener('pointerlockchange', () => {
   } else {
     releaseButtons();
   }
-  // Pointer lock resolves after enterPlay returns, so the note is only
-  // correct once we know whether it actually took.
-  updateEscNote();
 });
 
 // A button held while the window goes away is the other way to get stuck.

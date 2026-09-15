@@ -77,6 +77,7 @@ Two pages are served:
 | `/play.html` | Captures the mouse. Use this to play. |
 | `/vnc.html?autoconnect=1&resize=off` | Stock noVNC, no capture and no sound. Useful for looking at the screen without grabbing your pointer. |
 | `/play.html?encoding=hextile` | The same page, with the picture compressed differently. For chasing stutter — see below. |
+| `/play.html?stats=1` | The same page, with the sound and picture measurements on the start screen. Off by default — see below. |
 
 `play.html` offers two ways in, and both capture the mouse with the Pointer
 Lock API — the cursor disappears into the game, so turning never runs out of
@@ -93,6 +94,32 @@ started, so Escape then click will not drop you into fullscreen unexpectedly.
 Either way that first click also starts the sound, which browsers will not
 play without one. See [Sound](#sound).
 
+### `?stats=1`
+
+The start screen is quiet by design: press Escape mid-game and you get the
+title, the two buttons and the build, with nothing to read. Sound that is
+*not* working still says so, because that is the one thing the page can tell
+you that you cannot see for yourself.
+
+Add `?stats=1` and the measurements come back — what the sound is doing, and
+what the picture did while you were playing:
+
+```
+Picture, while you were playing: best 43 frames a second of the 35 the game
+draws, arriving at 495 KB/s, longest gap 800 ms, 518 late. The picture's data
+arrived in gaps of at most 799 ms, and this page took at most 3 ms to ask for
+the next frame after one arrived — 0 ms of that with a finished picture
+already in hand. Decoding held this page up for at most 0 ms of that, the
+slowest of 18876 pictures taking 5 ms. The sound, over the same link, went
+quiet for at most 104 ms.
+```
+
+The figures describe the last spell of play and hold while you read them —
+they are cleared when play starts again, not on a timer, so what is on screen
+is always the run you just did. They are what found the stutter that
+`-nowireframe` fixed, and they are the first thing to reach for if a picture
+misbehaves again. Everything below that needs them says so.
+
 ### `?encoding=hextile`
 
 x11vnc and noVNC settle on Tight, which sends the busiest parts of a DOOM
@@ -103,8 +130,9 @@ client that can go quiet for an unbounded time with the browser itself
 perfectly responsive.
 
 Whether it is worth anything depends on the machine you are playing on, so the
-page measures it. Press Escape and read the picture note: *decoding held this
-page up for at most N ms of that*. If N is small, this switch will not help
+page measures it. Open it with `?stats=1`, play for a few seconds, press Escape
+and read the picture note: *decoding held this page up for at most N ms of
+that*. If N is small, this switch will not help
 you and the stutter is somewhere else. If N is a large part of the *this page
 took at most N ms to ask for the next frame* figure beside it, this is the
 cause and the switch is the fix.
@@ -169,12 +197,73 @@ Controls**, the menu key included. Pick a line, press Return, then press the key
 choice is written to `.doomrc` in the state directory, so it survives a
 restart.
 
+A game controller works too, and is rebound in the browser rather than in the
+game — see below.
+
 The mouse turns you. It does **not** walk you forward and back — the original
 used the mouse's Y axis for movement, since there was nothing to aim
 vertically at, and with a modern hand on the mouse that mostly walks you
 about by accident. **Options → Setup → Mouse → MOVE WITH MOUSE** turns the
 original behaviour back on. The buttons are assignable on the same page. *Grab pointer* is on by
 default and is what `play.html` needs; see the section above.
+
+### A game controller
+
+An Xbox pad on a desktop and a Backbone One on a phone both work, along with
+anything else the browser reports as a standard gamepad — a DualSense, an
+8BitDo, a Switch Pro pad.
+
+Plug it in or pair it, open `play.html`, and **press a button on it**. That last
+step is not optional and is not this page being fussy: browsers do not admit a
+gamepad exists until something on it has been pressed, so a pad that is paired,
+charged and idle is genuinely invisible. Once it has been seen, a line appears
+under the buttons naming it, with **Buttons** beside it to rebind anything.
+
+The layout out of the box:
+
+| | |
+| --- | --- |
+| Left stick | move and sidestep — push it all the way to break into a run |
+| Right stick | turn. Analog, so a nudge turns slowly |
+| RT | fire |
+| LT | run |
+| A | open / use, and confirm in menus |
+| B | back out of a menu |
+| X, Y, LB, RB | shotgun, pistol, chaingun, rockets |
+| Left stick click, Right stick click | fist/chainsaw, plasma rifle |
+| D-pad | move and turn, for menus and for keyboard-style play |
+| View, Menu | automap, game menu |
+
+The BFG has no button by default — there is one weapon more than there are
+comfortable buttons — and neither do the sidestep keys or the strafe modifier,
+because the left stick already does that. All of them are in the panel if you
+want them.
+
+There is no next-weapon button because the 1997 engine has no such key: it
+only has *select weapon N*, and the page cannot cycle on your behalf since it
+has no idea which weapons you are carrying. A digit for a weapon you have not
+picked up is ignored, so a cycle would stick on the gaps.
+
+**Rebinding** is in that panel: pick a line, press **Bind**, press the button.
+The sticks have a deadzone, a turn speed, invert, a swap, and a switch for
+whether a full push runs. Everything is saved in the browser — not in
+`.doomrc` — because the container never sees the controller, and because the
+pad on your phone and the pad on your desk are different browsers and usually
+want different layouts. **Reset to defaults** puts it all back.
+
+Two things worth knowing:
+
+- The panel sends **keys**, not intentions. Rebind fire in the game's own
+  **Options → Setup → Controls** and the controller's *Fire* has to be pointed
+  at the new key as well, or it will go on pressing Ctrl.
+- On a phone there is no pointer to capture, so the controller is the whole of
+  the input and the *grab pointer* warning does not apply. Turning still works:
+  the right stick sends the same relative motion a captured mouse would.
+
+Nothing reaches the game while the start screen is up, so a pad knocked off a
+desk cannot empty a chaingun into a room nobody is watching, and a pad that
+disconnects mid-game lets go of whatever it was holding rather than leaving the
+trigger down.
 
 ## Loading WADs from the game
 
@@ -348,17 +437,25 @@ the worklet, and is worth nothing else.
 
 ### When there is no sound
 
-The start screen carries two lines under the buttons:
+The start screen says so under the buttons. While the sound is working it says
+nothing at all — the line is there only when there is something to report:
 
 ```
-Sound: on — 22050 Hz in, 48000 Hz out, 12.4 s received
+Sound: not started — click to play.
 1.10.17
 ```
 
-The first is the live state; if there is no sound it says why instead — a
-refused connection, a worklet the browser would not load, a stream that opens
-and stays quiet. The same reason appears at the bottom of the screen during
-play. The second is the build the **page** came from.
+A refused connection, a worklet the browser would not load, a stream that opens
+and stays quiet: each says which. The same reason appears at the bottom of the
+screen during play. The second line is always there, and is the build the
+**page** came from.
+
+For the figures on a stream that *is* working — rates, buffer, underruns, and
+which of the two audio paths is in use — add `?stats=1`:
+
+```
+Sound: on — 22050 Hz in, 48000 Hz out, 12.4 s received, holding 47 ms
+```
 
 The container prints its own build at startup as `DOOM <version>`, and says
 which way it sent the sound on a line beginning `sound:`. That gives three
@@ -367,8 +464,8 @@ checks that between them cover everything:
 | | |
 | --- | --- |
 | Page build older than the log's | The browser is running a cached client. Reload with Ctrl+Shift+R. |
-| `Sound: … via the fallback` | Normal over plain HTTP — see above. Not a fault. |
-| `Sound: … holding N ms` | How far behind the sound is running. It starts near 40 ms and rises only if this machine cannot keep up. |
+| `Sound: … via the fallback` (with `?stats=1`) | Normal over plain HTTP — see above. Not a fault. |
+| `Sound: … holding N ms` (with `?stats=1`) | How far behind the sound is running. It starts near 40 ms and rises only if this machine cannot keep up. |
 
 ### Delay
 
@@ -393,7 +490,7 @@ competing with noVNC for the main one.
 though none of them measured as worth anything: the picture is already within
 a frame of the engine. `PORTING-NOTES.md` has the measurements.
 | `sound: to PulseAudio` in the log | It went to a host audio server rather than to you. Unset `PULSE_SERVER`. |
-| `Sound: on … N s received` and still silent | It is arriving and being played, so the problem is past the browser: a muted tab, or the machine's output device. |
+| `Sound: on … N s received` (with `?stats=1`) and still silent | It is arriving and being played, so the problem is past the browser: a muted tab, or the machine's output device. |
 
 Effects and music have separate volume sliders under Options → Sound Volume.
 
@@ -481,7 +578,8 @@ its raw URL into the *Template* field of **Docker → Add Container**.
 ## Measuring a stutter
 
 If the picture stutters, the question is which end is late, and the page's own
-note answers half of it (press Escape and read it). `doom-probe` answers the
+note answers half of it — load `/play.html?stats=1`, play, then press Escape
+and read it. `doom-probe` answers the
 other half from inside the container, with no browser involved at all: it asks
 x11vnc for pictures the way the browser does, first straight to x11vnc and
 then through websockify and the proxy, and times the answers.
