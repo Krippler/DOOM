@@ -6,6 +6,45 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.53] — 2026-09-15
+
+### Added
+- **The controller readout is on screen while you play.** 1.10.52 put it in the
+  start-screen panel, which was the wrong place for the one fault it was built
+  for: the panel is only visible when the game is not, and the moment worth
+  watching is the moment it is hidden. Asking somebody to play, stop, and then
+  read a description of what happened is asking them to remember instead of
+  look.
+
+  With `?stats=1` a strip now sits over the top-left of the picture:
+
+  ```
+  pads 1 · layout standard · pressed 7=RT · holding Control_L · last key Control_L down
+  ```
+
+  Hold the button that does nothing and read that line while the game fails to
+  react. Four readings, four different culprits, and DOCKER.md has the table.
+  It answers in one look what the panel could only answer from memory.
+
+  The panel's readout also gets a **Copy this** button, because the second
+  hardest part of a remote diagnosis is getting the text out of the machine
+  it is on.
+
+### Notes
+- **1.10.52's change to how keys go on the wire did not fix the field report,
+  and that is worth recording.** Controller keys now carry a DOM code name and
+  so take the same branch of noVNC's `sendKey` a typed key does. The report
+  after it was unchanged — "left and right work, the menu button works, nothing
+  else does" — which rules the wire format out rather than leaving it a
+  suspect, and says the two versions agree because both reach the server the
+  same way.
+
+  What is left is narrower and the strip above is pointed straight at it: either
+  the pad's buttons are not reaching the page, or they are and the engine is not
+  listening for the keys they send. No fix is being guessed at in the meantime;
+  the last time this project guessed at an unmeasured fault it guessed wrong
+  eleven times.
+
 ## [1.10.52] — 2026-09-15
 
 ### Added

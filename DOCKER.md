@@ -285,9 +285,29 @@ the bottom of it:
 | It appears in `pressed now`, but no key is listed | The page saw the button and sent nothing — the action is unbound. Bind it. |
 | The key is listed and the game ignored it | It reached the far end. Almost always the engine's own binding was changed under **Options → Setup → Controls**, so the key the panel sends is no longer the key the game listens for. |
 
-`/play.html?stats=1` shows the controller line even when no pad has been seen,
-so the panel and this readout are reachable when the fault is that nothing is
-being detected.
+**The quickest answer is on screen while you play.** Open
+`/play.html?stats=1` and a strip sits over the top-left of the picture:
+
+```
+pads 1  ·  layout standard  ·  pressed 7=RT  ·  holding Control_L  ·  last key Control_L down
+```
+
+Hold the button that does nothing and read that line as the game fails to react.
+It settles the whole question in one look, because the panel cannot: the panel
+is only visible when the game is not, and the moment worth watching is the one
+moment it is hidden.
+
+| what the strip says | what it means |
+| --- | --- |
+| `pads 0` | the pad is not reaching the page; nothing here can help |
+| `pressed —` while you hold the button | the browser is not reporting that button |
+| `pressed 7=RT` but `last key none sent yet` | the page saw it and sent nothing — it is unbound |
+| `pressed 7=RT` and `holding Control_L` | the key went out. The fault is past this page, and almost always the engine's own binding was changed under **Options → Setup → Controls** |
+
+`?stats=1` also shows the controller line when no pad has been seen, so the panel
+and its readout are reachable when the fault is that nothing is detected. The
+panel's readout has a **Copy this** button, which is the easiest thing to paste
+into a bug report.
 
 ## Loading WADs from the game
 
