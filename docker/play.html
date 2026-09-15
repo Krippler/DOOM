@@ -70,6 +70,7 @@
   }
   #overlay p { margin: 0; max-width: 34em; }
   #overlay .dim { color: #808080; font-size: 13px; }
+  #overlay .dim[hidden] { display: none; }
   #overlay #build-note { color: #555; font-size: 11px; letter-spacing: 0.08em; }
   #overlay kbd { font: inherit; color: #d0d0d0; border: 1px solid #555;
                  border-radius: 3px; padding: 0 4px; }
@@ -112,10 +113,13 @@
     <button id="play-fullscreen" type="button">Play fullscreen</button>
     <button id="play-windowed" type="button">Play in this window</button>
   </div>
-  <p class="dim" id="esc-note">The <kbd>`</kbd> key opens the game menu. Keys and
-     the mouse are configured there, under Options → Setup.</p>
+  <p class="dim" id="esc-note"><kbd>Esc</kbd> releases the mouse and brings this
+     screen back. The <kbd>`</kbd> key opens the game menu — keys and the mouse
+     are configured there, under Options → Setup.</p>
   <p class="dim" id="audio-note">Sound: not started.</p>
-  <p class="dim" id="video-note">Picture: not started.</p>
+  <!-- Hidden until asked for: videoNote() shows it when ?stats=1, and its
+       first tick is 500 ms away, which is long enough to be seen. -->
+  <p class="dim" id="video-note" hidden>Picture: not started.</p>
   <p class="dim" id="build-note">__DOOM_VERSION__</p>
 </div>
 
@@ -733,6 +737,19 @@ function audioFailed(why) {
 }
 
 //
+// The figures below are diagnostics, and they are off unless asked for.
+//
+// They are what finally placed the stutter, after eleven releases of not
+// placing it -- but that hunt is over, and answering Esc with three paragraphs
+// of measurements is no use to somebody who only wanted to stop playing for a
+// moment. `?stats=1` brings them back in full. Without it the page stays quiet
+// while things are well and still says what is wrong when they are not, which
+// is the half that was ever load-bearing.
+//
+const SHOW_STATS = new URLSearchParams(location.search).get('stats') === '1';
+
+
+//
 // What the sound is actually doing, on the page rather than in a console.
 //
 // Twice now a silent game has been indistinguishable from a broken one from
@@ -753,6 +770,10 @@ function audioNote() {
     text = 'Sound: not started — click to play.';
   else if (!audioNode)
     text = 'Sound: connecting…';
+  else if (!SHOW_STATS)
+    // Arriving and playing, so there is nothing the page has to explain. The
+    // rates, the buffer and the underrun count are all diagnostics.
+    text = '';
   else
     text = `Sound: on — ${audioSrcRate} Hz in, ${Math.round(audioCtx.sampleRate)}`
          + ` Hz out, ${(audioFrames / (audioSrcRate || 1)).toFixed(1)} s received`
@@ -766,6 +787,7 @@ function audioNote() {
          + (audioCtx.state === 'running' ? '.' : `, context ${audioCtx.state}.`);
 
   audioNoteEl.textContent = text;
+  audioNoteEl.hidden = !text;
 }
 
 setInterval(audioNote, 500);
@@ -893,6 +915,13 @@ const VIDEO_BUSY_RATE = 10;
 
 function videoNote() {
   if (!videoNoteEl) return;
+
+  if (!SHOW_STATS) {
+    videoNoteEl.textContent = '';
+    videoNoteEl.hidden = true;
+    return;
+  }
+  videoNoteEl.hidden = false;
 
   if (!videoBest) {
     videoNoteEl.textContent = 'Picture: nothing measured yet — play for a few'
@@ -1285,7 +1314,7 @@ function enterPlay(fullscreen) {
 
   rfb.focus();
   fitCanvas();
-  updateEscNote();
+  retireEscNote();
 
   // Nothing reports a refused pointer lock reliably, so check.
   setTimeout(() => {
@@ -1299,12 +1328,11 @@ function enterPlay(fullscreen) {
   }, 700);
 }
 
-function updateEscNote() {
+// Told once. Anybody reading this screen again got here with Esc, so
+// explaining Esc to them is just something else to read.
+function retireEscNote() {
   const note = document.getElementById('esc-note');
-  if (!note) return;
-  note.textContent =
-    'Esc releases the mouse and brings this screen back. Press ` for the game'
-    + ' menu — Options → Setup → Controls moves it to another key.';
+  if (note) note.hidden = true;
 }
 
 document.getElementById('play-fullscreen')
@@ -1361,9 +1389,6 @@ document.addEventListener('pointerlockchange', () => {
   } else {
     releaseButtons();
   }
-  // Pointer lock resolves after enterPlay returns, so the note is only
-  // correct once we know whether it actually took.
-  updateEscNote();
 });
 
 // A button held while the window goes away is the other way to get stuck.

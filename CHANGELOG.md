@@ -6,6 +6,27 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Changed
+- **The start screen is quiet again.** Pressing Escape mid-game brought back
+  the title and then three paragraphs of measurements — sample rates, buffer
+  growth, underrun counts, frame rates, byte rates, decode times, gap
+  attributions — followed by a sentence explaining that Escape brings the start
+  screen back. On a screen you can only be reading because you pressed Escape.
+
+  All of it was built to find the stutter and all of it earned its place doing
+  that. None of it earns a place in front of somebody who stopped playing for a
+  moment. The figures move behind `?stats=1`, unchanged, and DOCKER.md points
+  everything that reads them at the switch. The Escape hint is shown before the
+  first game, where it is worth something, and retired once it has been taken.
+
+  One thing still speaks without being asked: sound that is **not** working.
+  A refused connection, a worklet the browser would not load, a stream that
+  opens and stays quiet — the page still says which, because that is the only
+  thing on that screen you cannot check by looking at the game. Sound that is
+  working now says nothing.
+
 ## [1.10.50] — 2026-09-15
 
 ### Fixed
