@@ -255,9 +255,14 @@ completely dead in a level as soon as those have been changed under **Options �
 Setup → Controls**.
 
 The container reads `.doomrc` at startup and serves the bindings beside the page
-as `doom-keys.json`, so the pad presses whatever *this* engine listens for. The
-panel's third column shows each key and where it came from: **green** from the
-game's own config, **grey** the engine default, **pink** set here by hand.
+as `doom-keys.json`, so the pad presses whatever *this* engine listens for. Where
+the two differ it presses **both** — the configured key, which moves the player,
+and the hardcoded one, which the menus and the automap listen for. So with
+`key_up` set to `w`, the d-pad's up sends `w` *and* `Up`: one walks you forward,
+the other works the menu, and neither interferes with the other.
+
+The panel's third column shows each key and where it came from: **green** from
+the game's own config, **grey** the engine default, **pink** set here by hand.
 
 Because it is read at startup, a binding changed in the game reaches the pad on
 the next restart — the engine writes `.doomrc` when it exits. **Key** on a row
