@@ -6,6 +6,39 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.52] — 2026-09-15
+
+### Added
+- **The controller panel says what the pad is actually reporting.** The first
+  field report of 1.10.51 was "left and right work, the menu button works,
+  nothing else does", and there was no way to tell from here which of three
+  faults that was: the browser not reporting the buttons, the page not sending
+  keys for them, or the engine not listening for the keys it sent. One symptom,
+  three causes, no instrument — which is the shape of the eleven releases this
+  project spent on the stutter, so this time the instrument comes first.
+
+  The panel now ends with a live readout: how many pads the browser admits to,
+  the name and layout it claims, its button and axis counts, which indices are
+  pressed at that moment, and the keys that went out during the last spell of
+  play — kept, because nothing is sent while the panel is being read. DOCKER.md
+  has a table turning each reading into the thing to do about it.
+
+  `?stats=1` now shows the controller line even when no pad has been seen, so
+  the readout is reachable when the fault is that nothing is detected at all.
+
+### Changed
+- **Controller keys now go on the wire exactly as the keyboard's do.** Each
+  action carries the DOM code name beside its keysym, so `sendKey` takes the
+  same branch for a pad press as for the same key typed: noVNC sends a QEMU
+  extended key event where it has a code name and the server supports the
+  extension, and a plain keysym event otherwise, and 1.10.51 passed no code
+  name and so could take the other path.
+
+  Both are legal and it worked in the lab, but it left the controller as the
+  one input in the page that could not be compared against a keyboard already
+  known to work here. Whether it is what the field is seeing is not yet known —
+  the readout above is what will say.
+
 ## [1.10.51] — 2026-09-15
 
 ### Added

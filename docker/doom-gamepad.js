@@ -34,36 +34,47 @@ import KeyTable from './core/input/keysym.js';
 // Controls and the matching action here has to be pointed at the new key too,
 // because this sends keys, not intentions.
 //
+// Each carries the DOM code name beside its keysym so that what goes on the
+// wire is byte for byte what the same key on a keyboard would put there. noVNC
+// sends a QEMU extended key event, carrying a scancode, where it has a code
+// name and the server supports the extension, and a plain keysym event
+// otherwise -- so a keysym with no code name takes a different path from the
+// real keyboard. Both paths are legal and the keyboard's is the one already
+// known to work here, so this takes it too rather than relying on the other
+// being equivalent.
+//
 const K = KeyTable;
 
 export const ACTIONS = [
-  { id: 'fire',        label: 'Fire',              keys: [K.XK_Control_L] },
-  { id: 'act',         label: 'Open / use',        keys: [K.XK_space, K.XK_Return],
+  { id: 'fire',        label: 'Fire',              keys: [[K.XK_Control_L, 'ControlLeft']] },
+  { id: 'act',         label: 'Open / use',        keys: [[K.XK_space, 'Space'],
+                                                         [K.XK_Return, 'Enter']],
     note: 'and confirms in menus' },
-  { id: 'run',         label: 'Run',               keys: [K.XK_Shift_L] },
-  { id: 'strafemod',   label: 'Strafe modifier',   keys: [K.XK_Alt_L],
+  { id: 'run',         label: 'Run',               keys: [[K.XK_Shift_L, 'ShiftLeft']] },
+  { id: 'strafemod',   label: 'Strafe modifier',   keys: [[K.XK_Alt_L, 'AltLeft']],
     note: 'unbound: the left stick already sidesteps' },
-  { id: 'forward',     label: 'Forward',           keys: [K.XK_Up] },
-  { id: 'back',        label: 'Back',              keys: [K.XK_Down] },
-  { id: 'turnleft',    label: 'Turn left',         keys: [K.XK_Left] },
-  { id: 'turnright',   label: 'Turn right',        keys: [K.XK_Right] },
-  { id: 'strafeleft',  label: 'Sidestep left',     keys: [K.XK_comma],
+  { id: 'forward',     label: 'Forward',           keys: [[K.XK_Up, 'ArrowUp']] },
+  { id: 'back',        label: 'Back',              keys: [[K.XK_Down, 'ArrowDown']] },
+  { id: 'turnleft',    label: 'Turn left',         keys: [[K.XK_Left, 'ArrowLeft']] },
+  { id: 'turnright',   label: 'Turn right',        keys: [[K.XK_Right, 'ArrowRight']] },
+  { id: 'strafeleft',  label: 'Sidestep left',     keys: [[K.XK_comma, 'Comma']],
     note: 'unbound: the left stick does this' },
-  { id: 'straferight', label: 'Sidestep right',    keys: [K.XK_period],
+  { id: 'straferight', label: 'Sidestep right',    keys: [[K.XK_period, 'Period']],
     note: 'unbound: the left stick does this' },
-  { id: 'menu',        label: 'Game menu',         keys: [K.XK_grave] },
-  { id: 'map',         label: 'Automap',           keys: [K.XK_Tab] },
-  { id: 'back_out',    label: 'Back out of menus', keys: [K.XK_Escape],
-    note: 'the game’s Escape, not this page’s' },
-  { id: 'weapon1',     label: 'Fist / chainsaw',   keys: [K.XK_1] },
-  { id: 'weapon2',     label: 'Pistol',            keys: [K.XK_2] },
-  { id: 'weapon3',     label: 'Shotgun',           keys: [K.XK_3] },
-  { id: 'weapon4',     label: 'Chaingun',          keys: [K.XK_4] },
-  { id: 'weapon5',     label: 'Rocket launcher',   keys: [K.XK_5] },
-  { id: 'weapon6',     label: 'Plasma rifle',      keys: [K.XK_6] },
-  { id: 'weapon7',     label: 'BFG9000',           keys: [K.XK_7],
+  { id: 'menu',        label: 'Game menu',         keys: [[K.XK_grave, 'Backquote']] },
+  { id: 'map',         label: 'Automap',           keys: [[K.XK_Tab, 'Tab']] },
+  { id: 'back_out',    label: 'Back out of menus', keys: [[K.XK_Escape, 'Escape']],
+    note: 'the game\u2019s Escape, not this page\u2019s' },
+  { id: 'weapon1',     label: 'Fist / chainsaw',   keys: [[K.XK_1, 'Digit1']] },
+  { id: 'weapon2',     label: 'Pistol',            keys: [[K.XK_2, 'Digit2']] },
+  { id: 'weapon3',     label: 'Shotgun',           keys: [[K.XK_3, 'Digit3']] },
+  { id: 'weapon4',     label: 'Chaingun',          keys: [[K.XK_4, 'Digit4']] },
+  { id: 'weapon5',     label: 'Rocket launcher',   keys: [[K.XK_5, 'Digit5']] },
+  { id: 'weapon6',     label: 'Plasma rifle',      keys: [[K.XK_6, 'Digit6']] },
+  { id: 'weapon7',     label: 'BFG9000',           keys: [[K.XK_7, 'Digit7']],
     note: 'unbound: one weapon more than there are buttons' },
 ];
+
 
 const ACTION_BY_ID = new Map(ACTIONS.map(a => [a.id, a]));
 
@@ -109,6 +120,26 @@ export const DEFAULT_SETTINGS = {
 
 const STORE_KEY = 'doom.gamepad.v1';
 
+//
+// Keysym numbers back to their names, for the readout in the panel.
+//
+// Built from noVNC's own table rather than written out, so a name in the
+// readout is the name of the thing actually put on the wire. First entry wins
+// where several names share a number, which is why the readout can say
+// something slightly unexpected for an obscure key; the ones this file sends
+// are all early in that table and come out right.
+//
+const KEY_NAMES = (() => {
+  const m = new Map();
+  for (const [name, value] of Object.entries(K))
+    if (typeof value === 'number' && !m.has(value)) m.set(value, name.slice(3));
+  return m;
+})();
+
+export function keyName(keysym) {
+  return KEY_NAMES.get(keysym) || ('0x' + Number(keysym).toString(16));
+}
+
 // A stick, past its deadzone, rescaled so the first countable movement is a
 // small one rather than a jump to 18% of full speed.
 function curve(v, deadzone, exponent) {
@@ -129,9 +160,10 @@ function stick(x, y, deadzone) {
 
 export class DoomGamepad {
   //
-  // `press` and `release` are handed a keysym; `turn` a number of mouse pixels
-  // to move sideways. The page supplies all three, so this file never touches
-  // the RFB connection and can be exercised without one.
+  // `press` and `release` are handed a keysym and the DOM code name that goes
+  // with it; `turn` a number of mouse pixels to move sideways. The page
+  // supplies all three, so this file never touches the RFB connection and can
+  // be exercised without one.
   //
   constructor({ press, release, turn, onChange } = {}) {
     this._press = press || (() => {});
@@ -143,10 +175,16 @@ export class DoomGamepad {
     this.settings = { ...DEFAULT_SETTINGS };
     this._load();
 
-    // Keysyms currently held down on the engine's behalf. A set rather than a
-    // count: two buttons bound to the same action both press one key, and
-    // letting go of one of them must not release it while the other is held.
-    this._held = new Set();
+    // Keysyms currently held down on the engine's behalf, against the code
+    // name each was pressed with. Keyed by keysym rather than counted: two
+    // buttons bound to the same action both press one key, and letting go of
+    // one of them must not release it while the other is still held.
+    this._held = new Map();
+
+    // The last few keys put on the wire, for the panel. Kept because the panel
+    // can only be read when the game is not being played, so "what did it send
+    // while I was playing" is a question that can only be answered afterwards.
+    this._log = [];
 
     this._capture = null;   // a pending "press a button to bind it"
     this._lastPoll = 0;
@@ -209,10 +247,10 @@ export class DoomGamepad {
       return;
     }
 
-    const want = new Set();
+    const want = new Map();     // keysym -> DOM code name
     const add = id => {
       const a = ACTION_BY_ID.get(id);
-      if (a) for (const k of a.keys) want.add(k);
+      if (a) for (const [sym, code] of a.keys) want.set(sym, code);
     };
 
     // Buttons. A trigger reports an analog `value` as well as `pressed`, and
@@ -254,18 +292,25 @@ export class DoomGamepad {
   // frame would work, but it would also put sixty key events a second on a
   // link this project spent fifteen releases making quiet.
   _apply(want) {
-    for (const k of this._held) {
-      if (!want.has(k)) {
-        this._held.delete(k);
-        this._release(k);
+    for (const [sym, code] of [...this._held]) {
+      if (!want.has(sym)) {
+        this._held.delete(sym);
+        this._release(sym, code);
+        this._note(sym, false);
       }
     }
-    for (const k of want) {
-      if (!this._held.has(k)) {
-        this._held.add(k);
-        this._press(k);
+    for (const [sym, code] of want) {
+      if (!this._held.has(sym)) {
+        this._held.set(sym, code);
+        this._press(sym, code);
+        this._note(sym, true);
       }
     }
+  }
+
+  _note(keysym, down) {
+    this._log.push({ keysym, down, at: Math.round(performance.now()) });
+    if (this._log.length > 24) this._log.shift();
   }
 
   //
@@ -277,8 +322,42 @@ export class DoomGamepad {
   //
   releaseAll() {
     if (!this._held.size) return;
-    for (const k of this._held) this._release(k);
+    for (const [sym, code] of this._held) { this._release(sym, code); this._note(sym, false); }
     this._held.clear();
+  }
+
+  //
+  // Everything the page knows about the pad, for the panel to display.
+  //
+  // Read-only and side-effect free on purpose: the panel needs this while the
+  // start screen is up, which is exactly when poll() refuses to send anything,
+  // so the two cannot share a path.
+  //
+  // It exists because the first field report of this feature was "left and
+  // right work, the menu button works, nothing else does" -- and there was no
+  // way to tell from here whether the buttons were not being read, not being
+  // sent, or not being understood at the far end. Three different faults with
+  // one symptom is what the rest of this project spent eleven releases on.
+  //
+  snapshot() {
+    const pad = this.pad();
+    const round = v => Math.round((Number(v) || 0) * 100) / 100;
+    return {
+      pads: this.pads().length,
+      id: pad ? pad.id : null,
+      mapping: pad ? (pad.mapping || '(not standard)') : null,
+      buttonCount: pad ? pad.buttons.length : 0,
+      axisCount: pad ? pad.axes.length : 0,
+      // Every button showing any movement at all, not just the ones over the
+      // threshold, so a trigger that only ever reaches 0.4 is visible.
+      active: pad ? pad.buttons
+        .map((b, i) => ({ i, pressed: !!(b && b.pressed), value: round(b && b.value) }))
+        .filter(b => b.pressed || b.value > 0.05) : [],
+      axes: pad ? Array.from(pad.axes, round) : [],
+      held: [...this._held.keys()],
+      log: this._log.slice(-14),
+      enabled: this.settings.enabled,
+    };
   }
 
   //
