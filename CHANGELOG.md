@@ -6,6 +6,39 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **1.10.55 broke menu navigation, which is the bug it had just fixed arrived at
+  from the other side.** Reading the engine's bindings made the pad work in a
+  level — analog sticks, doors, the menu key all correct — and stopped the d-pad
+  moving the menu cursor.
+
+  The cause is the same split that started all this, missed in the other
+  direction. `m_menu.c` reads the four arrows, Return and Escape **literally**,
+  and `am_map.c` pans the automap with the same arrows, while play goes through
+  the configurable bindings. 1.10.55 *replaced* each action's key with the
+  configured one, so with `key_up` set to `w` the d-pad sent `w` — which walks
+  you forward and means nothing at all to a menu.
+
+  It now sends **both** where they differ: the configured key and the hardcoded
+  one. `Open / use` already did this with Return, which is exactly the rule that
+  should have been generalised instead of special-cased. `forward`, `back`,
+  `turnleft` and `turnright` get their arrow alongside; a key with no menu
+  counterpart, like Fire, still sends one key. A key set by hand in the panel
+  gets the same treatment, so learning `w` for Forward cannot break the menus
+  either.
+
+  Neither key interferes with the other: in a level the arrow is unbound and does
+  nothing, and in a menu the configured key is not a menu key and does nothing.
+  On the automap the arrow is a bonus — the d-pad pans the map.
+
+  Verified against the real stack with `key_up` set to `w`: holding the d-pad's
+  up held **both** `w(25)` and `Up(111)` at the X server for exactly the two
+  seconds it was down. `turnleft` stays a single key because `key_left` is still
+  the arrow, so nothing is sent twice. Learning `k` for Forward keeps `ArrowUp`
+  beside it; learning `q` for Fire stays one key.
+
 ## [1.10.55] — 2026-09-15
 
 ### Fixed

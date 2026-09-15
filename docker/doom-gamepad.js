@@ -117,6 +117,15 @@ const ASCII_CODES = {
   '`': 'Backquote', '-': 'Minus', '=': 'Equal',
 };
 
+//
+// One key for the game, plus the menus' own if they are not the same key.
+//
+export function withMenuKey(actionId, pair) {
+  const menu = ACTION_MENU_KEY[actionId];
+  if (!menu || menu[0] === pair[0]) return [pair];
+  return [pair, menu];
+}
+
 export function doomKeyToX(code) {
   const n = Number(code);
   if (!Number.isInteger(n)) return null;
@@ -134,6 +143,27 @@ export function doomKeyToX(code) {
   }
   return null;
 }
+
+//
+// The key the engine hardcodes for the same job in its menus.
+//
+// This is the whole shape of the thing. `m_menu.c` reads the arrows, Return and
+// Escape literally, and `am_map.c` pans the automap with the same arrows, while
+// play goes through the configurable bindings. So an action whose engine key has
+// been changed has to press *both*: the configured key, which is what moves the
+// player, and the hardcoded one, which is what the menus and the map listen for.
+//
+// Sending only the configured key was 1.10.55's regression -- the pad moved in a
+// level and went dead in the menus, which is precisely the bug it had just
+// fixed, arrived at from the other side.
+//
+const ACTION_MENU_KEY = {
+  forward:   [K.XK_Up,     'ArrowUp'],
+  back:      [K.XK_Down,   'ArrowDown'],
+  turnleft:  [K.XK_Left,   'ArrowLeft'],
+  turnright: [K.XK_Right,  'ArrowRight'],
+  act:       [K.XK_Return, 'Enter'],
+};
 
 // Which `.doomrc` setting each action is pressing.
 const ACTION_DOOMRC = {
@@ -530,11 +560,7 @@ export class DoomGamepad {
         if (raw === undefined || raw === null) continue;
         const pair = doomKeyToX(raw);
         if (!pair) continue;
-        // `act` has to confirm in menus as well as open doors, and Return is
-        // hardcoded there, so it keeps its second key whatever key_use says.
-        out[id] = id === 'act' && pair[0] !== K.XK_Return
-          ? [pair, [K.XK_Return, 'Enter']]
-          : [pair];
+        out[id] = withMenuKey(id, pair);
       }
     }
     this.engineKeys = out;
@@ -551,7 +577,9 @@ export class DoomGamepad {
   setKey(actionId, keysym, code) {
     if (!ACTION_BY_ID.has(actionId)) return;
     if (!keysym) return;
-    this.keys[actionId] = [[keysym, code || null]];
+    // Same rule as the config: keep the menus' hardcoded key alongside, or
+    // learning 'w' for Forward would stop the menus answering the d-pad.
+    this.keys[actionId] = withMenuKey(actionId, [keysym, code || null]);
     this._save();
     this._onChange();
   }
