@@ -68,6 +68,13 @@ once it did. Getting from there to a playable game took:
   button held that is the difference between 257 KB/s at a 41 ms median and
   554 KB/s at 12 ms.
 
+- **A game controller, on a phone as well as a desktop.** An Xbox pad, a
+  Backbone One, anything the browser calls a standard gamepad: the page turns
+  its buttons into the keysyms the engine already reads and its right stick
+  into the same relative pointer motion a captured mouse produces, so the 1997
+  code needed no change at all. Every button is rebindable, in the browser
+  rather than in `.doomrc`, because the container never sees the controller.
+
 [`PORTING-NOTES.md`](PORTING-NOTES.md) documents every change, with the
 original code and why it broke — including [what the stutter turned out to
 be](PORTING-NOTES.md#the-stutter-while-the-fire-button-is-down), the dozen
@@ -88,11 +95,19 @@ equivalent of:
   at startup, so choosing a file restarts it: a couple of seconds back to the
   title screen.
 
+And one page in the browser rather than the game, because the container has no
+way to know it is there:
+
+- **Controller** — appears under the start screen's buttons once a pad has been
+  seen. Rebind every action, set the sticks' deadzone, turn speed, inversion
+  and whether a full push runs. Saved per browser, so a phone and a desktop
+  keep their own layouts.
+
 ## Documentation
 
 | | |
 | --- | --- |
-| [DOCKER.md](DOCKER.md) | Running it: game data, controls, options, saves, sound, measuring a stutter, troubleshooting |
+| [DOCKER.md](DOCKER.md) | Running it: game data, controls, game controllers, options, saves, sound, measuring a stutter, troubleshooting |
 | [PORTING-NOTES.md](PORTING-NOTES.md) | Every change made to the 1997 sources, and why |
 | [PUBLISHING.md](PUBLISHING.md) | Releases, image tags, and the Unraid listing |
 | [CHANGELOG.md](CHANGELOG.md) | What changed in each release |

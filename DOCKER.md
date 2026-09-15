@@ -197,12 +197,73 @@ Controls**, the menu key included. Pick a line, press Return, then press the key
 choice is written to `.doomrc` in the state directory, so it survives a
 restart.
 
+A game controller works too, and is rebound in the browser rather than in the
+game — see below.
+
 The mouse turns you. It does **not** walk you forward and back — the original
 used the mouse's Y axis for movement, since there was nothing to aim
 vertically at, and with a modern hand on the mouse that mostly walks you
 about by accident. **Options → Setup → Mouse → MOVE WITH MOUSE** turns the
 original behaviour back on. The buttons are assignable on the same page. *Grab pointer* is on by
 default and is what `play.html` needs; see the section above.
+
+### A game controller
+
+An Xbox pad on a desktop and a Backbone One on a phone both work, along with
+anything else the browser reports as a standard gamepad — a DualSense, an
+8BitDo, a Switch Pro pad.
+
+Plug it in or pair it, open `play.html`, and **press a button on it**. That last
+step is not optional and is not this page being fussy: browsers do not admit a
+gamepad exists until something on it has been pressed, so a pad that is paired,
+charged and idle is genuinely invisible. Once it has been seen, a line appears
+under the buttons naming it, with **Buttons** beside it to rebind anything.
+
+The layout out of the box:
+
+| | |
+| --- | --- |
+| Left stick | move and sidestep — push it all the way to break into a run |
+| Right stick | turn. Analog, so a nudge turns slowly |
+| RT | fire |
+| LT | run |
+| A | open / use, and confirm in menus |
+| B | back out of a menu |
+| X, Y, LB, RB | shotgun, pistol, chaingun, rockets |
+| Left stick click, Right stick click | fist/chainsaw, plasma rifle |
+| D-pad | move and turn, for menus and for keyboard-style play |
+| View, Menu | automap, game menu |
+
+The BFG has no button by default — there is one weapon more than there are
+comfortable buttons — and neither do the sidestep keys or the strafe modifier,
+because the left stick already does that. All of them are in the panel if you
+want them.
+
+There is no next-weapon button because the 1997 engine has no such key: it
+only has *select weapon N*, and the page cannot cycle on your behalf since it
+has no idea which weapons you are carrying. A digit for a weapon you have not
+picked up is ignored, so a cycle would stick on the gaps.
+
+**Rebinding** is in that panel: pick a line, press **Bind**, press the button.
+The sticks have a deadzone, a turn speed, invert, a swap, and a switch for
+whether a full push runs. Everything is saved in the browser — not in
+`.doomrc` — because the container never sees the controller, and because the
+pad on your phone and the pad on your desk are different browsers and usually
+want different layouts. **Reset to defaults** puts it all back.
+
+Two things worth knowing:
+
+- The panel sends **keys**, not intentions. Rebind fire in the game's own
+  **Options → Setup → Controls** and the controller's *Fire* has to be pointed
+  at the new key as well, or it will go on pressing Ctrl.
+- On a phone there is no pointer to capture, so the controller is the whole of
+  the input and the *grab pointer* warning does not apply. Turning still works:
+  the right stick sends the same relative motion a captured mouse would.
+
+Nothing reaches the game while the start screen is up, so a pad knocked off a
+desk cannot empty a chaingun into a room nobody is watching, and a pad that
+disconnects mid-game lets go of whatever it was holding rather than leaving the
+trigger down.
 
 ## Loading WADs from the game
 
