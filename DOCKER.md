@@ -537,6 +537,32 @@ VNC sends what changed and nothing else — a still screen goes quiet for as
 long as it likes and that is not a fault. It needs a server without a password
 (`DOOM_VNC_PASSWORD` unset); it says so plainly rather than guessing.
 
+### Why x11vnc runs with `-nowireframe -noscrollcopyrect`
+
+Both are on by default in x11vnc and both are for a desktop: they watch for a
+window being dragged, or a pane scrolled, while a mouse button is held, and
+hold the picture back while they decide. A game holds the fire button down.
+There is one window here, it never moves, and nothing scrolls.
+
+Measured with the fire button held and the player turning, 80 seconds each:
+
+| | answers | KB/s | median | p90 | p99 | worst | over 200 ms |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| both on (x11vnc's default) | 1271 | 257 | 41 ms | 62 | 91 | 118 | 0 |
+| `-nowireframe` only | 1079 | 250 | 43 ms | 62 | 94 | 118 | 0 |
+| `-noscrollcopyrect` only | 1029 | 121 | 15 ms | 140 | 306 | 341 | 41 |
+| **both off** | **2774** | **554** | **12 ms** | **15** | **24** | **44** | **0** |
+
+Without a button held the default costs nothing. With one held it halves the
+frame rate and triples the median. The two do different damage:
+`-scrollcopyrect` slows everything evenly, which hides the other, and
+`-wireframe` holds the picture for about 300 ms at a time — `t2` in its own
+default timing string, `0.15+0.30+5.0+0.125`, is how long it waits for a window
+to start moving after a button goes down, repainting nothing meanwhile.
+
+`DOOM_VNC_ARGS=-wireframe` and `DOOM_VNC_ARGS=-scrollcopyrect` put them back if
+you want to see it for yourself.
+
 ### Narrowing a confirmed stall
 
 If `doom-probe` reports silences with **picture MOVING**, x11vnc had something

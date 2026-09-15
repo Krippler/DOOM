@@ -6,6 +6,42 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **The stutter: x11vnc holds the picture back while a mouse button is down.**
+  `-wireframe` and `-scrollcopyrect` are both on by default and both are for a
+  desktop — they watch for a window being dragged or a pane being scrolled
+  while a button is held, and keep the picture back while they decide. A game
+  holds the fire button down. There is one window, it never moves, and nothing
+  scrolls.
+
+  Measured with the fire button held and the player turning, 80 seconds each:
+
+  | | answers | KB/s | median | p90 | p99 | worst | over 200 ms |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | both on (the default) | 1271 | 257 | 41 ms | 62 | 91 | 118 | 0 |
+  | `-nowireframe` only | 1079 | 250 | 43 ms | 62 | 94 | 118 | 0 |
+  | `-noscrollcopyrect` only | 1029 | 121 | 15 ms | 140 | 306 | **341** | **41** |
+  | both off | 2774 | 554 | 12 ms | 15 | 24 | 44 | 0 |
+
+  The same run without the button held is 2752 answers at 539 KB/s and a 12 ms
+  median — so the cost appears only when someone fires. The two do different
+  damage: `-scrollcopyrect` slows everything evenly, which hid the other one,
+  and `-wireframe` holds the picture for about 300 ms at a time. `t2` in its
+  own default timing string, `0.15+0.30+5.0+0.125`, is how long it waits for a
+  window to start moving after a button goes down, and it repaints nothing
+  while it waits. **Those 300 ms holds are the stutter**, and that is why every
+  field report clustered at 273 to 345 ms.
+
+  Both are off now. With the fire button held the shipping default gives 3099
+  answers, 549 KB/s, a 12 ms median, worst 34 ms and nothing over 200 — better
+  than the old no-button baseline.
+
+  It never reproduced here for eleven releases because nothing in the lab ever
+  held a mouse button: the probe sends no input by design, and the attract demo
+  has no pointer at all.
+
 ## [1.10.46] — 2026-09-15
 
 ### Fixed
