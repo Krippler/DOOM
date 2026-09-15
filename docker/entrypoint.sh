@@ -316,6 +316,7 @@ WEB_PID=""
 AUDIO_PID=""
 DOOM_PID=""
 CPUWATCH_PID=""
+HELPERWATCH_PID=""
 
 cleanup() {
     trap - EXIT INT TERM
@@ -330,6 +331,14 @@ cleanup() {
             sleep 0.1
         done
         kill -TERM "$DOOM_PID" 2>/dev/null || true
+    fi
+
+    # First, so the teardown below cannot be reported as a fault. A normal
+    # quit killed the helpers and the watchdog announced "noVNC has exited --
+    # nothing works without it" on the way out, which is true and useless.
+    if [ -n "$HELPERWATCH_PID" ]; then
+        kill "$HELPERWATCH_PID" 2>/dev/null || true
+        HELPERWATCH_PID=""
     fi
 
     for pid in "$CPUWATCH_PID" "$WEB_PID" "$AUDIO_PID" "$VNC_PID" "$XVFB_PID"; do
@@ -646,8 +655,14 @@ watch_helpers () {
                 # The reason, from its own log: the first line that looks like
                 # a complaint, or the last few if none of them do.
                 if [ -n "$logfile" ] && [ -r "$logfile" ]; then
-                    said=$(grep -m1 -iE "unrecognized|invalid|error|fatal|cannot|refused|no such" \
-                           "$logfile" 2>/dev/null)
+                    # The last complaint, not the first one in the file. These
+                    # logs outlive a restart, so the first match can be minutes
+                    # old and about something else entirely -- a stale "Failed
+                    # to connect to localhost:5900" from an earlier crash got
+                    # quoted as the reason for a later, unrelated exit.
+                    said=$(tail -n 40 "$logfile" 2>/dev/null \
+                           | grep -iE "unrecognized|invalid|error|fatal|cannot|refused|no such" \
+                           | tail -n 1)
                     [ -n "$said" ] || said=$(tail -n 2 "$logfile" 2>/dev/null)
 
                     printf '%s\n' "$said" | while IFS= read -r said_line; do
@@ -679,6 +694,12 @@ watch_helpers
 status=0
 wait "$DOOM_PID" || status=$?
 DOOM_PID=""
+
+# The engine is gone on purpose, so nothing that follows is a fault.
+if [ -n "$HELPERWATCH_PID" ]; then
+    kill "$HELPERWATCH_PID" 2>/dev/null || true
+    HELPERWATCH_PID=""
+fi
 
 log "DOOM exited with status $status"
 exit "$status"

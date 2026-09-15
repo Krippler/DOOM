@@ -6,6 +6,29 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **Quitting the game reported a fault.** The watchdog added in 1.10.46 kept
+  watching while the container was shutting down, so a normal quit — which
+  tears the helpers down on purpose — came out as:
+
+  ```
+  [doom] DOOM exited with status 0
+  [doom] noVNC has exited -- nothing works without it
+  ```
+
+  True, and useless. The watchdog stops the moment the engine exits, and again
+  first thing in cleanup, so nothing it says can be about a teardown. A real
+  failure still reports: killing x11vnc outright still gives "x11vnc has
+  exited -- nothing works without it".
+
+- **And it quoted a complaint from minutes earlier.** It took the first
+  matching line in the process's log, but these logs outlive a restart, so a
+  stale `Failed to connect to localhost:5900` from an earlier crash was
+  presented as the reason for a later, unrelated exit. It reads the last
+  complaint in the final forty lines now.
+
 ## [1.10.47] — 2026-09-15
 
 ### Fixed
