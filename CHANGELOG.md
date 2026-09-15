@@ -6,7 +6,7 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
-## [Unreleased]
+## [1.10.56] — 2026-09-15
 
 ### Fixed
 - **1.10.55 broke menu navigation, which is the bug it had just fixed arrived at
