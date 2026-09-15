@@ -9,6 +9,20 @@ The version follows the engine this is built from, linuxdoom-1.10.
 ## [Unreleased]
 
 ### Fixed
+- **`DOOM_VNC_8TO24=0` warned that colours "may be wrong in some clients". They
+  will be wrong, in this one, and badly.** noVNC cannot use a colour map at all
+  — `_handleSetColourMapMsg` drops the connection — so at depth 8 it asks for a
+  pixel format of `floor(8/3)` bits per channel, which is two, which is 64
+  colours. Measured against the same scene: **50 distinct colours instead of
+  15,746**, at half the mean brightness.
+
+  So `-8to24` is not an optimisation that can be traded away for the bandwidth
+  it costs; it is the only reason the picture is watchable. The switch stays,
+  because it answered its question — the stalls are still there without it —
+  but it now says what it does, at startup and in DOCKER.md.
+
+
+### Fixed
 - **A supporting process could die and the container would carry on looking
   well.** Only the engine was waited on. So when x11vnc exited, the game kept
   drawing, the log kept reporting its 35 frames a second, and the only symptom

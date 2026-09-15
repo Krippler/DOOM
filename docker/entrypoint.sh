@@ -412,7 +412,9 @@ log "starting x11vnc on port $VNC_PORT"
 # steered towards.
 #
 if [ "${DOOM_VNC_8TO24:-1}" = "0" ]; then
-    log "  -8to24 off by request; colours may be wrong in some clients"
+    log "  -8to24 off by request: the picture will show 64 colours, not 256"
+    log "  (noVNC cannot use a colour map, so at depth 8 it asks for two bits"
+    log "  per channel). For counting stalls only -- set it back to play."
     vnc_8to24=""
 else
     vnc_8to24="-8to24"

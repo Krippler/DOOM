@@ -549,7 +549,7 @@ of MOVING silences against a run without it. Still ones do not count.
 | --- | --- |
 | `DOOM_VNC_ARGS=-noxdamage` | Stops x11vnc trusting the X DAMAGE extension to tell it what changed, and makes it compare the framebuffer itself. DOOM draws through MIT-SHM, and if those writes are not reported as damage, x11vnc only notices on a later pass. |
 | `DOOM_VNC_ARGS=-threads` | Gives each client its own thread in libvncserver. x11vnc is single-threaded by default, so anything that blocks its one loop stops every client at once — which is the shape of what the probe sees. |
-| `DOOM_VNC_8TO24=0` | Turns off the depth 8 to truecolor translation, the most expensive thing x11vnc does here. A diagnostic only: the picture becomes colormapped depth 8 and not every client renders that properly. |
+| `DOOM_VNC_8TO24=0` | Turns off the depth 8 to truecolor translation, the most expensive thing x11vnc does here. **The picture will be wrong**, and not subtly: noVNC cannot use a colour map at all — it drops the connection if one arrives — so at depth 8 it asks for two bits per channel and gets 64 colours. Measured against the same scene: 50 distinct colours instead of 15,746. It halves the bandwidth by throwing the colours away. Diagnostic only, and only for counting stalls. |
 
 None of these is a recommended setting. They are there to find out which part
 of x11vnc is holding the picture, on a machine where that is actually
