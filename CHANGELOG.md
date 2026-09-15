@@ -46,10 +46,13 @@ The version follows the engine this is built from, linuxdoom-1.10.
   rebind fire in the game's own Options → Setup → Controls and the controller's
   *Fire* has to be pointed at the new key too. The panel says so.
 
-  The line says when it has *not* found a pad as well as when it has, because a
-  browser reports no gamepad until a button on it has been pressed: a pad that
-  is paired, charged and idle is invisible, and there is no way to tell that
-  apart from broken without being told.
+  The line appears only once a pad has been seen, and says nothing at all before
+  then. A browser reports no gamepad until a button on it has been pressed, so a
+  pad that is paired, charged and idle genuinely is invisible — but a sentence
+  explaining that is one every keyboard player would read for ever in order to
+  spare a pad owner a single press of a button they are about to make anyway.
+  It is in DOCKER.md instead, and the start screen stays as quiet as the entry
+  below left it.
 
   Verified against a synthetic pad in Chromium rather than by inspection: the
   trigger sends `XK_Control_L` down and up, a full push forward sends the arrow
