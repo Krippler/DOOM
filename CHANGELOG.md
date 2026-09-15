@@ -6,6 +6,47 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.46] — 2026-09-15
+
+### Fixed
+- **`DOOM_VNC_8TO24=0` warned that colours "may be wrong in some clients". They
+  will be wrong, in this one, and badly.** noVNC cannot use a colour map at all
+  — `_handleSetColourMapMsg` drops the connection — so at depth 8 it asks for a
+  pixel format of `floor(8/3)` bits per channel, which is two, which is 64
+  colours. Measured against the same scene: **50 distinct colours instead of
+  15,746**, at half the mean brightness.
+
+  So `-8to24` is not an optimisation that can be traded away for the bandwidth
+  it costs; it is the only reason the picture is watchable. The switch stays,
+  because it answered its question — the stalls are still there without it —
+  but it now says what it does, at startup and in DOCKER.md.
+
+
+### Fixed
+- **A supporting process could die and the container would carry on looking
+  well.** Only the engine was waited on. So when x11vnc exited, the game kept
+  drawing, the log kept reporting its 35 frames a second, and the only symptom
+  was a browser saying "connection lost" with nothing in the container's log to
+  explain it — the reason sitting in x11vnc's own log, which nobody knew to
+  look at.
+
+  x11vnc, Xvfb, websockify and audiostream are watched now. When one goes, the
+  container says which, quotes the first complaint from that process's log, and
+  stops rather than sitting there healthy-looking:
+
+  ```
+  [doom] x11vnc has exited -- nothing works without it
+  [doom]   *** unrecognized option(s) ***
+  [doom]   the rest is in /doom/state/x11vnc.log
+  ```
+
+- **An option in `DOOM_VNC_ARGS` without its leading dash is refused up front.**
+  x11vnc treats anything it does not recognise as fatal, and `noxdamage` where
+  `-noxdamage` was meant is an easy thing to type into a template field that
+  does not show the dash. The container now says so and declines to start,
+  naming the correction, rather than starting an x11vnc that will be dead a
+  second later.
+
 ## [1.10.45] — 2026-09-14
 
 ### Added
