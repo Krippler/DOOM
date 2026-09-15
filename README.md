@@ -60,9 +60,19 @@ once it did. Getting from there to a playable game took:
   moved. `play.html` locks the pointer instead, so turning never runs out of
   screen and the cursor cannot wander off into the rest of your desktop —
   fullscreen or in the window, whichever you pick.
+- **A picture that does not stutter.** x11vnc ships with `-wireframe` and
+  `-scrollcopyrect` on, which watch for a window being dragged or a pane
+  scrolled while a mouse button is held and hold the screen back while they
+  decide. A game holds the fire button down, so the picture stopped for about
+  300 ms at a time whenever you shot at anything. Both are off here: with the
+  button held that is the difference between 257 KB/s at a 41 ms median and
+  554 KB/s at 12 ms.
 
 [`PORTING-NOTES.md`](PORTING-NOTES.md) documents every change, with the
-original code and why it broke.
+original code and why it broke — including [what the stutter turned out to
+be](PORTING-NOTES.md#the-stutter-while-the-fire-button-is-down), the dozen
+suspects measured and cleared before it, and the four instruments that exist
+because a confident answer turned out to be an artefact of how it was measured.
 
 ## What was added
 
@@ -82,7 +92,7 @@ equivalent of:
 
 | | |
 | --- | --- |
-| [DOCKER.md](DOCKER.md) | Running it: game data, controls, options, saves, sound, troubleshooting |
+| [DOCKER.md](DOCKER.md) | Running it: game data, controls, options, saves, sound, measuring a stutter, troubleshooting |
 | [PORTING-NOTES.md](PORTING-NOTES.md) | Every change made to the 1997 sources, and why |
 | [PUBLISHING.md](PUBLISHING.md) | Releases, image tags, and the Unraid listing |
 | [CHANGELOG.md](CHANGELOG.md) | What changed in each release |

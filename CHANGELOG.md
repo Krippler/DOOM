@@ -6,6 +6,25 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.49] — 2026-09-15
+
+### Added
+- **The stutter is written up.** PORTING-NOTES.md gains *The stutter while the
+  fire button is down*: what it was, the four configurations measured, the
+  thirteen suspects cleared before it — the browser, noVNC's JPEG path,
+  websockify, the network, CPU contention, a cgroup quota, `-8to24`, X DAMAGE,
+  Nagle, the audio stream, numpy, memory reclaim, pointer-input eating — and
+  why it took eleven releases to find something the first report described
+  correctly.
+
+  It also records what the measuring taught, because four instruments in this
+  repository exist only because a confident answer turned out to be an artefact
+  of how it was measured: a silence is not a stall, the change that ends a
+  silence is not motion during it, the second thing measured wears the minute,
+  and `schedstat` cannot see a process that is blocked rather than waiting.
+
+  The README gets the finding in its own list and a link to the detail.
+
 ## [1.10.48] — 2026-09-15
 
 ### Fixed
