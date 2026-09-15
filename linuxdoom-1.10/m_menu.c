@@ -2276,6 +2276,31 @@ boolean M_Responder (event_t* ev)
     }
 
     
+    //
+    // A control bound to an ordinary character has to work the menu too.
+    //
+    // This switch reads the arrows and Return literally and sends everything
+    // else to the hotkey search below, which jumps to the item beginning with
+    // that letter. So a player who moves with WASD -- or a controller pressing
+    // their bindings -- pressed 's' here and landed on SAVE GAME instead of
+    // moving down a line: from NEW GAME that is three items along.
+    //
+    // Mapping the movement bindings onto the navigation keys first settles it,
+    // and means the keys you walk with are the keys you navigate with. Only
+    // where they differ, so nothing changes for the defaults, and only with a
+    // menu open, since everything above has already returned.
+    //
+    if (ch == key_up && key_up != KEY_UPARROW)
+	ch = KEY_UPARROW;
+    else if (ch == key_down && key_down != KEY_DOWNARROW)
+	ch = KEY_DOWNARROW;
+    else if (ch == key_left && key_left != KEY_LEFTARROW)
+	ch = KEY_LEFTARROW;
+    else if (ch == key_right && key_right != KEY_RIGHTARROW)
+	ch = KEY_RIGHTARROW;
+    else if (ch == key_use && key_use != KEY_ENTER)
+	ch = KEY_ENTER;
+
     // Keys usable within menu
     switch (ch)
     {

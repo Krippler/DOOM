@@ -528,6 +528,28 @@ to be an artefact of how it was measured.
   knowing before trusting the `waiting for a CPU` lines in the container log,
   which are real but were never this.
 
+## A rebound control has to work the menu too
+
+`m_menu.c`. `M_Responder` reads the four arrows, Return, Escape and Backspace
+literally and sends every other character to a hotkey search, which jumps to the
+menu item beginning with that letter. That is fine while the movement keys *are*
+the arrows. Rebind them — or point a game controller at the bindings, which comes
+to the same thing — and pressing "down" sends `s`, which in the main menu means
+**SAVE GAME**: three items along from NEW GAME rather than one line down.
+
+The movement bindings are now mapped onto the navigation keys before that
+switch, so `key_up`, `key_down`, `key_left`, `key_right` and `key_use` do in a
+menu what they do in the game. Only where they differ from the defaults, so
+nothing changes for a stock `.doomrc`, and only with a menu open, since every
+earlier branch of `M_Responder` — the save-name entry, the yes/no prompts, the
+F-keys — has already returned by then.
+
+Checked against the running engine rather than by reading it, with `key_down`
+set to `s` and a trace on `M_Responder`: two presses of the arrow gave
+`ch=175 itemOn=0` then `ch=175 itemOn=1`, and two presses of `s` gave exactly
+the same pair, where before the second would have been a jump to item 3.
+`key_use` set to `e` arrived as `ch=13` and selected the item.
+
 ## Added
 
 Three things the 1997 release had no way to do, all reachable from

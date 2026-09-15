@@ -6,6 +6,52 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **A rebound control now works the menu, without moving the cursor twice.**
+  1.10.56's fix for the menus was to send the engine's key *and* the menu's
+  hardcoded one. It worked and it was wrong, and the report said exactly how:
+  *down jumped four menu selections, up was fine.*
+
+  `M_Responder` reads the arrows and Return literally and sends every other
+  character to a **hotkey search**, which jumps to the item beginning with that
+  letter. With `key_down` set to `s`, the pad sent `s` — and in the main menu `s`
+  is **SAVE GAME**, three items along from NEW GAME — plus the ArrowDown beside
+  it, which moved one more. Four. `up` was fine because nothing in that menu
+  begins with `w`. Two keys also meant two Returns for Open/use, which selects
+  twice, and with `key_use` set to `e` it would have jumped to **END GAME** in the
+  Options menu and then confirmed it.
+
+  So the mapping moves into the engine, where it belongs. `m_menu.c` now maps
+  `key_up`, `key_down`, `key_left`, `key_right` and `key_use` onto the menu's own
+  navigation keys before that switch, and the page sends **one key per action**.
+  The keys you walk with are the keys you navigate with — which is worth having
+  on a keyboard too, not just with a pad. Only where they differ from the
+  defaults, and only with a menu open, since every earlier branch of
+  `M_Responder` has already returned by then. See PORTING-NOTES.md.
+
+  Verified against the running engine with a trace on `M_Responder` and
+  `key_down` set to `s`: two presses of the arrow gave `ch=175 itemOn=0` then
+  `ch=175 itemOn=1`, and two presses of `s` gave the identical pair — one line
+  each, where the second would previously have jumped to item 3. `key_use` set
+  to `e` arrived as `ch=13` and selected the item.
+
+### Notes
+- **Three measurement rigs were wrong before one worked, and that is the useful
+  part.** Diffing the framebuffer to find the menu cursor failed because the
+  attract demo keeps animating behind an open menu — 160 of 400 rows changing
+  between grabs — so the "widest changing band" was the demo, not the skull. A
+  file-based handshake between the driver and the watcher raced, and reported 0
+  px for every trial. An earlier grab asked X for the wrong drawable because the
+  vendor string in the connection setup reply starts at byte 40, not 32, and X
+  answered BadDrawable.
+
+  What finally settled it was not a better measurement of the picture but
+  choosing a different thing to observe: a trace print inside `M_Responder`, so
+  the question "what does the menu do with this key" was answered by the menu
+  rather than inferred from pixels. The trace was removed before committing.
+
 ## [1.10.56] — 2026-09-15
 
 ### Fixed
