@@ -84,6 +84,66 @@ export function defaultKeysFor(actionId) {
 }
 
 //
+// The engine's own key numbers, back to the keysyms that produce them.
+//
+// This is i_video.c's `xlatekey` read backwards. That function turns an X
+// keysym into the number the engine stores in `.doomrc`, so inverting it says
+// which keysym to send to press a key the engine has been bound to. The values
+// are doomdef.h's KEY_* constants.
+//
+const DOOM_KEY_TO_X = new Map([
+  [0xae, [K.XK_Right,     'ArrowRight']],   // KEY_RIGHTARROW
+  [0xac, [K.XK_Left,      'ArrowLeft']],    // KEY_LEFTARROW
+  [0xad, [K.XK_Up,        'ArrowUp']],      // KEY_UPARROW
+  [0xaf, [K.XK_Down,      'ArrowDown']],    // KEY_DOWNARROW
+  [27,   [K.XK_Escape,    'Escape']],
+  [13,   [K.XK_Return,    'Enter']],
+  [9,    [K.XK_Tab,       'Tab']],
+  [127,  [K.XK_BackSpace, 'Backspace']],
+  [0xff, [K.XK_Pause,     'Pause']],
+  [0x80 + 0x36, [K.XK_Shift_L,   'ShiftLeft']],    // KEY_RSHIFT
+  [0x80 + 0x1d, [K.XK_Control_L, 'ControlLeft']],  // KEY_RCTRL
+  [0x80 + 0x38, [K.XK_Alt_L,     'AltLeft']],      // KEY_RALT
+]);
+for (let i = 0; i < 12; i++)                        // KEY_F1 .. KEY_F12
+  DOOM_KEY_TO_X.set(0x80 + 0x3b + i, [K['XK_F' + (i + 1)], 'F' + (i + 1)]);
+
+// The DOM code name for a printable character, so a config-derived key goes on
+// the wire the same way a typed one does. Only the ones a binding is plausibly
+// set to; anything else sends the keysym with no code, which is still valid.
+const ASCII_CODES = {
+  ' ': 'Space', ',': 'Comma', '.': 'Period', '/': 'Slash', ';': 'Semicolon',
+  "'": 'Quote', '[': 'BracketLeft', ']': 'BracketRight', '\\': 'Backslash',
+  '`': 'Backquote', '-': 'Minus', '=': 'Equal',
+};
+
+export function doomKeyToX(code) {
+  const n = Number(code);
+  if (!Number.isInteger(n)) return null;
+  if (DOOM_KEY_TO_X.has(n)) return DOOM_KEY_TO_X.get(n);
+
+  // Everything else the engine stores is a printable character, and xlatekey
+  // maps those to themselves -- so the keysym is the number.
+  if (n >= 0x20 && n <= 0x7e) {
+    const ch = String.fromCharCode(n);
+    let dom = null;
+    if (ch >= 'a' && ch <= 'z') dom = 'Key' + ch.toUpperCase();
+    else if (ch >= '0' && ch <= '9') dom = 'Digit' + ch;
+    else if (ASCII_CODES[ch]) dom = ASCII_CODES[ch];
+    return [n, dom];
+  }
+  return null;
+}
+
+// Which `.doomrc` setting each action is pressing.
+const ACTION_DOOMRC = {
+  fire: 'key_fire',        act: 'key_use',            run: 'key_speed',
+  strafemod: 'key_strafe', forward: 'key_up',         back: 'key_down',
+  turnleft: 'key_left',    turnright: 'key_right',    menu: 'key_menu',
+  strafeleft: 'key_strafeleft', straferight: 'key_straferight',
+};
+
+//
 // The standard mapping's button order, which is what an Xbox pad and a
 // Backbone One both report. Anything claiming `mapping: "standard"` puts the
 // face buttons at 0-3, the shoulders at 4-7, view/menu at 8-9, the stick
@@ -193,7 +253,9 @@ export class DoomGamepad {
 
     this.bindings = { ...DEFAULT_BINDINGS };
     this.settings = { ...DEFAULT_SETTINGS };
-    this.keys = {};             // actionId -> [[keysym, code], ...]
+    this.keys = {};             // actionId -> [[keysym, code], ...], learned
+    this.engineKeys = {};       // ... and the same, read from the engine's config
+    this.engineSeen = false;
     this._load();
 
     // Keysyms currently held down on the engine's behalf, against the code
@@ -435,8 +497,48 @@ export class DoomGamepad {
   keysFor(actionId) {
     const own = this.keys[actionId];
     if (own && own.length) return own;
+    const eng = this.engineKeys[actionId];
+    if (eng && eng.length) return eng;
     const a = ACTION_BY_ID.get(actionId);
     return a ? a.keys : [];
+  }
+
+  // Where an action's key came from, for the panel to say so.
+  keySource(actionId) {
+    if (this.keys[actionId] && this.keys[actionId].length) return 'learned';
+    if (this.engineKeys[actionId] && this.engineKeys[actionId].length) return 'engine';
+    return 'default';
+  }
+
+  //
+  // Take the keys from the engine's own `.doomrc`, which the container reads and
+  // serves because the page cannot see it.
+  //
+  // This is what stops the pad working in menus and nowhere else: the engine
+  // hardcodes the arrows and Return in its menus but reads these settings during
+  // play, so a pad on the built-in defaults goes dead in a level the moment
+  // anybody has been through Options → Setup → Controls. Anything learned by
+  // hand still wins over this; anything absent or unrecognised leaves the
+  // built-in default alone.
+  //
+  useEngineKeys(config) {
+    this.engineSeen = true;
+    const out = {};
+    if (config && typeof config === 'object') {
+      for (const [id, setting] of Object.entries(ACTION_DOOMRC)) {
+        const raw = config[setting];
+        if (raw === undefined || raw === null) continue;
+        const pair = doomKeyToX(raw);
+        if (!pair) continue;
+        // `act` has to confirm in menus as well as open doors, and Return is
+        // hardcoded there, so it keeps its second key whatever key_use says.
+        out[id] = id === 'act' && pair[0] !== K.XK_Return
+          ? [pair, [K.XK_Return, 'Enter']]
+          : [pair];
+      }
+    }
+    this.engineKeys = out;
+    this._onChange();
   }
 
   isCustomKey(actionId) {

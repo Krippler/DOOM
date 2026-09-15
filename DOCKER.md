@@ -246,16 +246,23 @@ picked up is ignored, so a cycle would stick on the gaps.
 
 #### The pad works in the menus but not in the game
 
-This is the common one, and it is not a fault in the pad. The engine **hardcodes
-the arrow keys and Return in its menus** but reads *configurable* bindings during
-play — `key_up`, `key_down`, `key_fire`, `key_use`, `key_speed`, `key_strafe`,
-all of them from `.doomrc`. So a pad that presses the defaults navigates menus
-perfectly and does nothing in the game the moment those bindings have been
-changed under **Options → Setup → Controls**.
+This is handled automatically now, and is worth knowing about anyway because it
+explains the shape of it. The engine **hardcodes the arrow keys and Return in its
+menus** but reads *configurable* bindings during play — `key_up`, `key_down`,
+`key_fire`, `key_use`, `key_speed`, `key_strafe`, all from `.doomrc`. A pad
+pressing the built-in defaults therefore drives menus perfectly and goes
+completely dead in a level as soon as those have been changed under **Options →
+Setup → Controls**.
 
-The panel's third column is the key each action presses, and **Key** on that row
-changes it: press **Key**, then press the key you actually use. From then on the
-pad presses that. **Default key** puts it back.
+The container reads `.doomrc` at startup and serves the bindings beside the page
+as `doom-keys.json`, so the pad presses whatever *this* engine listens for. The
+panel's third column shows each key and where it came from: **green** from the
+game's own config, **grey** the engine default, **pink** set here by hand.
+
+Because it is read at startup, a binding changed in the game reaches the pad on
+the next restart — the engine writes `.doomrc` when it exits. **Key** on a row
+overrides it straight away without waiting: press **Key**, then press the key you
+actually use. **Default key** hands the row back to the config.
 
 Two things that look like the same fault and are not:
 

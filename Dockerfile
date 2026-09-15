@@ -129,6 +129,12 @@ COPY docker/doom-audio.js /usr/share/novnc/doom-audio.js
 COPY docker/doom-gamepad.js /usr/share/novnc/doom-gamepad.js
 COPY docker/index.html /usr/share/novnc/index.html
 
+# The engine's key bindings, for the controller in the page. The entrypoint
+# writes them into the state directory, which it owns whatever PUID it runs as;
+# this symlink is how they reach the browser without the web root having to be
+# writable at runtime. websockify serves through it.
+RUN ln -sfn /doom/state/doom-keys.json /usr/share/novnc/doom-keys.json
+
 # Not sed: the stamp is whatever the build was told, and a branch name with a
 # slash in it ends the s/// early -- which is exactly how this broke first
 # time. Python replaces the placeholder literally, and narrows the value to
