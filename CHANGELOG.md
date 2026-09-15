@@ -6,6 +6,25 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **The Unraid template's change list stopped at 1.10.21, twenty-eight releases
+  ago.** Someone deciding whether to update was reading notes that predate the
+  stutter fix, the sound work, and the pause when a door opened.
+
+  It is current now, and written for someone choosing whether to press update
+  rather than for whoever is going to maintain this: the stutter and what it
+  was, the container saying when one of its own pieces dies, the engine no
+  longer spinning on a core or re-reading the WAD mid-level, Escape behaving,
+  and the sound arriving 14 ms behind the picture instead of 102. The fifteen
+  releases of instrumentation are one entry between them, because none of them
+  changes how it plays.
+
+  The 1.10.21 entry claiming a 140 ms delay is left as written and marked as
+  superseded, since 1.10.22 corrected it to 48 ms — most of which is the
+  pistol's own wind-up animation.
+
 ## [1.10.49] — 2026-09-15
 
 ### Added

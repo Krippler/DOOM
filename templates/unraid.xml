@@ -39,10 +39,68 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.10.47
+- Fixes the stutter: the picture pausing for about a third of a second,
+  usually while you were shooting. x11vnc was watching for a window being
+  dragged whenever a mouse button was held down, and holding the picture back
+  while it decided - which in a game is all the time. With the fire button
+  held that is now 554 KB/s at a 12 ms median instead of 257 KB/s at 41 ms.
+  Nothing to change; pull and play.
+
+### 1.10.46
+- The container now says when one of its own pieces dies, and stops, instead
+  of sitting there looking healthy while the browser says "connection lost".
+- An x11vnc option typed without its leading dash is refused at startup with
+  the correction named, rather than killing the picture a second later.
+
+### 1.10.39 - 1.10.45
+- Tools for finding the stutter above, none of which change how it plays:
+  doom-probe, which times how long x11vnc takes to answer and can tell a real
+  stall from a screen that simply was not changing, and a picture readout on
+  the start screen. See DOCKER.md if you ever need them.
+
+### 1.10.30
+- Fixes the sound being left permanently out of step if the browser's socket
+  filled up, which could leave it crackling until you reloaded.
+
+### 1.10.29
+- The engine no longer waits for the X server to confirm each frame, which was
+  costing 74 ms a frame under load.
+
+### 1.10.28
+- Escape reliably releases the mouse and brings the start screen back, in both
+  fullscreen and windowed, instead of depending on what the browser does with
+  it.
+
+### 1.10.25
+- The engine was spinning on a core while waiting for the next frame, starving
+  everything else in the container. It sleeps properly now: 96% of a core down
+  to 5%.
+
+### 1.10.24
+- Fixes the pause when something new appears - a door opening, a monster
+  waking. The engine was re-reading the game data from the WAD during play
+  instead of keeping it, 230 times in three minutes.
+
+### 1.10.23
+- Sound effects are mixed where they are sent, and the separate 1997 sound
+  server is gone from the browser path. The sound now arrives 14 ms behind the
+  picture instead of 102 ms.
+
+### 1.10.22
+- Corrects 1.10.21's note: the delay between a keypress and seeing it is about
+  48 ms, not 140. The 140 ms figure was mostly the pistol's own wind-up
+  animation, which the game has always had.
+- Fixes the sound getting later the longer you play, sound never working
+  anywhere but localhost, and a buffer that could underrun for ever without
+  growing.
+
 ### 1.10.21
 - Small VNC timing changes, and notes on why the picture lags about 140 ms
   behind the keypress - it is the VNC round trip, and none of the usual
   settings affect it. The sound is unchanged and still arrives promptly.
+  (The 140 ms was wrong; see 1.10.22 above. It is about 48 ms, and most of
+  that is the engine's own frame rate.)
 
 ### 1.10.20
 - Fixes the sound getting later the longer you play. It drifted because the
