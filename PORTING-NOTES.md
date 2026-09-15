@@ -436,6 +436,98 @@ sooner, which means the buffering that matters is not where the queue depth
 says it is. Whoever picks this up next should find out where before changing
 anything.
 
+## The stutter while the fire button is down
+
+**x11vnc holds the picture back for about 300 ms at a time whenever a mouse
+button is held.** It ships with `-wireframe` and `-scrollcopyrect` on, and both
+are desktop features: they watch for a window being dragged, or a pane
+scrolled, while a button is down, and keep the screen back while they decide
+what is moving. A game holds the fire button down. There is one window here, it
+never moves, and nothing scrolls.
+
+The 300 ms is `t2` of `-wireframe`'s own default timing string,
+`0.15+0.30+5.0+0.125` -- by x11vnc's documentation, "how long to wait for the
+window to start moving" after a button goes down. It repaints nothing while it
+waits. Every field report of this clustered between 273 and 345 ms.
+
+Measured with the fire button held and the player turning, 80 seconds each:
+
+| | answers | KB/s | median | p90 | p99 | worst | over 200 ms |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| both on (x11vnc's default) | 1271 | 257 | 41 ms | 62 | 91 | 118 | 0 |
+| `-nowireframe` only | 1079 | 250 | 43 ms | 62 | 94 | 118 | 0 |
+| `-noscrollcopyrect` only | 1029 | 121 | 15 ms | 140 | 306 | 341 | 41 |
+| **both off** | **2774** | **554** | **12 ms** | **15** | **24** | **44** | **0** |
+
+The same run with no button held is 2752 answers at 539 KB/s and a 12 ms
+median, so the cost appears only when someone fires. The two do different
+damage, which is why neither alone helped: `-scrollcopyrect` slows everything
+evenly and hides the other, and `-wireframe` is what produces the long holds.
+Turn off only the scroll one and 41 stalls appear in 80 seconds, worst 341 ms.
+
+Both are off by default now. `DOOM_VNC_ARGS=-wireframe` puts one back.
+
+### What it was not
+
+Each of these was suspected, measured, and in most cases announced as the
+answer before the measurement contradicted it. They are listed because the
+next person will suspect them too.
+
+| Suspected | Measured |
+| --- | --- |
+| The browser being slow to ask | It asks within 1 ms and holds a finished picture for 0 |
+| noVNC's JPEG path (base64 into an `<img>`) | 0 ms of hold across 9026 pictures in the field |
+| websockify's pure-Python relay | Identical stalls, same millisecond, on a direct socket and through the proxy |
+| The network to the browser | The stalls are there with no browser and no network in the path |
+| CPU contention | Pinned to one core against a busy process: 2225 ms of run-queue wait per 5 s, **no stall over 200 ms** |
+| A cgroup CPU quota | 400 of 567 periods throttled, worst answer 99 ms, no stall |
+| `-8to24` | Six stalls against four, then six against three, measured concurrently |
+| X DAMAGE (`-noxdamage`) | No change: 33 moving stalls with it off |
+| Nagle on the socket to x11vnc | websockify already sets `TCP_NODELAY` both ways |
+| The audio stream competing | Identical distributions with the audio socket open and closed |
+| websockify's missing numpy | It only unmasks the browser's 10-byte requests, never the picture |
+| Memory reclaim or disk | 48 major faults and 0 block-IO waits on the machine that stutters |
+| x11vnc eating pointer input before repolling | Its manual describes exactly this; 120 pointer events a second changed nothing |
+
+### Why it took eleven releases
+
+Nothing in the lab ever held a mouse button. `doom-probe` sends no input by
+design -- it would be playing the game for whoever is at the screen -- and the
+attract demo has no pointer at all. So the fault could not occur here, and
+every measurement came back clean while the field kept stuttering. The first
+local reproduction came from a client that held button 1 down, and only after
+`-noxdamage` failed and forced a look at what else x11vnc does with a mouse.
+
+The report that turned out to be exactly right was the first one: *"happens
+often when opening doors or encountering new enemies"* -- which is to say, when
+you are firing.
+
+### What the measuring taught
+
+Four instruments in this repository exist because a confident answer turned out
+to be an artefact of how it was measured.
+
+- **A silence is not a stall.** VNC answers only when something has changed, so
+  a still screen goes quiet for as long as it likes and that is the protocol
+  working. Every stall reported here for two releases was the attract demo
+  standing still: five of them, 233 to 1612 ms, each 98 to 100 per cent inside
+  a stretch where the screen was not changing, each ending the millisecond it
+  changed again. `doom-probe` reads the framebuffer 100 times a second now and
+  labels each silence.
+- **The change that ends a silence is not motion during it.** Counting it
+  turned "still for 1.4 seconds" into "moving, 1 change" and reversed the
+  verdict on silences a previous run had called correctly.
+- **Measured in sequence, the second thing measured wears the minute.** Timing
+  x11vnc and then the proxy said the proxy was twenty times worse; timing the
+  proxy and then x11vnc moved the stall to x11vnc. Splitting each into halves
+  did not fix it, because both halves still ran in the same order. Run in two
+  threads at once, the same stalls appear in both streams to the millisecond.
+- **`schedstat` cannot see a process that is blocked rather than waiting.** Its
+  second field counts run-queue time only, so every "not CPU starvation"
+  conclusion drawn from it was blind to uninterruptible sleep. That is worth
+  knowing before trusting the `waiting for a CPU` lines in the container log,
+  which are real but were never this.
+
 ## Added
 
 Three things the 1997 release had no way to do, all reachable from
