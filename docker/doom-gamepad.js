@@ -78,6 +78,11 @@ export const ACTIONS = [
 
 const ACTION_BY_ID = new Map(ACTIONS.map(a => [a.id, a]));
 
+export function defaultKeysFor(actionId) {
+  const a = ACTION_BY_ID.get(actionId);
+  return a ? a.keys : [];
+}
+
 //
 // The standard mapping's button order, which is what an Xbox pad and a
 // Backbone One both report. Anything claiming `mapping: "standard"` puts the
@@ -119,6 +124,21 @@ export const DEFAULT_SETTINGS = {
 };
 
 const STORE_KEY = 'doom.gamepad.v1';
+
+//
+// Which key each action presses, where the engine is not on its defaults.
+//
+// The keys in ACTIONS are what a fresh `.doomrc` listens for. Anybody who has
+// been through Options → Setup → Controls has a different one, and the page
+// cannot read it -- it lives in the container, which has never heard of a
+// controller. The result is a pad that works perfectly in menus, where the
+// engine hardcodes the arrows and Return, and does nothing in the game, where
+// every action goes through a binding that has been changed.
+//
+// So an action's key can be learned from the keyboard instead: press the key
+// the game actually uses and the pad presses that from then on. Overrides only
+// -- anything not set here still uses the default above.
+//
 
 //
 // Keysym numbers back to their names, for the readout in the panel.
@@ -173,6 +193,7 @@ export class DoomGamepad {
 
     this.bindings = { ...DEFAULT_BINDINGS };
     this.settings = { ...DEFAULT_SETTINGS };
+    this.keys = {};             // actionId -> [[keysym, code], ...]
     this._load();
 
     // Keysyms currently held down on the engine's behalf, against the code
@@ -249,8 +270,7 @@ export class DoomGamepad {
 
     const want = new Map();     // keysym -> DOM code name
     const add = id => {
-      const a = ACTION_BY_ID.get(id);
-      if (a) for (const [sym, code] of a.keys) want.set(sym, code);
+      for (const [sym, code] of this.keysFor(id)) want.set(sym, code);
     };
 
     // Buttons. A trigger reports an analog `value` as well as `pressed`, and
@@ -409,6 +429,38 @@ export class DoomGamepad {
   }
 
   //
+  // The keys an action presses: what was learned from the keyboard, or the
+  // engine's default if nothing was.
+  //
+  keysFor(actionId) {
+    const own = this.keys[actionId];
+    if (own && own.length) return own;
+    const a = ACTION_BY_ID.get(actionId);
+    return a ? a.keys : [];
+  }
+
+  isCustomKey(actionId) {
+    return !!(this.keys[actionId] && this.keys[actionId].length);
+  }
+
+  // One key, learned from a real keypress. The keysym and code name come from
+  // noVNC's own translation of the event, so what the pad sends afterwards is
+  // byte for byte what pressing that key sends.
+  setKey(actionId, keysym, code) {
+    if (!ACTION_BY_ID.has(actionId)) return;
+    if (!keysym) return;
+    this.keys[actionId] = [[keysym, code || null]];
+    this._save();
+    this._onChange();
+  }
+
+  clearKey(actionId) {
+    delete this.keys[actionId];
+    this._save();
+    this._onChange();
+  }
+
+  //
   // Point an action at a button, taking it off whatever button had it.
   //
   // Two buttons doing the same thing is harmless to play but confusing to
@@ -440,6 +492,7 @@ export class DoomGamepad {
   reset() {
     this.bindings = { ...DEFAULT_BINDINGS };
     this.settings = { ...DEFAULT_SETTINGS };
+    this.keys = {};
     this._save();
     this._onChange();
   }
@@ -452,7 +505,7 @@ export class DoomGamepad {
   _save() {
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
-        bindings: this.bindings, settings: this.settings,
+        bindings: this.bindings, settings: this.settings, keys: this.keys,
       }));
     } catch (e) { /* nothing to do about it */ }
   }
@@ -475,6 +528,17 @@ export class DoomGamepad {
           clean[n] = id;
       }
       this.bindings = clean;
+    }
+    if (saved.keys && typeof saved.keys === 'object') {
+      const clean = {};
+      for (const [id, pairs] of Object.entries(saved.keys)) {
+        if (!ACTION_BY_ID.has(id) || !Array.isArray(pairs)) continue;
+        const ok = pairs.filter(pr => Array.isArray(pr) && typeof pr[0] === 'number'
+                                      && pr[0] > 0
+                                      && (pr[1] === null || typeof pr[1] === 'string'));
+        if (ok.length) clean[id] = ok.map(pr => [pr[0], pr[1] || null]);
+      }
+      this.keys = clean;
     }
     if (saved.settings && typeof saved.settings === 'object') {
       for (const [k, v] of Object.entries(saved.settings)) {

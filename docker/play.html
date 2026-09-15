@@ -131,6 +131,12 @@
   #pad-binds td.key { color: #d8d8d8; width: 7.5em; }
   #pad-binds td.key.none { color: #666; }
   #pad-binds td.act { width: 1%; white-space: nowrap; text-align: right; }
+  #pad-binds td.sends { color: #9a9a9a; width: 6em;
+                        font-family: ui-monospace, Menlo, Consolas, monospace;
+                        font-size: 11px; }
+  #pad-binds td.sends.custom { color: #d8a; }
+  #pad-panel #pad-keys-hint { font-size: 12px; }
+  #pad-panel #pad-keys-hint b { color: #d8d8d8; }
   #pad-binds small { color: #666; }
   #pad-sticks {
     display: grid; grid-template-columns: auto 1fr auto;
@@ -195,6 +201,11 @@
   <div id="pad-panel" hidden>
     <h2>Buttons</h2>
     <p class="dim" id="pad-which"></p>
+    <p class="dim" id="pad-keys-hint">Each action presses a <b>key</b>, so it has
+       to be the key your game listens for. If the pad works in the menus but
+       does nothing in the game, the engine's own bindings have been changed
+       under Options → Setup → Controls: press <b>Key</b> on the row and then the
+       key you actually use.</p>
     <table id="pad-binds"><tbody></tbody></table>
     <h2>Sticks</h2>
     <div id="pad-sticks"></div>
@@ -227,6 +238,9 @@
 <script type="module">
 import RFB from './core/rfb.js';
 import { DoomGamepad, ACTIONS, BUTTON_NAMES, keyName } from './doom-gamepad.js';
+// noVNC's own DOM-event-to-keysym translation, so a key learned from the
+// keyboard here sends exactly what pressing that key sends.
+import { getKeysym, getKeycode } from './core/input/util.js';
 
 const screenEl  = document.getElementById('screen');
 const overlayEl = document.getElementById('overlay');
@@ -984,6 +998,13 @@ function renderPadBinds() {
       ? 'not bound'
       : (BUTTON_NAMES[i] || 'Button ' + i);
 
+    // Which key this action actually presses. The whole point of the panel is
+    // that this is a key and not an intention, so it is on screen rather than
+    // implied.
+    const sends = document.createElement('td');
+    sends.className = 'sends' + (gamepad.isCustomKey(a.id) ? ' custom' : '');
+    sends.textContent = gamepad.keysFor(a.id).map(([sym]) => keyName(sym)).join('+');
+
     const act = document.createElement('td');
     act.className = 'act';
     const bind = document.createElement('button');
@@ -992,6 +1013,14 @@ function renderPadBinds() {
     if (padBinding === a.id) bind.classList.add('waiting');
     bind.addEventListener('click', () => beginBind(a.id));
     act.append(bind);
+
+    const learn = document.createElement('button');
+    learn.type = 'button';
+    learn.textContent = padLearning === a.id ? 'press a key\u2026' : 'Key';
+    if (padLearning === a.id) learn.classList.add('waiting');
+    learn.addEventListener('click', () => beginLearn(a.id));
+    act.append(' ', learn);
+
     if (i !== null) {
       const clear = document.createElement('button');
       clear.type = 'button';
@@ -999,13 +1028,48 @@ function renderPadBinds() {
       clear.addEventListener('click', () => gamepad.bindAction(a.id, null));
       act.append(' ', clear);
     }
+    if (gamepad.isCustomKey(a.id)) {
+      const rev = document.createElement('button');
+      rev.type = 'button';
+      rev.textContent = 'Default key';
+      rev.addEventListener('click', () => gamepad.clearKey(a.id));
+      act.append(' ', rev);
+    }
 
-    tr.append(name, key, act);
+    tr.append(name, key, sends, act);
     padBindsEl.append(tr);
   }
 }
 
+//
+// Learning a key from the keyboard.
+//
+// Capture phase and preventDefault, so the keypress is consumed here rather
+// than reaching the game behind the overlay or the page's own Escape handler --
+// otherwise learning Escape would close the start screen instead of being
+// learned.
+//
+let padLearning = null;
+
+function beginLearn(actionId) {
+  padLearning = padLearning === actionId ? null : actionId;
+  renderPadBinds();
+}
+
+window.addEventListener('keydown', (e) => {
+  if (!padLearning) return;
+  e.preventDefault();
+  e.stopPropagation();
+
+  const keysym = getKeysym(e);
+  const action = padLearning;
+  padLearning = null;
+  if (keysym) gamepad.setKey(action, keysym, getKeycode(e));
+  else renderPadBinds();
+}, true);
+
 async function beginBind(actionId) {
+  padLearning = null;
   gamepad.cancelCapture();
   padBinding = actionId;
   renderPadBinds();
@@ -1125,6 +1189,7 @@ function closePad() {
   if (!padPanelEl) return;
   gamepad.cancelCapture();
   padBinding = null;
+  padLearning = null;
   padPanelEl.hidden = true;
   if (padRawTimer) { clearInterval(padRawTimer); padRawTimer = 0; }
   renderPad();
