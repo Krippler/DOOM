@@ -465,7 +465,11 @@ Two things worth knowing:
   at the new key as well, or it will go on pressing Ctrl.
 - On a phone there is no pointer to capture, so the controller is the whole of
   the input and the *grab pointer* warning does not apply. Turning still works:
-  the right stick sends the same relative motion a captured mouse would.
+  the right stick sends the same relative motion a captured mouse would. iOS has
+  no Pointer Lock API at all, so the page no longer warns about a capture it
+  never attempted — it says to pair a controller instead, and says nothing once
+  one is connected. The controller log line records which it found:
+  `client 1.10.66, pointerlock no, keymap …`.
 
 Nothing reaches the game while the start screen is up, so a pad knocked off a
 desk cannot empty a chaingun into a room nobody is watching, and a pad that
@@ -702,7 +706,15 @@ Sound: not started — click to play.
 ```
 
 A refused connection, a worklet the browser would not load, a stream that opens
-and stays quiet: each says which. The same reason appears at the bottom of the
+and stays quiet: each says which.
+
+**`no Web Audio` on a browser that has it** was a bug up to 1.10.65. The check
+demanded `AudioWorkletNode` before doing anything, even though the worklet is
+optional — it is gated on a secure context, and where it is missing the sound
+goes through a `ScriptProcessorNode` instead. A browser with no AudioWorklet at
+all therefore got no sound at all rather than the fallback. iOS Safari over
+plain HTTP is where that showed up. Only the `AudioContext` constructor is
+required now, prefixed or not. The same reason appears at the bottom of the
 screen during play. The second line is always there, and is the build the
 **page** came from.
 

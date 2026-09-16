@@ -6,6 +6,42 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **Two wrong messages on an iPhone**, reported together from one: *"The browser
+  did not capture the mouse … turn GRAB POINTER off"* and *"No sound: this
+  browser has no Web Audio."* Both were the page's fault, and neither described
+  anything that was actually wrong with the device.
+
+  **iOS has no Pointer Lock API at all**, so the request was never made — there
+  was no capture to fail. The page checked `locked()` 700 ms after play started
+  and complained whenever it came back false, which on a phone is always,
+  telling somebody holding a touchscreen to click the picture and change a mouse
+  setting. It now asks whether the platform *has* pointer lock first. Where it
+  does not, and no pad is connected, it says the useful thing instead:
+
+  > No mouse to capture on this device — pair a game controller and press a
+  > button on it. Everything else works.
+
+  With a controller connected it says nothing, because nothing is wrong. The
+  log records which case it was: `client 1.10.66, pointerlock no, keymap …`.
+
+  **The sound gave up before reaching its own fallback.** It required
+  `window.AudioWorkletNode` up front, but the worklet is optional — it is gated
+  on a secure context, and where it is missing the sound goes through a
+  `ScriptProcessorNode` instead, which is the path this container normally uses
+  over plain HTTP. A browser exposing no AudioWorklet whatever therefore got no
+  sound at all rather than the fallback that was sitting right there. Only an
+  `AudioContext` constructor is required now, `webkitAudioContext` included.
+
+  Checked by running the page under a browser with `Element.prototype.requestPointerLock`
+  removed and again with `AudioWorkletNode` removed: 1.10.65 gives the mouse
+  warning and `via="" reason="this browser has no Web Audio."`, and this build
+  gives the controller note and `via="fallback"`. A real iPhone has not been
+  tested from here — the controller itself was already polled independently of
+  pointer lock, so it should have been working behind those messages all along.
+
 ## [1.10.65] — 2026-09-16
 
 ### Fixed
