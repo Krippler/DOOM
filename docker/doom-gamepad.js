@@ -139,8 +139,8 @@ export function doomKeyToX(code) {
   if (!Number.isInteger(n)) return null;
   if (DOOM_KEY_TO_X.has(n)) return DOOM_KEY_TO_X.get(n);
 
-  // Everything else the engine stores is a printable character, and xlatekey
-  // maps those to themselves -- so the keysym is the number.
+  // A printable character: xlatekey maps those to themselves, so the keysym is
+  // the number.
   if (n >= 0x20 && n <= 0x7e) {
     const ch = String.fromCharCode(n);
     let dom = null;
@@ -149,6 +149,22 @@ export function doomKeyToX(code) {
     else if (ASCII_CODES[ch]) dom = ASCII_CODES[ch];
     return [n, dom];
   }
+
+  //
+  // Anything larger is already a keysym.
+  //
+  // `xlatekey`'s default branch returns the keysym unchanged for everything it
+  // does not recognise, so a binding set to a keypad key, Caps Lock, the Menu
+  // key or a right-hand modifier is stored as that keysym -- 0xffe5, 0xff8d and
+  // so on. Sending it straight back is exactly right, and leaving this out was
+  // a hole: such a setting fell through to the built-in default, so the pad
+  // pressed Ctrl at an engine listening for something else, silently.
+  //
+  // No DOM code name is known for these, which is allowed -- noVNC then sends a
+  // plain keysym event, the same as any client without a scancode.
+  //
+  if (n > 0xff) return [n, null];
+
   return null;
 }
 
@@ -322,6 +338,7 @@ export class DoomGamepad {
     this.settings = { ...DEFAULT_SETTINGS };
     this.keys = {};             // actionId -> [[keysym, code], ...], learned
     this.engineKeys = {};       // ... and the same, read from the engine's config
+    this.unknownKeys = {};      // settings that could not be turned into a keysym
     this.engineSeen = false;
     this._load();
 
@@ -597,6 +614,13 @@ export class DoomGamepad {
     if (own && own.length) return own;
     const eng = this.engineKeys[actionId];
     if (eng && eng.length) return eng;
+
+    // The engine's setting for this action is known and cannot be expressed.
+    // Send nothing rather than the built-in default: the default is a key this
+    // engine is not listening for, and pressing it might well be bound to
+    // something else entirely. The panel says so and offers Key.
+    if (this.unknownKeys && this.unknownKeys[actionId] !== undefined) return [];
+
     const a = ACTION_BY_ID.get(actionId);
     return a ? a.keys : [];
   }
@@ -622,17 +646,32 @@ export class DoomGamepad {
   useEngineKeys(config) {
     this.engineSeen = true;
     const out = {};
+    const unknown = {};
     if (config && typeof config === 'object') {
       for (const [id, setting] of Object.entries(ACTION_DOOMRC)) {
         const raw = config[setting];
         if (raw === undefined || raw === null) continue;
         const pair = doomKeyToX(raw);
-        if (!pair) continue;
+        if (!pair) {
+          // Nothing sensible to send. Recorded rather than ignored, so the panel
+          // can say "the game uses key 164, which this page cannot express"
+          // instead of quietly pressing the default at an engine that is
+          // listening for something else.
+          unknown[id] = raw;
+          continue;
+        }
         out[id] = oneKey(pair);
       }
     }
     this.engineKeys = out;
+    this.unknownKeys = unknown;
     this._onChange();
+  }
+
+  // The engine's setting for this action, where it could not be turned into a
+  // keysym at all. Null when there is no such problem.
+  unknownKeyFor(actionId) {
+    return (this.unknownKeys && this.unknownKeys[actionId]) || null;
   }
 
   isCustomKey(actionId) {
