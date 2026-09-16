@@ -328,14 +328,27 @@ Then what every control is *going* to do, one line each:
 [doom] controller: plan run  in=b6,a2+ sends=NOTHING src=default doomrc=0 unusable=0
 ```
 
-`in=` is what you press — `b7` is button 7, `a5+` an axis pushed positive, `-`
-nothing at all. `sends=` is what the game will receive, and **`sends=NOTHING`
+`in=` is what you press — `b7` is button 7, `a5+` an axis pushed positive, and
+**`-` nothing at all**, which is the other answer worth looking for: a control
+with no button cannot work however the keys are set. (`strafeleft`,
+`straferight` and `strafemod` read `-` on a stock layout by design — the left
+stick strafes, and there are not sixteen buttons to go round.) `sends=` is what the game will receive, and **`sends=NOTHING`
 is the answer** wherever a control does nothing: that one says the engine has no
 key for Run, so nothing can be sent for it. `src=` is where the key came from
 (`engine` from `.doomrc`, `default` built in, `learned` set in the panel),
 `doomrc=` the engine's own number, and `unusable=` a number that has no key at
 all. This is the half of the log worth reading: it is the answer before the
 question, for all twenty controls at once.
+
+A line before the plan means a layout saved by an earlier build was missing
+buttons for actions that build did not have, and the defaults were put back:
+
+```
+[doom] controller: filled in from the defaults, saved layout had no button for: back_out=b1 weapon3=b2 ...
+```
+
+Only gaps are filled. Anything you rebound stays where you put it, and anything
+you **Clear**ed stays cleared.
 
 Finally, as you play, what actually happened:
 

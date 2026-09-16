@@ -363,7 +363,16 @@ export class DoomGamepad {
     this.engineMouse = {};      // mouse button each action may also press
     this.engineRaw = {};        // the engine's own number, for the panel
     this.engineSeen = false;
+
+    // Actions the person deliberately took the button off, so that filling in
+    // the defaults below does not hand it back every time the page loads.
+    this._cleared = new Set();
+
+    // ... and what filling in did, for the log.
+    this.filledIn = [];
+
     this._load();
+    this._fillDefaults();
 
     // Keysyms currently held down on the engine's behalf, against the code
     // name each was pressed with. Keyed by keysym rather than counted: two
@@ -935,8 +944,14 @@ export class DoomGamepad {
   bindAction(actionId, token) {
     for (const [t, id] of Object.entries(this.bindings))
       if (id === actionId) delete this.bindings[t];
-    if (token !== null && token !== undefined)
+    if (token !== null && token !== undefined) {
       this.bindings[token] = actionId;
+      this._cleared.delete(actionId);
+    } else {
+      // Cleared on purpose. Written down, or _fillDefaults would hand the
+      // default button straight back on the next page load.
+      this._cleared.add(actionId);
+    }
     this._save();
     this._onChange();
   }
@@ -965,8 +980,42 @@ export class DoomGamepad {
     this.bindings = { ...DEFAULT_BINDINGS };
     this.settings = { ...DEFAULT_SETTINGS };
     this.keys = {};
+    this._cleared = new Set();
+    this.filledIn = [];
     this._save();
     this._onChange();
+  }
+
+  //
+  // Give an action its default button back when it has none at all.
+  //
+  // What is saved is the whole binding set, and loading it used to replace the
+  // defaults outright. So a layout saved by an earlier build kept working and
+  // every action added after it was saved had no button for ever -- with no way
+  // to find that out and no way back except Reset to defaults. A log from a real
+  // pad had seven weapons, Escape and both strafes reading `in=-`, which is
+  // exactly what it looks like: a set saved before those actions existed.
+  //
+  // Only ever fills a gap. An action that already has a button keeps it, and a
+  // default button somebody has since put another action on is left alone --
+  // so a rebind is never undone, and nothing is ever bound twice.
+  //
+  _fillDefaults() {
+    this.filledIn = [];
+
+    const used = new Set(Object.values(this.bindings));
+
+    for (const [token, id] of Object.entries(DEFAULT_BINDINGS)) {
+      if (token in this.bindings) continue;   // that button is spoken for
+      if (used.has(id)) continue;             // that action already has one
+      if (this._cleared.has(id)) continue;    // ... and this one was cleared on purpose
+
+      this.bindings[token] = id;
+      used.add(id);
+      this.filledIn.push(id + '=' + token);
+    }
+
+    if (this.filledIn.length) this._save();
   }
 
   //
@@ -978,6 +1027,7 @@ export class DoomGamepad {
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
         bindings: this.bindings, settings: this.settings, keys: this.keys,
+        cleared: [...this._cleared],
       }));
     } catch (e) { /* nothing to do about it */ }
   }
@@ -1015,6 +1065,12 @@ export class DoomGamepad {
       }
       this.keys = clean;
     }
+    // Missing rather than empty means the blob predates the Clear button being
+    // remembered at all. Then nothing was cleared on purpose, and every gap in
+    // it is an action that did not exist when it was written.
+    if (Array.isArray(saved.cleared))
+      this._cleared = new Set(saved.cleared.filter(id => ACTION_BY_ID.has(id)));
+
     if (saved.settings && typeof saved.settings === 'object') {
       for (const [k, v] of Object.entries(saved.settings)) {
         if (!(k in DEFAULT_SETTINGS)) continue;

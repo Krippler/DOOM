@@ -1375,6 +1375,9 @@ function reportPad() {
   // is precisely the sort of wrong log that costs a release to believe.
   if (padKeysSettled && r.id !== padPlanned) {
     padPlanned = r.id;
+    if (gamepad.filledIn.length)
+      padLog('filled in from the defaults, saved layout had no button for: '
+             + gamepad.filledIn.join(' '));
     for (const line of gamepad.plan()) padLog('plan ' + line);
   }
 }
