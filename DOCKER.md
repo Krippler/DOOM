@@ -464,7 +464,11 @@ Two things worth knowing:
   **Options → Setup → Controls** and the controller's *Fire* has to be pointed
   at the new key as well, or it will go on pressing Ctrl.
 - On a phone there is no pointer to capture, so the controller is the whole of
-  the input and the *grab pointer* warning does not apply. Turning still works:
+  the input. Up to 1.10.67 that stopped the pad working entirely: the start
+  screen was hidden only by a pointer-lock event, iOS has no Pointer Lock API,
+  so the screen never went away — and the page will not send a key while it is
+  up, however well the pad is detected. The *grab pointer* warning does not
+  apply either. Turning still works:
   the right stick sends the same relative motion a captured mouse would. iOS has
   no Pointer Lock API at all, so the page no longer warns about a capture it
   never attempted — it says to pair a controller instead, and says nothing once

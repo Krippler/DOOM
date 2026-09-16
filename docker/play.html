@@ -192,8 +192,8 @@
 
 <div id="overlay">
   <h1>DOOM</h1>
-  <p>The mouse is captured either way, so it cannot slide out of the picture
-     while you turn. Sound plays in this tab.</p>
+  <p id="overlay-blurb">The mouse is captured either way, so it cannot slide out
+     of the picture while you turn. Sound plays in this tab.</p>
   <div id="choices">
     <button id="play-fullscreen" type="button">Play fullscreen</button>
     <button id="play-windowed" type="button">Play in this window</button>
@@ -857,6 +857,7 @@ function padMayTurn() {
     reportPad();
     padWatch();
     padLive();
+    refreshNoMouse();
     requestAnimationFrame(step);
   }
   requestAnimationFrame(step);
@@ -956,6 +957,42 @@ function renderPad() {
 // a button that they are about to make anyway. It is in DOCKER.md instead.
 //
 let padNoteState = null;
+
+//
+// "No mouse to capture", while that is still true.
+//
+// Only on a device with no pointer lock, only while actually playing, and only
+// until a pad turns up -- then it goes, because it has been answered. It owns
+// nothing else on the status line: it will not overwrite another message and
+// will not clear one it did not write.
+//
+// Same screen, different device. Explaining mouse capture to a phone is the
+// start screen's version of the note below: true of the code, and of nothing
+// the person holding it can see or do.
+(function fixBlurb() {
+  if (canLock()) return;
+  const blurb = document.getElementById('overlay-blurb');
+  if (blurb)
+    blurb.textContent = 'There is no mouse to capture here, so a game '
+      + 'controller is the whole of the input: the sticks move and turn. '
+      + 'Sound plays in this tab.';
+})();
+
+const NO_MOUSE_NOTE = 'No mouse to capture on this device — pair a game '
+                    + 'controller and press a button on it. Everything else works.';
+let noMouseShown = false;
+
+function refreshNoMouse() {
+  if (canLock()) return;
+
+  const want = !gamepad.available() && !!overlayEl && overlayEl.hidden;
+
+  if (want === noMouseShown) return;
+  noMouseShown = want;
+
+  if (want) status(NO_MOUSE_NOTE);
+  else if (statusMain === NO_MOUSE_NOTE) status('');
+}
 
 function renderPadNote() {
   if (!padNoteEl) return;
@@ -2163,6 +2200,26 @@ function enterPlay(fullscreen) {
   retireEscNote();
   closePad();
 
+  //
+  // Start playing on a device that cannot lock the pointer.
+  //
+  // The only thing that hides this screen is the pointerlockchange handler
+  // further down, and without a Pointer Lock API that event never fires. So on
+  // iOS the start screen stayed up over the game for ever: the picture was
+  // behind it, the buttons did nothing that lasted, and padActive() -- which is
+  // `overlay.hidden` -- never became true, so the controller was never allowed
+  // to send a single key. Everything else about the pad was working.
+  //
+  // Escape puts it back: the handler there already checks locked(), which is
+  // false here, so it shows this screen again without help.
+  //
+  if (!canLock()) {
+    overlayEl.hidden = true;
+    videoReset();
+    resetPointer();
+    rfb.focus();
+  }
+
   // Nothing reports a refused pointer lock reliably, so check. But only where
   // there was a lock to refuse: a device without the API has not failed at
   // anything, and on a phone every word of that warning is wrong.
@@ -2171,12 +2228,15 @@ function enterPlay(fullscreen) {
       status('The browser did not capture the mouse. Click the picture to try '
            + 'again. Until it does, turn GRAB POINTER off under Options → '
            + 'Setup → Mouse, or the view will jump about.');
-    } else if (!canLock() && !gamepad.available()) {
-      status('No mouse to capture on this device — pair a game controller and '
-           + 'press a button on it. Everything else works.');
-    } else {
+    } else if (canLock()) {
       status('');
     }
+    // The no-pointer-lock case is not decided here. It is answered every frame
+    // by refreshNoMouse() below, because the answer changes: iOS hands the page
+    // a controller only once a button has been pressed on it, which is the very
+    // thing the note asks for -- so a note written once, 700 ms in, went on
+    // telling somebody holding a connected pad to go and connect a pad.
+    refreshNoMouse();
   }, 700);
 }
 

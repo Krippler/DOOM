@@ -6,6 +6,43 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.68] — 2026-09-16
+
+### Fixed
+- **The start screen never went away on iOS, so the controller was never allowed
+  to send anything.** This is the whole of "the controller doesn't work on the
+  phone", and it had nothing to do with controllers.
+
+  One line hides that screen:
+
+  ```js
+  document.addEventListener('pointerlockchange', () => {
+    overlayEl.hidden = locked();
+  ```
+
+  iOS has no Pointer Lock API, so `pointerlockchange` never fires, so the screen
+  never hid. The game was running behind it the whole time. And `padActive()` —
+  the test the page uses before sending a single key — is `overlay.hidden`, so a
+  perfectly detected, perfectly bound pad sat there with every press discarded
+  on purpose. Nine releases of controller work could not have fixed it, because
+  none of it was wrong.
+
+  `enterPlay()` now hides the screen itself where there is no pointer lock to do
+  it. Checked against a browser with `Element.prototype.requestPointerLock`
+  removed: the overlay hides, `padActive()` goes true, and a press arrives in
+  the container log as `down b0 -> act` / `sent space down`, none of which
+  happened before.
+
+- **"Pair a game controller" stayed up after one was paired.** The note was
+  written once, 700 ms after play started, and never revisited — but iOS hands
+  the page a pad only *after* a button is pressed on it, which is the very thing
+  the note asks for. So it told somebody holding a working controller to go and
+  connect a controller. It is answered every frame now and clears the moment a
+  pad appears.
+
+- **The start screen explained mouse capture to a phone.** It now says the
+  controller is the whole of the input on a device with no pointer to capture.
+
 ## [1.10.67] — 2026-09-16
 
 ### Fixed
