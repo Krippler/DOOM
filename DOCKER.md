@@ -285,8 +285,14 @@ browsers do not: they report the triggers as **analog axes** instead, and then
 there is no button 6 or 7 at all. Every other control works, which from the
 outside looks exactly like "the triggers don't work".
 
-So **Bind takes an axis as well as a button** — press **Bind** and squeeze the
-trigger. It records which way the axis travelled from where it was resting, so a
+Those are found automatically now: an axis that **rests at one extreme** is a
+trigger, because a stick resting at ±1 is a broken stick. When the layout points
+Fire and Run at buttons the pad does not have, the lower-numbered trigger axis
+becomes Run and the next becomes Fire, and the panel marks the row *found as a
+trigger axis*. Nothing to set by hand.
+
+Where that does not apply, **Bind takes an axis as well as a button** — press
+**Bind** and squeeze the trigger. It records which way the axis travelled from where it was resting, so a
 trigger that sits at -1 and runs to +1 binds correctly and is not treated as held
 while it rests. The panel shows such a binding as `Axis 5 +`.
 

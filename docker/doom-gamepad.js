@@ -353,6 +353,11 @@ export class DoomGamepad {
     // while I was playing" is a question that can only be answered afterwards.
     this._log = [];
 
+    this._rest = null;      // where each axis sits when nothing is touching it
+    this._restFor = null;   // ... and which pad that was measured on
+    this._autoDone = null;  // pad whose triggers have already been looked at
+    this._autoBound = {};   // actions bound by trigger detection, for the panel
+
     this._capture = null;   // a pending "press a button to bind it"
     this._lastPoll = 0;
     this._seen = new Set(); // pad ids, so a reconnect is not announced twice
@@ -395,6 +400,8 @@ export class DoomGamepad {
   //
   poll(active) {
     const pad = this.pad();
+    this._learnRest(pad);
+    this._autoBindTriggers(pad);
     const now = performance.now();
     const dt = this._lastPoll ? Math.min(100, now - this._lastPoll) : 16.7;
     this._lastPoll = now;
@@ -447,6 +454,89 @@ export class DoomGamepad {
       const dx = t * s.turnSpeed * (dt / 16.7) * (s.invertTurn ? -1 : 1);
       if (dx) this._turn(dx);
     }
+  }
+
+  //
+  // Where the axes sit at rest, measured once per pad.
+  //
+  // A stick rests near zero. A trigger reported as an axis very often rests at
+  // one extreme and travels to the other, and that difference is what tells the
+  // two apart without knowing anything about the particular pad.
+  //
+  _learnRest(pad) {
+    if (!pad) { this._rest = null; this._restFor = null; this._autoDone = null; return; }
+    if (this._restFor === pad.id && this._rest) return;
+    this._restFor = pad.id;
+    this._rest = Array.from(pad.axes, v => (typeof v === 'number' ? v : 0));
+  }
+
+  //
+  // Bind the triggers when the layout says they are buttons and the pad has none.
+  //
+  // The standard layout puts LT and RT at buttons 6 and 7. A pad reporting them
+  // as axes has no button 6 or 7 at all, so those two actions point at nothing
+  // that exists and nothing happens -- with every other control working, which
+  // is what makes it look so strange.
+  //
+  // An axis resting at an extreme is taken to be a trigger. That is an
+  // observation rather than a guess at indices: a stick resting at ±1 is a broken
+  // stick. The lower-numbered one becomes Run and the next Fire, matching the
+  // buttons they stand in for. This never replaces a binding the pad can satisfy.
+  //
+  _autoBindTriggers(pad) {
+    if (!pad || !this._rest) return;
+    if (this._autoDone === pad.id) return;
+    this._autoDone = pad.id;
+
+    const missing = (id) => {
+      const t = this.inputFor(id);
+      if (!t) return true;
+      const m = /^b(\d+)$/.exec(t);
+      return !!m && Number(m[1]) >= pad.buttons.length;
+    };
+    if (!missing('fire') && !missing('run')) return;
+
+    const triggers = [];
+    this._rest.forEach((r, i) => {
+      if (Math.abs(r) >= 0.8) triggers.push({ i, dir: r < 0 ? '+' : '-' });
+    });
+    if (!triggers.length) return;
+
+    const want = [];
+    if (missing('run')) want.push('run');
+    if (missing('fire')) want.push('fire');
+    for (let n = 0; n < want.length && n < triggers.length; n++) {
+      const t = triggers[n];
+      this.bindAction(want[n], 'a' + t.i + t.dir);
+      this._autoBound[want[n]] = true;
+    }
+  }
+
+  wasAutoBound(actionId) {
+    return !!this._autoBound[actionId];
+  }
+
+  //
+  // Actions that cannot work as things stand, for the page to say so plainly.
+  //
+  // Two ways an action goes dead without looking wrong: its key is a value this
+  // page cannot express, or its input is a button the connected pad does not
+  // have. Both were silent for several releases.
+  //
+  troubled() {
+    const pad = this.pad();
+    const out = [];
+    for (const a of ACTIONS) {
+      if (this.unknownKeyFor(a.id) !== null) {
+        out.push({ id: a.id, label: a.label, why: 'key' });
+        continue;
+      }
+      const t = this.inputFor(a.id);
+      const m = t && /^b(\d+)$/.exec(t);
+      if (pad && m && Number(m[1]) >= pad.buttons.length)
+        out.push({ id: a.id, label: a.label, why: 'button' });
+    }
+    return out;
   }
 
   // Send only the differences. Re-pressing a key that is already down every

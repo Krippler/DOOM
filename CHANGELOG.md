@@ -6,6 +6,54 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.60] — 2026-09-16
+
+### Fixed
+- **Triggers reported as axes are found without being bound by hand.** 1.10.58
+  made it *possible* to bind an axis and left the doing of it to whoever was
+  holding the pad, which is not a fix. An axis that **rests at one extreme** is
+  now taken to be a trigger — a stick resting at ±1 is a broken stick — and when
+  the layout points Fire and Run at buttons the pad does not have, the
+  lower-numbered trigger axis becomes Run and the next Fire. The panel marks
+  those rows *found as a trigger axis*.
+
+  It is an observation rather than a guess at indices, it never replaces a
+  binding the pad can satisfy, and anything set by hand wins. Verified against a
+  synthetic pad with six buttons and triggers on axes 4 and 5 resting at -1, with
+  no manual binding at all: Fire came out as `a5+` and Run as `a4+`, squeezing
+  each sent `Control_L` and `Shift_L`, and the four stick axes resting at 0 were
+  not mistaken for triggers. A standard seventeen-button pad is untouched — Fire
+  stays on `b7`, Run on `b6`.
+
+- **The start screen says which actions cannot work.** An action goes dead two
+  ways without looking wrong: its key is a value the page cannot express, or its
+  input is a button the connected pad does not have. Both were silent. The
+  controller line now names them — *Fire, Run: no such button on this pad* — at
+  most three with "and N more" after, so a glance is enough and the screen cannot
+  fill up.
+
+  Six rounds of this went by with that line saying only that a controller was
+  present, which was the least useful true thing it could have said.
+
+### Notes
+- **Modifier keys were ruled out by tracing the engine, not by argument.** Fire
+  and Run are the only two controls that send a modifier — `Control_L` and
+  `Shift_L` — and x11vnc manages modifier state itself, so its `-modtweak` was a
+  plausible culprit. A trace at the top of `G_Responder`, with keys sent from a
+  raw RFB client, settled it:
+
+  ```
+  Control_L held:  down 157  up 157   (key_fire=157)
+  Shift_L held:    down 182  up 182   (key_speed=182)
+  space held:      down 32   up 32
+  ```
+
+  The engine receives them exactly as it receives any other key, so nothing about
+  the modifiers, x11vnc or the wire is at fault, and the remaining explanation is
+  on the pad side. One apparent oddity in the same trace — a missing keydown for
+  the arrow — turned out to be the menu eating it, which is correct behaviour and
+  not a bug. The trace is not in the shipped build.
+
 ## [1.10.59] — 2026-09-16
 
 ### Fixed
