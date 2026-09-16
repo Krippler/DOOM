@@ -6,7 +6,7 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
-## [Unreleased]
+## [1.10.69] — 2026-09-16
 
 ### Fixed
 - **A control bound to Enter fires at nothing, and now the page knows it.**
