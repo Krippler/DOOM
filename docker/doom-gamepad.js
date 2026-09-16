@@ -181,12 +181,38 @@ export const BUTTON_NAMES = [
   'D-pad up', 'D-pad down', 'D-pad left', 'D-pad right', 'Guide',
 ];
 
+//
+// A binding names an input, not just a button.
+//
+// `b7` is button 7; `a5+` is axis 5 pushed positive, `a2-` negative. Axes are
+// bindable because a trigger is not reliably a button: the standard mapping puts
+// LT and RT at buttons 6 and 7, but plenty of pads and browsers report them as
+// analog axes instead, and then nothing is at 6 and 7 at all. Every other
+// control on such a pad works, which is exactly what "triggers don't work,
+// everything else does" looks like from the outside.
+//
+// Rather than guess which axis a given pad uses, the panel binds whatever moves.
+//
 export const DEFAULT_BINDINGS = {
-  0: 'act',         1: 'back_out',    2: 'weapon3',    3: 'weapon2',
-  4: 'weapon4',     5: 'weapon5',     6: 'run',        7: 'fire',
-  8: 'map',         9: 'menu',        10: 'weapon1',   11: 'weapon6',
-  12: 'forward',    13: 'back',       14: 'turnleft',  15: 'turnright',
+  b0: 'act',        b1: 'back_out',   b2: 'weapon3',   b3: 'weapon2',
+  b4: 'weapon4',    b5: 'weapon5',    b6: 'run',       b7: 'fire',
+  b8: 'map',        b9: 'menu',       b10: 'weapon1',  b11: 'weapon6',
+  b12: 'forward',   b13: 'back',      b14: 'turnleft', b15: 'turnright',
 };
+
+// How far a trigger has to be squeezed, and an axis pushed, to count. A trigger
+// reporting only `value` never sets `pressed` on some pads, and one that tops
+// out around 0.5 would never have passed the old half-way mark.
+const TRIGGER_AT = 0.3;
+const AXIS_AT    = 0.5;
+
+export function inputName(token) {
+  const m = /^b(\d+)$/.exec(token);
+  if (m) return BUTTON_NAMES[Number(m[1])] || 'Button ' + m[1];
+  const a = /^a(\d+)([+-])$/.exec(token);
+  if (a) return 'Axis ' + a[1] + ' ' + a[2];
+  return String(token);
+}
 
 export const DEFAULT_SETTINGS = {
   enabled:    true,
@@ -253,6 +279,30 @@ function stick(x, y, deadzone) {
   if (m <= deadzone) return [0, 0, 0];
   const scaled = (m - deadzone) / (1 - deadzone);
   return [(x / m) * scaled, (y / m) * scaled, scaled];
+}
+
+//
+// Is the input this token names currently on?
+//
+// Buttons take `pressed` or an analog `value` past the trigger mark, since a
+// trigger may report one and not the other. An axis binding is directional: the
+// panel records which way the axis moved when it was bound, so a trigger that
+// rests at -1 and travels to +1 binds as `+` and never reads as held at rest.
+//
+export function inputDown(pad, token) {
+  if (!pad) return false;
+  const b = /^b(\d+)$/.exec(token);
+  if (b) {
+    const btn = pad.buttons[Number(b[1])];
+    return !!btn && (btn.pressed || btn.value > TRIGGER_AT);
+  }
+  const a = /^a(\d+)([+-])$/.exec(token);
+  if (a) {
+    const v = pad.axes[Number(a[1])];
+    if (typeof v !== 'number') return false;
+    return a[2] === '+' ? v >= AXIS_AT : v <= -AXIS_AT;
+  }
+  return false;
 }
 
 export class DoomGamepad {
@@ -352,15 +402,10 @@ export class DoomGamepad {
       for (const [sym, code] of this.keysFor(id)) want.set(sym, code);
     };
 
-    // Buttons. A trigger reports an analog `value` as well as `pressed`, and
-    // the standard mapping's own threshold is what the pad decided; take
-    // either, so a half-squeezed trigger still fires.
-    pad.buttons.forEach((b, i) => {
-      const down = b && (b.pressed || b.value > 0.5);
-      if (!down) return;
-      const id = this.bindings[i];
-      if (id) add(id);
-    });
+    // Whatever each binding names -- a button, or an axis pushed one way.
+    for (const [token, id] of Object.entries(this.bindings)) {
+      if (id && inputDown(pad, token)) add(id);
+    }
 
     // Sticks.
     const s = this.settings;
@@ -454,6 +499,22 @@ export class DoomGamepad {
         .filter(b => b.pressed || b.value > 0.05) : [],
       axes: pad ? Array.from(pad.axes, round) : [],
       held: [...this._held.keys()],
+      // Every input currently on, named the way a binding names it, so an axis
+      // that is really a trigger shows up as one.
+      down: (() => {
+        const on = [];
+        if (pad) {
+          pad.buttons.forEach((b, i) => {
+            if (b && (b.pressed || b.value > TRIGGER_AT)) on.push('b' + i);
+          });
+          pad.axes.forEach((v, i) => {
+            if (typeof v === 'number' && Math.abs(v) >= AXIS_AT)
+              on.push('a' + i + (v > 0 ? '+' : '-'));
+          });
+        }
+        return on;
+      })(),
+      buttonsPresent: pad ? pad.buttons.length : 0,
       log: this._log.slice(-14),
       enabled: this.settings.enabled,
     };
@@ -467,13 +528,19 @@ export class DoomGamepad {
     this.cancelCapture();
     return new Promise(resolve => {
       // Ignore whatever is already held, or the button that opened the panel
-      // binds itself the instant capture starts.
+      // binds itself the instant capture starts. Axes are remembered where they
+      // are resting, so an axis is bound by moving it rather than by holding it
+      // -- which is the only way to bind a trigger that rests at -1.
       const pad = this.pad();
       const ignore = new Set();
-      if (pad) pad.buttons.forEach((b, i) => {
-        if (b && (b.pressed || b.value > 0.5)) ignore.add(i);
-      });
-      this._capture = { resolve, ignore };
+      const rest = [];
+      if (pad) {
+        pad.buttons.forEach((b, i) => {
+          if (b && (b.pressed || b.value > TRIGGER_AT)) ignore.add('b' + i);
+        });
+        pad.axes.forEach((v, i) => { rest[i] = typeof v === 'number' ? v : 0; });
+      }
+      this._capture = { resolve, ignore, rest };
     });
   }
 
@@ -486,13 +553,27 @@ export class DoomGamepad {
 
   _takeCapture(pad) {
     const cap = this._capture;
+
     for (let i = 0; i < pad.buttons.length; i++) {
       const b = pad.buttons[i];
-      const down = b && (b.pressed || b.value > 0.5);
-      if (!down) { cap.ignore.delete(i); continue; }
-      if (cap.ignore.has(i)) continue;
+      const down = b && (b.pressed || b.value > TRIGGER_AT);
+      if (!down) { cap.ignore.delete('b' + i); continue; }
+      if (cap.ignore.has('b' + i)) continue;
       this._capture = null;
-      cap.resolve(i);
+      cap.resolve('b' + i);
+      return;
+    }
+
+    // An axis counts once it has travelled well clear of where it was resting
+    // when binding started, which is what separates a squeezed trigger from a
+    // stick that never quite centres.
+    for (let i = 0; i < pad.axes.length; i++) {
+      const v = pad.axes[i];
+      if (typeof v !== 'number') continue;
+      const moved = v - (cap.rest[i] || 0);
+      if (Math.abs(moved) < 0.6) continue;
+      this._capture = null;
+      cap.resolve('a' + i + (moved > 0 ? '+' : '-'));
       return;
     }
   }
@@ -500,9 +581,9 @@ export class DoomGamepad {
   //
   // Bindings.
   //
-  bind(buttonIndex, actionId) {
-    if (actionId === null || actionId === undefined) delete this.bindings[buttonIndex];
-    else this.bindings[buttonIndex] = actionId;
+  bind(token, actionId) {
+    if (actionId === null || actionId === undefined) delete this.bindings[token];
+    else this.bindings[token] = actionId;
     this._save();
     this._onChange();
   }
@@ -582,19 +663,19 @@ export class DoomGamepad {
   // read, and the panel shows one button per action, so a rebind moves the
   // binding rather than adding a second one.
   //
-  bindAction(actionId, buttonIndex) {
-    for (const [i, id] of Object.entries(this.bindings))
-      if (id === actionId) delete this.bindings[i];
-    if (buttonIndex !== null && buttonIndex !== undefined)
-      this.bindings[buttonIndex] = actionId;
+  bindAction(actionId, token) {
+    for (const [t, id] of Object.entries(this.bindings))
+      if (id === actionId) delete this.bindings[t];
+    if (token !== null && token !== undefined)
+      this.bindings[token] = actionId;
     this._save();
     this._onChange();
   }
 
-  // Which button currently presses this action, if any.
-  buttonFor(actionId) {
-    for (const [i, id] of Object.entries(this.bindings))
-      if (id === actionId) return Number(i);
+  // Which input currently presses this action, if any.
+  inputFor(actionId) {
+    for (const [t, id] of Object.entries(this.bindings))
+      if (id === actionId) return t;
     return null;
   }
 
@@ -637,10 +718,13 @@ export class DoomGamepad {
     // longer has, or a setting it never had, is dropped rather than trusted.
     if (saved.bindings && typeof saved.bindings === 'object') {
       const clean = {};
-      for (const [i, id] of Object.entries(saved.bindings)) {
-        const n = Number(i);
-        if (Number.isInteger(n) && n >= 0 && n < 32 && ACTION_BY_ID.has(id))
-          clean[n] = id;
+      for (const [key, id] of Object.entries(saved.bindings)) {
+        if (!ACTION_BY_ID.has(id)) continue;
+        // Bindings were bare button numbers before axes could be bound. Read
+        // those as buttons rather than throwing away somebody's layout.
+        const token = /^\d+$/.test(key) ? 'b' + key : key;
+        if (/^b\d{1,2}$/.test(token) || /^a\d{1,2}[+-]$/.test(token))
+          clean[token] = id;
       }
       this.bindings = clean;
     }
