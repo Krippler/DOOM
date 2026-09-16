@@ -292,22 +292,71 @@ is added to Run and the next to Fire — *added*, not substituted, so the row re
 
 #### What the container log says about your pad
 
-The page describes the controller it found into the container's log, once per pad:
+Everything about a controller happens in the browser, where the container cannot
+see it — so the page writes what it does into the container's log, which is the
+thing anyone actually pastes when a control does not work. Read it with
+`docker logs <container>` and look for `[doom] controller:`.
+
+One line goes in on every page load, whether or not there is a pad:
 
 ```
-[doom] controller found: id=Microsoft X-Box 360 pad (Vendor: 045e Product: 028e)
+[doom] controller: client 1.10.63, keymap from the engine: key_down=115 key_fire=0 ...
+```
+
+That is the build the browser is really running — not the one you pulled, the one
+the tab has — and the engine's own bindings as the page received them. No such
+line at all means the browser is not running this page: a stale tab, or a cached
+copy from before controllers existed. Reload it.
+
+Then, once per pad:
+
+```
+[doom] controller: found id=Microsoft X-Box 360 pad (Vendor: 045e Product: 028e)
        mapping=none buttons=11 axes=0.00,0.00,-1.00,0.00,0.00,-1.00,0.00,0.00
 ```
 
 That is the whole shape of the pad: its name, whether the browser calls its
 layout standard, how many buttons it admits to, and where each axis rests. A
 `-1.00` is a trigger sitting at rest; `mapping=none` means the button numbers
-will not match their usual names. It is the one line worth quoting if a control
-does not work.
+will not match their usual names.
 
-It reaches the log by asking for a URL that does not exist, because there is no
-other channel from the browser to the container — the 404 in `websockify.log` is
-deliberate. Nothing leaves the machine.
+Then what every control is *going* to do, one line each:
+
+```
+[doom] controller: plan fire in=b7,a5+ sends=mouse1 src=default doomrc=0 unusable=0
+[doom] controller: plan act  in=b0     sends=e      src=engine  doomrc=101
+[doom] controller: plan run  in=b6,a2+ sends=NOTHING src=default doomrc=0 unusable=0
+```
+
+`in=` is what you press — `b7` is button 7, `a5+` an axis pushed positive, `-`
+nothing at all. `sends=` is what the game will receive, and **`sends=NOTHING`
+is the answer** wherever a control does nothing: that one says the engine has no
+key for Run, so nothing can be sent for it. `src=` is where the key came from
+(`engine` from `.doomrc`, `default` built in, `learned` set in the panel),
+`doomrc=` the engine's own number, and `unusable=` a number that has no key at
+all. This is the half of the log worth reading: it is the answer before the
+question, for all twenty controls at once.
+
+Finally, as you play, what actually happened:
+
+```
+[doom] controller: down b0 -> act
+[doom] controller: sent e down
+[doom] controller: up   b0
+[doom] controller: sent e up
+[doom] controller: down b7 -> fire
+[doom] controller: mouse mask 0 -> 1
+```
+
+Every button as it goes down and comes up, including ones bound to nothing
+(`down b4 -> nothing bound`), and every key and mouse button sent because of it.
+Axes appear only where something is bound to them, or the sticks would fill the
+log by themselves. It stops after 400 lines, which is far more than a diagnosis
+needs.
+
+It reaches the log over the same connection that carries the picture: the page
+asks the container's own proxy for a URL, and the proxy prints it. Nothing
+leaves the machine.
 
 Where that does not apply, **Bind takes an axis as well as a button** — press
 **Bind** and squeeze the trigger. It records which way the axis travelled from where it was resting, so a
@@ -382,6 +431,11 @@ disconnects mid-game lets go of whatever it was holding rather than leaving the
 trigger down.
 
 #### When only some of it works
+
+**Start with the container's log.** `docker logs <container> | grep controller:`
+answers this without anyone having to watch a screen — see *what the container
+log says about your pad* above. The rest of this section is the same information
+from inside the browser, for when the log is not to hand.
 
 The panel ends with **what the pad is reporting**, which exists because "some
 buttons work and the rest do nothing" has three completely different causes and

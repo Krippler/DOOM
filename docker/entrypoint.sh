@@ -567,23 +567,11 @@ log "starting noVNC on port $WEB_PORT"
         case "$wsline" in
             "picture gap"*) log "$wsline" ;;
             #
-            # The page describing the controller it found. It asks for a URL
-            # that does not exist so the request lands here, because there is no
-            # other way for the browser to reach this log -- and this log is
-            # what gets pasted when a controller misbehaves.
+            # The controller's log, already decoded and one line per line by
+            # doom-wsproxy. Anything a page can put in it has been collapsed to
+            # single spaces there, so it cannot forge a line of its own here.
             #
-            *doom-pad-report*)
-                padinfo=$(printf '%s' "$wsline" \
-                    | sed -n 's|.*doom-pad-report?\([^ "]*\).*|\1|p' \
-                    | python3 -c 'import sys, urllib.parse as u
-q = u.unquote_plus(sys.stdin.read().strip())
-print(" ".join(q.replace("&", " ").split())[:400])' 2>/dev/null)
-                if [ -n "$padinfo" ]; then
-                    log "controller found: $padinfo"
-                else
-                    printf '%s\n' "$wsline" >>"$STATE/websockify.log"
-                fi
-                ;;
+            "controller:"*) log "$wsline" ;;
             *) printf '%s\n' "$wsline" >>"$STATE/websockify.log" ;;
         esac
     done &

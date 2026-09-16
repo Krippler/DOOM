@@ -375,6 +375,7 @@ export class DoomGamepad {
     // can only be read when the game is not being played, so "what did it send
     // while I was playing" is a question that can only be answered afterwards.
     this._log = [];
+    this._logSeq = 0;
 
     this._rest = null;      // where each axis sits when nothing is touching it
     this._restFor = null;   // ... and which pad that was measured on
@@ -588,13 +589,45 @@ export class DoomGamepad {
   }
 
   //
+  // What every action will actually do, resolved.
+  //
+  // One line per action: which inputs press it, which keys it will send, where
+  // that key came from, and the engine's own number. This is the block that
+  // answers "why does fire do nothing" without anybody having to guess, and it
+  // is the thing that should have been written first.
+  //
+  plan() {
+    const out = [];
+    for (const a of ACTIONS) {
+      const inputs = this.inputsFor(a.id);
+      const keys = this.keysFor(a.id);
+      const mb = keys.length ? null : this.mouseFor(a.id);
+      const unknown = this.unknownKeyFor(a.id);
+      const raw = this.rawFor(a.id);
+
+      let sends;
+      if (keys.length) sends = keys.map(([k]) => keyName(k)).join('+');
+      else if (mb !== null) sends = 'mouse' + (mb + 1);
+      else sends = 'NOTHING';
+
+      out.push(a.id
+        + ' in=' + (inputs.length ? inputs.join(',') : '-')
+        + ' sends=' + sends
+        + ' src=' + this.keySource(a.id)
+        + (raw !== null ? ' doomrc=' + raw : '')
+        + (unknown !== null ? ' unusable=' + unknown : ''));
+    }
+    return out;
+  }
+
+  //
   // A one-line description of the pad, for the container's log.
   //
-  // There is no channel from this page to that log, and that log is where a
-  // controller report has to appear -- it is what somebody pastes when something
-  // does not work. So the page asks for a URL that does not exist, with the
-  // description in the query string, and the entrypoint lifts it out of
-  // websockify's request log. The 404 is the point rather than a mistake.
+  // Which pad the browser admits to, what it calls itself, how many buttons it
+  // claims and where its axes rest with nothing touched -- the four questions
+  // every controller report so far has turned on, and none of them answerable
+  // from inside the container. The page sends this to doom-wsproxy, which
+  // prints it where the entrypoint can lift it into the log.
   //
   padReport() {
     const pad = this.pad();
@@ -634,7 +667,11 @@ export class DoomGamepad {
   }
 
   _note(keysym, down) {
-    this._log.push({ keysym, down, at: Math.round(performance.now()) });
+    // A sequence number as well as the entry: the log itself is a ring that
+    // drops its oldest, so a reader cannot tell what is new by its length.
+    this._logSeq++;
+    this._log.push({ keysym, down, seq: this._logSeq,
+                     at: Math.round(performance.now()) });
     if (this._log.length > 24) this._log.shift();
   }
 
@@ -698,6 +735,8 @@ export class DoomGamepad {
       })(),
       buttonsPresent: pad ? pad.buttons.length : 0,
       log: this._log.slice(-14),
+      logSeq: this._logSeq,
+      mouseMask: this._mouseMask,
       enabled: this.settings.enabled,
     };
   }

@@ -550,6 +550,38 @@ set to `s` and a trace on `M_Responder`: two presses of the arrow gave
 the same pair, where before the second would have been a jump to item 3.
 `key_use` set to `e` arrived as `ch=13` and selected the item.
 
+## Getting a browser's side of the story into the container's log
+
+Not the engine, but it cost more releases than anything in it. A controller
+lives entirely in the browser: which pad the Gamepad API admits to, what it
+calls the buttons, which keysym the page decided to send. Six releases went out
+guessing at that, each one fixing something that turned out to be right already,
+because the only instruments were on the screen of the person playing and
+nobody is going to read a diagnostic strip mid-level.
+
+The first attempt had the page ask for a URL that did not exist, on the theory
+that websockify's HTTP request log would carry the query string into the
+container's log. It never appeared, for two independent reasons:
+
+- `WebSockifyRequestHandler.log_request` calls its parent **only under
+  `--verbose`**, so the line with the URL in it is never written at all. What
+  does get written on a 404 is `log_error`, which prints the code and nothing
+  else.
+- Python block-buffers stdout through a pipe, and the entrypoint reads
+  websockify through one. Even the lines that are written arrive in 4 KB clumps,
+  long after the moment they describe.
+
+So `doom-wsproxy` answers the URL itself now, prints the decoded lines flushed,
+and returns 204. The entrypoint lifts anything beginning `controller:` into the
+log the same way it already lifts `picture gap`. Whitespace in each line is
+collapsed where it is printed, so nothing a page can send can forge a second
+line of container log.
+
+One line goes in on every page load carrying the build the browser is actually
+running and the bindings it read, which by itself distinguishes "the controller
+does not work" from "the tab is running a client from two releases ago" — a
+distinction the container's log previously could not make at all.
+
 ## Added
 
 Three things the 1997 release had no way to do, all reachable from
