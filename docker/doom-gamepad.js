@@ -168,6 +168,24 @@ export function doomKeyToX(code) {
   return null;
 }
 
+//
+// The mouse button the engine will also accept for an action.
+//
+// `G_BuildTiccmd` reads fire as `gamekeydown[key_fire] || mousebuttons[mousebfire]`
+// and strafe the same way. So a player whose fire is the mouse has no *key* for
+// firing at all, and a controller that only ever sends keys cannot fire however
+// it is bound -- which is exactly the shape of "I mapped fire to B and that does
+// not work either".
+//
+// The engine's own setting says which button, and the page sends it alongside the
+// key. Nothing else here can be a mouse button: there is no `mouseb_speed`, so Run
+// is a key and only a key.
+//
+const ACTION_MOUSEB = {
+  fire:      ['mouseb_fire', 0],
+  strafemod: ['mouseb_strafe', 1],
+};
+
 // Which `.doomrc` setting each action is pressing.
 const ACTION_DOOMRC = {
   fire: 'key_fire',        act: 'key_use',            run: 'key_speed',
@@ -328,10 +346,13 @@ export class DoomGamepad {
   // supplies all three, so this file never touches the RFB connection and can
   // be exercised without one.
   //
-  constructor({ press, release, turn, onChange } = {}) {
+  constructor({ press, release, turn, mouse, onChange } = {}) {
     this._press = press || (() => {});
     this._release = release || (() => {});
     this._turn = turn || (() => {});
+    // Which mouse buttons the pad is holding, as a bitmask the page sends on.
+    this._mouse = mouse || (() => {});
+    this._mouseMask = 0;
     this._onChange = onChange || (() => {});
 
     this.bindings = { ...DEFAULT_BINDINGS };
@@ -339,6 +360,8 @@ export class DoomGamepad {
     this.keys = {};             // actionId -> [[keysym, code], ...], learned
     this.engineKeys = {};       // ... and the same, read from the engine's config
     this.unknownKeys = {};      // settings that could not be turned into a keysym
+    this.engineMouse = {};      // mouse button each action may also press
+    this.engineRaw = {};        // the engine's own number, for the panel
     this.engineSeen = false;
     this._load();
 
@@ -422,8 +445,22 @@ export class DoomGamepad {
     }
 
     const want = new Map();     // keysym -> DOM code name
+    let wantMouse = 0;          // ... and the mouse buttons, as a mask
     const add = id => {
-      for (const [sym, code] of this.keysFor(id)) want.set(sym, code);
+      const keys = this.keysFor(id);
+      for (const [sym, code] of keys) want.set(sym, code);
+      //
+      // The mouse button is a fallback, not an addition.
+      //
+      // Only where the engine has no key for this action at all. Sending it as
+      // well as a working key would mean holding fire also holds the left mouse
+      // button, and in a menu the engine reads that as Return -- so a player with
+      // a perfectly good fire key would find menus confirming themselves.
+      //
+      if (!keys.length) {
+        const mb = this.mouseFor(id);
+        if (mb !== null) wantMouse |= 1 << mb;
+      }
     };
 
     // Whatever each binding names -- a button, or an axis pushed one way.
@@ -444,6 +481,7 @@ export class DoomGamepad {
     if (s.autoRun && mag > s.runAt) add('run');
 
     this._apply(want);
+    this._applyMouse(wantMouse);
 
     // Turning goes out as mouse motion, which is analog where a key is not:
     // the engine turns by however many pixels it is told, so a gentle push
@@ -531,7 +569,9 @@ export class DoomGamepad {
     const pad = this.pad();
     const out = [];
     for (const a of ACTIONS) {
-      if (this.unknownKeyFor(a.id) !== null) {
+      // No key it can press, and no mouse button either: nothing can make this
+      // action happen, whatever it is bound to.
+      if (!this.keysFor(a.id).length && this.mouseFor(a.id) === null) {
         out.push({ id: a.id, label: a.label, why: 'key' });
         continue;
       }
@@ -587,6 +627,12 @@ export class DoomGamepad {
     }
   }
 
+  _applyMouse(mask) {
+    if (mask === this._mouseMask) return;
+    this._mouseMask = mask;
+    this._mouse(mask);
+  }
+
   _note(keysym, down) {
     this._log.push({ keysym, down, at: Math.round(performance.now()) });
     if (this._log.length > 24) this._log.shift();
@@ -600,6 +646,7 @@ export class DoomGamepad {
   // into an empty room until something else happens.
   //
   releaseAll() {
+    if (this._mouseMask) { this._mouseMask = 0; this._mouse(0); }
     if (!this._held.size) return;
     for (const [sym, code] of this._held) { this._release(sym, code); this._note(sym, false); }
     this._held.clear();
@@ -765,17 +812,24 @@ export class DoomGamepad {
     this.engineSeen = true;
     const out = {};
     const unknown = {};
+    const mice = {};
+    const raw = {};
     if (config && typeof config === 'object') {
+      for (const [id, [setting, fallback]] of Object.entries(ACTION_MOUSEB)) {
+        const n = Number(config[setting]);
+        mice[id] = Number.isInteger(n) && n >= 0 && n <= 2 ? n : fallback;
+      }
       for (const [id, setting] of Object.entries(ACTION_DOOMRC)) {
-        const raw = config[setting];
-        if (raw === undefined || raw === null) continue;
-        const pair = doomKeyToX(raw);
+        const value = config[setting];
+        if (value === undefined || value === null) continue;
+        raw[id] = value;
+        const pair = doomKeyToX(value);
         if (!pair) {
           // Nothing sensible to send. Recorded rather than ignored, so the panel
           // can say "the game uses key 164, which this page cannot express"
           // instead of quietly pressing the default at an engine that is
           // listening for something else.
-          unknown[id] = raw;
+          unknown[id] = value;
           continue;
         }
         out[id] = oneKey(pair);
@@ -783,13 +837,32 @@ export class DoomGamepad {
     }
     this.engineKeys = out;
     this.unknownKeys = unknown;
+    this.engineMouse = mice;
+    this.engineRaw = raw;
     this._onChange();
+  }
+
+  // The mouse button this action should also press, or null.
+  mouseFor(actionId) {
+    if (!(actionId in ACTION_MOUSEB)) return null;
+    const m = this.engineMouse && this.engineMouse[actionId];
+    return m === undefined || m === null ? ACTION_MOUSEB[actionId][1] : m;
+  }
+
+  // The engine's raw setting for this action, for the panel to show alongside.
+  rawFor(actionId) {
+    if (this.engineRaw && actionId in this.engineRaw) return this.engineRaw[actionId];
+    return null;
   }
 
   // The engine's setting for this action, where it could not be turned into a
   // keysym at all. Null when there is no such problem.
   unknownKeyFor(actionId) {
-    return (this.unknownKeys && this.unknownKeys[actionId]) || null;
+    // Not `|| null`: the value is very often 0 -- a control the engine has no
+    // key for at all -- and 0 is falsy, so the warning was suppressed for
+    // exactly the case that most needs it.
+    if (!this.unknownKeys || !(actionId in this.unknownKeys)) return null;
+    return this.unknownKeys[actionId];
   }
 
   isCustomKey(actionId) {

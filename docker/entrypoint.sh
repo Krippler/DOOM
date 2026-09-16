@@ -513,11 +513,16 @@ write_key_map() {
         return
     fi
 
-    # Only the key_* integers. Anything else in there is none of the page's
-    # business, and a value that is not a plain number is skipped rather than
-    # guessed at.
+    # The key_* and mouseb_* integers. Anything else in there is none of the
+    # page's business, and a value that is not a plain number is skipped rather
+    # than guessed at.
+    #
+    # The mouse buttons matter because G_BuildTiccmd reads fire as
+    # "gamekeydown[key_fire] || mousebuttons[mousebfire]" -- so a player whose
+    # fire is a mouse button has no key for it at all, and a controller sending
+    # only keys can never fire.
     if awk '
-        /^key_[a-z_]+[ \t]+-?[0-9]+[ \t]*$/ {
+        /^(key|mouseb)_[a-z_]+[ \t]+-?[0-9]+[ \t]*$/ {
             keys[$1] = $2
         }
         END {
@@ -542,7 +547,7 @@ write_key_map() {
     # worse than no log line.
     #
     log "controller keys: $(awk '
-        /^key_[a-z_]+[ \t]+-?[0-9]+[ \t]*$/ { printf "%s=%s\n", $1, $2 }
+        /^(key|mouseb)_[a-z_]+[ \t]+-?[0-9]+[ \t]*$/ { printf "%s=%s\n", $1, $2 }
     ' "$rc" 2>/dev/null | sort | tr '\n' ' ')"
 }
 
