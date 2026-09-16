@@ -384,6 +384,35 @@ binding uses, so a squeezed trigger appears as `Axis 5 +` the moment you pull it
 A trigger that reports only an analog value and never sets `pressed` counts from
 30% of its travel, so one that tops out low still works.
 
+#### If a control also picks things in menus
+
+Then the engine has it on **Enter**, and the log says so:
+
+```
+[doom] controller: plan fire in=b7 sends=Return src=engine doomrc=13
+[doom] controller: note fire is Enter in the engine, which also confirms menu items
+```
+
+`M_Responder` reads Enter as *confirm* whatever else it is bound to, so a
+control sitting on it works in a level and picks menu items everywhere else.
+Fix it in the game's own **Options → Setup → Controls**.
+
+Nobody chooses this: the Controls screen is opened with Enter, so pressing Enter
+again — the obvious thing to do when you are not sure the first press
+registered — used to bind Enter to whatever row you were on. It no longer can;
+the prompt now ignores Enter and waits for a real key, and Escape still cancels.
+
+**Moving it to the mouse button instead does not help.** `M_Responder` reads
+mouse button 1 as Enter as well:
+
+```c
+if (ev->data1&1)
+    ch = KEY_ENTER;
+```
+
+so that is the same conflict by another route. Use an ordinary key — `Ctrl` is
+what fire is bound to out of the box.
+
 #### If Fire does nothing whatever it is bound to
 
 Then it is not the pad, and rebinding will not help: check what the **game** has

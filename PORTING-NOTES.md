@@ -550,6 +550,35 @@ set to `s` and a trace on `M_Responder`: two presses of the arrow gave
 the same pair, where before the second would have been a jump to item 3.
 `key_use` set to `e` arrived as `ch=13` and selected the item.
 
+## The key that opens a binding prompt could bind itself
+
+`m_menu.c`. The Controls screen added below is opened with Enter, and the next
+key pressed becomes the binding. Escape was refused, so it could back out --
+but Enter was not, so pressing Enter a second time, which is what anybody does
+when they are not sure the first press registered, silently bound the menu's own
+confirm key to a game control.
+
+That control then works in a level and picks menu items everywhere else, because
+`M_Responder` reads Enter as confirm whatever else it is bound to. A real
+`.doomrc` arrived with `key_fire 13` by exactly this route, reported as a
+controller fault.
+
+Enter is now ignored while the prompt is open and the prompt stays open, so the
+next real key binds. Escape still cancels, so nothing is stuck.
+
+Checked against the running engine, driving the menus over VNC and reading
+`key_fire` back out of the `.doomrc` it writes on exit:
+
+| what was pressed | before | after |
+| --- | --- | --- |
+| Enter, then Ctrl | 157 | 157 |
+| Enter, Enter again, then Ctrl | **13** | 157 |
+| Enter, then space | 32 | 32 |
+
+Worth noting the same trap is not reachable through the mouse, only because
+nothing offers to bind one: `M_Responder` turns mouse button 1 into `KEY_ENTER`
+too, so moving a control there instead would have had the identical conflict.
+
 ## Getting a browser's side of the story into the container's log
 
 Not the engine, but it cost more releases than anything in it. A controller
