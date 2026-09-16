@@ -241,7 +241,7 @@
 
 <script type="module">
 import RFB from './core/rfb.js';
-import { DoomGamepad, ACTIONS, BUTTON_NAMES, keyName } from './doom-gamepad.js';
+import { DoomGamepad, ACTIONS, keyName, inputName } from './doom-gamepad.js';
 // noVNC's own DOM-event-to-keysym translation, so a key learned from the
 // keyboard here sends exactly what pressing that key sends.
 import { getKeysym, getKeycode } from './core/input/util.js';
@@ -860,9 +860,7 @@ function padLive() {
   const bits = ['pads ' + s.pads];
   if (s.pads) {
     bits.push('layout ' + s.mapping);
-    bits.push('pressed ' + (s.active.length
-      ? s.active.map(b => b.i + (BUTTON_NAMES[b.i] ? '=' + BUTTON_NAMES[b.i] : '')).join(',')
-      : '\u2014'));
+    bits.push('pressed ' + (s.down.length ? s.down.map(inputName).join(',') : '\u2014'));
     bits.push('holding ' + (s.held.length ? s.held.map(keyName).join(',') : '\u2014'));
     const last = s.log[s.log.length - 1];
     bits.push('last key ' + (last
@@ -979,10 +977,12 @@ function renderPadWhich() {
 }
 
 let padBinding = null;
+let padButtons = 0;      // how many buttons this pad admits to having
 
 function renderPadBinds() {
   if (!padBindsEl) return;
   padBindsEl.textContent = '';
+  padButtons = gamepad.snapshot().buttonsPresent;
 
   for (const a of ACTIONS) {
     const tr = document.createElement('tr');
@@ -995,12 +995,17 @@ function renderPadBinds() {
       name.append(s);
     }
 
-    const i = gamepad.buttonFor(a.id);
+    const i = gamepad.inputFor(a.id);
     const key = document.createElement('td');
     key.className = 'key' + (i === null ? ' none' : '');
-    key.textContent = i === null
-      ? 'not bound'
-      : (BUTTON_NAMES[i] || 'Button ' + i);
+    key.textContent = i === null ? 'not bound' : inputName(i);
+    // A layout naming a button this pad does not have is worth saying out loud:
+    // it is exactly what a trigger reported as an axis looks like.
+    const bm = i && /^b(\d+)$/.exec(i);
+    if (bm && padButtons && Number(bm[1]) >= padButtons) {
+      key.classList.add('none');
+      key.textContent = inputName(i) + ' \u2014 not on this pad';
+    }
 
     // Which key this action actually presses. The whole point of the panel is
     // that this is a key and not an intention, so it is on screen rather than
@@ -1018,7 +1023,7 @@ function renderPadBinds() {
     act.className = 'act';
     const bind = document.createElement('button');
     bind.type = 'button';
-    bind.textContent = padBinding === a.id ? 'press\u2026' : 'Bind';
+    bind.textContent = padBinding === a.id ? 'press or squeeze\u2026' : 'Bind';
     if (padBinding === a.id) bind.classList.add('waiting');
     bind.addEventListener('click', () => beginBind(a.id));
     act.append(bind);
@@ -1167,9 +1172,9 @@ function renderPadRaw() {
   line('layout     ', String(s.mapping));
   line('buttons    ', s.buttonCount + ' reported');
   line('axes       ', s.axisCount + ': ' + s.axes.join(', '));
-  line('pressed now', s.active.length
-    ? s.active.map(b => b.i + (BUTTON_NAMES[b.i] ? '=' + BUTTON_NAMES[b.i] : '')
-                        + (b.pressed ? '' : ' (' + b.value + ')')).join('  ')
+  line('pressed now', s.down.length ? s.down.map(inputName).join('  ') : '\u2014');
+  line('raw buttons', s.active.length
+    ? s.active.map(b => b.i + (b.pressed ? '' : ' (' + b.value + ')')).join('  ')
     : '\u2014');
   line('enabled    ', s.enabled ? 'yes' : 'no \u2014 switch it on above');
   line('holding    ', s.held.length ? s.held.map(keyName).join(' ') : '\u2014');

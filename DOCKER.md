@@ -278,7 +278,28 @@ Two things that look like the same fault and are not:
   engine ignores a weapon you are not carrying, and E1M1 starts with a fist and
   a pistol.
 
-**Rebinding** is in that panel: pick a line, press **Bind**, press the button.
+#### Triggers, and pads that report them as axes
+
+The standard layout puts LT and RT at buttons 6 and 7, and plenty of pads and
+browsers do not: they report the triggers as **analog axes** instead, and then
+there is no button 6 or 7 at all. Every other control works, which from the
+outside looks exactly like "the triggers don't work".
+
+So **Bind takes an axis as well as a button** — press **Bind** and squeeze the
+trigger. It records which way the axis travelled from where it was resting, so a
+trigger that sits at -1 and runs to +1 binds correctly and is not treated as held
+while it rests. The panel shows such a binding as `Axis 5 +`.
+
+Two things make this visible rather than mysterious. A row whose button does not
+exist on the connected pad says so — **`RT — not on this pad`** — and the
+readout's *pressed now* line names every input that is on, in the same form a
+binding uses, so a squeezed trigger appears as `Axis 5 +` the moment you pull it.
+
+A trigger that reports only an analog value and never sets `pressed` counts from
+30% of its travel, so one that tops out low still works.
+
+**Rebinding** is in that panel: pick a line, press **Bind**, then press the
+button or squeeze the trigger.
 The sticks have a deadzone, a turn speed, invert, a swap, and a switch for
 whether a full push runs. Everything is saved in the browser — not in
 `.doomrc` — because the container never sees the controller, and because the

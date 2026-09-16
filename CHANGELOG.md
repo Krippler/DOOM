@@ -6,6 +6,42 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **Triggers, on a pad that reports them as axes.** With everything else working,
+  the report was "triggers don't work" — and that is the shape of a specific
+  thing rather than a vague one. The standard layout puts LT and RT at buttons 6
+  and 7; plenty of pads and browsers instead report them as **analog axes**, and
+  then there is no button 6 or 7 on the pad at all. Every true button works and
+  the two triggers are dead.
+
+  A binding now names an input rather than a button number — `b7` for a button,
+  `a5+` for an axis pushed positive — and **Bind takes a squeeze as well as a
+  press**. It records which way the axis travelled from where it was resting, so
+  a trigger that sits at -1 and runs to +1 binds as `+` and is not read as held
+  while it rests. Layouts saved before this are read as button bindings rather
+  than discarded.
+
+  A second cause is closed at the same time: a trigger reporting only an analog
+  `value` and never setting `pressed` had to pass the half-way mark, so one
+  topping out at 0.4 never registered. The mark is 30% of travel now.
+
+- **The panel says when a binding names a button the pad does not have.** The
+  Fire row on such a pad now reads **`RT — not on this pad`** instead of looking
+  correct, and the readout's *pressed now* line names every input that is on in
+  the same form a binding uses — so a squeezed trigger shows as `Axis 5 +` the
+  moment it is pulled. Six rounds of this went by with the page unable to say
+  the one thing that would have identified it.
+
+  Verified against a synthetic pad with six buttons and triggers on axes 4 and 5
+  resting at -1: the Fire row reads `RT — not on this pad`, squeezing shows
+  `Axis 5 +`, Bind captures `a5+`, the axis then sends `Control_L` down and up,
+  and a resting trigger sends nothing. A standard seventeen-button pad is
+  unchanged — fire on `b7`, run on `b6`, both still firing — a trigger reaching
+  only 0.4 now registers, and a layout stored as `{"7":"fire"}` comes back as
+  `b7`.
+
 ## [1.10.57] — 2026-09-16
 
 ### Fixed
