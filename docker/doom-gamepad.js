@@ -488,26 +488,30 @@ export class DoomGamepad {
     if (this._autoDone === pad.id) return;
     this._autoDone = pad.id;
 
-    const missing = (id) => {
-      const t = this.inputFor(id);
-      if (!t) return true;
-      const m = /^b(\d+)$/.exec(t);
-      return !!m && Number(m[1]) >= pad.buttons.length;
-    };
-    if (!missing('fire') && !missing('run')) return;
-
     const triggers = [];
     this._rest.forEach((r, i) => {
       if (Math.abs(r) >= 0.8) triggers.push({ i, dir: r < 0 ? '+' : '-' });
     });
     if (!triggers.length) return;
 
-    const want = [];
-    if (missing('run')) want.push('run');
-    if (missing('fire')) want.push('fire');
+    //
+    // Added beside the button, not instead of it.
+    //
+    // 1.10.60 only did this where the button index did not exist on the pad,
+    // which misses the layout that actually causes the trouble: a pad reporting
+    // eleven buttons where 6 and 7 are View and Menu rather than the triggers.
+    // Nothing looks missing there, so nothing was bound, and the triggers stayed
+    // dead. An action can have more than one input, so both are bound and
+    // whichever the pad really uses works. If 6 and 7 are the triggers after
+    // all, they go on working exactly as before.
+    //
+    const hasAxis = (id) =>
+      Object.entries(this.bindings).some(([t, a]) => a === id && /^a/.test(t));
+
+    const want = ['run', 'fire'].filter(id => !hasAxis(id));
     for (let n = 0; n < want.length && n < triggers.length; n++) {
       const t = triggers[n];
-      this.bindAction(want[n], 'a' + t.i + t.dir);
+      this.bind('a' + t.i + t.dir, want[n]);
       this._autoBound[want[n]] = true;
     }
   }
@@ -531,12 +535,36 @@ export class DoomGamepad {
         out.push({ id: a.id, label: a.label, why: 'key' });
         continue;
       }
-      const t = this.inputFor(a.id);
-      const m = t && /^b(\d+)$/.exec(t);
-      if (pad && m && Number(m[1]) >= pad.buttons.length)
-        out.push({ id: a.id, label: a.label, why: 'button' });
+      // Only a problem if *none* of its inputs exist on this pad.
+      const inputs = this.inputsFor(a.id);
+      if (!pad || !inputs.length) continue;
+      const anyReal = inputs.some(t => {
+        const m = /^b(\d+)$/.exec(t);
+        return m ? Number(m[1]) < pad.buttons.length : true;
+      });
+      if (!anyReal) out.push({ id: a.id, label: a.label, why: 'button' });
     }
     return out;
+  }
+
+  //
+  // A one-line description of the pad, for the container's log.
+  //
+  // There is no channel from this page to that log, and that log is where a
+  // controller report has to appear -- it is what somebody pastes when something
+  // does not work. So the page asks for a URL that does not exist, with the
+  // description in the query string, and the entrypoint lifts it out of
+  // websockify's request log. The 404 is the point rather than a mistake.
+  //
+  padReport() {
+    const pad = this.pad();
+    if (!pad) return null;
+    return {
+      id: pad.id,
+      mapping: pad.mapping || 'none',
+      buttons: String(pad.buttons.length),
+      axes: (this._rest || []).map(v => v.toFixed(2)).join(','),
+    };
   }
 
   // Send only the differences. Re-pressing a key that is already down every
@@ -806,6 +834,13 @@ export class DoomGamepad {
     for (const [t, id] of Object.entries(this.bindings))
       if (id === actionId) return t;
     return null;
+  }
+
+  // All of them, since an action may have a button and a trigger axis both.
+  inputsFor(actionId) {
+    return Object.entries(this.bindings)
+      .filter(([, id]) => id === actionId)
+      .map(([t]) => t);
   }
 
   set(key, value) {

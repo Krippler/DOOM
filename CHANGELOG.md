@@ -6,6 +6,47 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.61] — 2026-09-16
+
+### Added
+- **The page tells the container's log what controller it found.** Every report
+  in this run has come down to something only the pad can answer — how many
+  buttons it claims, where its axes rest — and there was no way to get that from
+  a browser into the log somebody actually pastes. So the page asks for a URL
+  that does not exist, with the answer in the query string, and the entrypoint
+  lifts it out of websockify's request log:
+
+  ```
+  [doom] controller found: id=Microsoft X-Box 360 pad (Vendor: 045e Product: 028e)
+         mapping=none buttons=11 axes=0.00,0.00,-1.00,0.00,0.00,-1.00,0.00,0.00
+  ```
+
+  Name, whether the browser calls the layout standard, the button count and every
+  axis's resting value, once per pad. Nothing leaves the machine — it is a request
+  to the same container serving the page, and the 404 is the mechanism rather than
+  a fault. Six rounds of asking somebody to read a panel could have been one
+  round of reading a log line.
+
+### Fixed
+- **Trigger axes are added beside the buttons, not only where a button is
+  missing.** 1.10.60 bound them when the button index did not exist on the pad,
+  which misses the layout that actually causes this: a pad reporting **eleven**
+  buttons where 6 and 7 are View and Menu rather than the triggers, with the
+  triggers on axes 2 and 5. Nothing looks missing there, so nothing was bound.
+
+  An action can hold more than one input, so both are bound and whichever the pad
+  really uses works — the row reads `RT or Axis 5 +`. If 6 and 7 really are the
+  triggers, they go on working untouched.
+
+  Verified against that layout, with no manual binding: Fire came out as `b7` and
+  `a5+` together, Run as `b6` and `a2+`, squeezing axis 5 sent `Control_L`,
+  squeezing axis 2 sent `Shift_L`, and button 7 still fired. A standard
+  seventeen-button pad is unchanged, since none of its axes rest at an extreme.
+
+  This also explains why the stick clicks never worked: on such a pad there is no
+  button 11 at all, and button 10 is not the right stick. The start-screen line
+  names those rows now, and any of them can be rebound by pressing.
+
 ## [1.10.60] — 2026-09-16
 
 ### Fixed

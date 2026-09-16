@@ -825,6 +825,7 @@ function padMayTurn() {
 (function padLoop() {
   function step() {
     gamepad.poll(padActive());
+    reportPad();
     padLive();
     requestAnimationFrame(step);
   }
@@ -1017,7 +1018,8 @@ function renderPadBinds() {
     const i = gamepad.inputFor(a.id);
     const key = document.createElement('td');
     key.className = 'key' + (i === null ? ' none' : '');
-    key.textContent = i === null ? 'not bound' : inputName(i);
+    const all = gamepad.inputsFor(a.id);
+    key.textContent = all.length ? all.map(inputName).join(' or ') : 'not bound';
     // A layout naming a button this pad does not have is worth saying out loud:
     // it is exactly what a trigger reported as an axis looks like.
     const bm = i && /^b(\d+)$/.exec(i);
@@ -1287,6 +1289,31 @@ fetch('doom-keys.json', { cache: 'no-store' })
   .then(r => (r.ok ? r.json() : null))
   .then(cfg => { if (cfg) gamepad.useEngineKeys(cfg); })
   .catch(() => {});
+
+//
+// Tell the container's log which controller this is.
+//
+// Every controller report so far has come down to a question only the pad can
+// answer -- how many buttons does it claim, where do its axes rest -- and there
+// is no channel from this page to the container's log, which is the thing
+// somebody actually pastes when a controller misbehaves. So the page asks for a
+// URL that does not exist, with the answer in the query string, and the
+// entrypoint lifts it out of websockify's request log. The 404 is the point.
+//
+// Once per pad, and nothing leaves the machine: it is a request to the same
+// container that is serving this page.
+//
+let padReported = null;
+
+function reportPad() {
+  const r = gamepad.padReport();
+  if (!r || r.id === padReported) return;
+  padReported = r.id;
+  try {
+    fetch('doom-pad-report?' + new URLSearchParams(r).toString(),
+          { cache: 'no-store' }).catch(() => {});
+  } catch (e) { /* not worth a word */ }
+}
 
 // The pad appears and disappears without a page load, so the line has to be
 // kept honest on a timer as well as on the connect and disconnect events --
