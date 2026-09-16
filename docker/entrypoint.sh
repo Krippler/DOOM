@@ -19,6 +19,7 @@ WSPROXY_BIN="${DOOM_WSPROXY_BIN:-/usr/local/bin/doom-wsproxy}"
 AUDIO_PORT="${DOOM_AUDIO_PORT:-5901}"
 AUDIO_RATE="${DOOM_AUDIO_RATE:-22050}"
 NOVNC_ROOT="${DOOM_NOVNC_ROOT:-/usr/share/novnc}"
+RESTART="${DOOM_RESTART:-1}"
 
 log() { printf '[doom] %s\n' "$*" >&2; }
 die() { printf '[doom] error: %s\n' "$*" >&2; exit 1; }
@@ -318,8 +319,13 @@ DOOM_PID=""
 CPUWATCH_PID=""
 HELPERWATCH_PID=""
 
+# Set once the stack is being torn down, so the restart loop at the bottom
+# knows the engine's death was asked for rather than something to recover from.
+SHUTTING_DOWN=0
+
 cleanup() {
     trap - EXIT INT TERM
+    SHUTTING_DOWN=1
 
     # The engine installs a SIGINT handler that saves the config file and
     # exits, so ask it to stop that way before pulling the display away.
@@ -571,7 +577,7 @@ log "starting noVNC on port $WEB_PORT"
             # doom-wsproxy. Anything a page can put in it has been collapsed to
             # single spaces there, so it cannot forge a line of its own here.
             #
-            "controller:"*) log "$wsline" ;;
+            "controller:"*|"sound:"*) log "$wsline" ;;
             *) printf '%s\n' "$wsline" >>"$STATE/websockify.log" ;;
         esac
     done &
@@ -751,40 +757,115 @@ watch_helpers () {
     HELPERWATCH_PID=$!
 }
 
-log "running: linuxxdoom $*"
+#
+# Run the engine, and put it back on its feet if it falls over.
+#
+# A crash used to take the container with it: the entrypoint exited, everything
+# else was torn down, and the page was left saying "connection lost -- reload to
+# try again" where reloading could not possibly work, because nothing was
+# listening any more. Getting back in meant a `docker restart` from somewhere
+# that was not the phone in your hand.
+#
+# The display, the VNC server, the proxy and the sound all outlive the engine,
+# so only the engine has to come back -- and the browser reconnects to the same
+# session on its own. The game itself starts again from the title screen; there
+# is no crash recovery in 1997 code and this does not pretend otherwise.
+#
+# QUIT GAME comes back the same way, and for the same reason: picking it used to
+# leave a container running with nothing in it and a browser that could never
+# reconnect, which is a strange thing for a menu item to do. Now the title
+# screen comes back and stopping the container is what stops the container.
+#
+# Not restarted: a shutdown, or a fatal error the engine reported itself --
+# those are decisions rather than falls. And three runs in a row that end within
+# seconds of starting are a container that cannot run rather than a game that
+# fell over; restarting that for ever would bury the reason under an endless
+# loop, so it stops and says so.
+#
+crash_runs=0
 
-# Run in the background and wait: a foreground child would block every trap
-# until it exited, so `docker stop` could not shut the stack down.
-"$DOOM_BIN" "$@" &
-DOOM_PID=$!
+while :; do
+    log "running: linuxxdoom $*"
 
-cpu_wait_watch
-watch_helpers
+    started=$(date +%s 2>/dev/null || echo 0)
 
-status=0
-wait "$DOOM_PID" || status=$?
-DOOM_PID=""
+    # Run in the background and wait: a foreground child would block every trap
+    # until it exited, so `docker stop` could not shut the stack down.
+    "$DOOM_BIN" "$@" &
+    DOOM_PID=$!
 
-# The engine is gone on purpose, so nothing that follows is a fault.
-if [ -n "$HELPERWATCH_PID" ]; then
-    kill "$HELPERWATCH_PID" 2>/dev/null || true
+    cpu_wait_watch
+    watch_helpers
+
+    status=0
+    wait "$DOOM_PID" || status=$?
+    DOOM_PID=""
+
+    # The engine is gone on purpose, so nothing that follows is a fault. Both
+    # watchers are tied to the process that has just ended and are started
+    # again with the next one.
+    for watcher in "$HELPERWATCH_PID" "$CPUWATCH_PID"; do
+        [ -n "$watcher" ] && kill "$watcher" 2>/dev/null || true
+    done
     HELPERWATCH_PID=""
-fi
+    CPUWATCH_PID=""
 
-#
-# A status over 128 is a signal, and "status 139" is a poor way to say the game
-# crashed. Name it, and point at the backtrace the engine prints above it, so a
-# crash report has somewhere to start.
-#
-case "$status" in
-    134) log "DOOM was aborted (SIGABRT). The backtrace above says where." ;;
-    136) log "DOOM hit an arithmetic error (SIGFPE). The backtrace above says where." ;;
-    138) log "DOOM died on a bad address (SIGBUS). The backtrace above says where." ;;
-    139) log "DOOM crashed (SIGSEGV, status 139). The backtrace above says where;"
-         log "please include it, and the controller lines, in a bug report." ;;
-    143) log "DOOM was stopped (SIGTERM)" ;;
-    130) log "DOOM was interrupted (SIGINT)" ;;
-    *)   log "DOOM exited with status $status" ;;
-esac
+    #
+    # A status over 128 is a signal, and "status 139" is a poor way to say the
+    # game crashed. Name it, and point at the backtrace the engine prints above
+    # it, so a crash report has somewhere to start.
+    #
+    case "$status" in
+        132) log "DOOM hit an illegal instruction (SIGILL). The backtrace above says where." ;;
+        134) log "DOOM was aborted (SIGABRT). The backtrace above says where." ;;
+        136) log "DOOM hit an arithmetic error (SIGFPE). The backtrace above says where." ;;
+        138) log "DOOM died on a bad address (SIGBUS). The backtrace above says where." ;;
+        139) log "DOOM crashed (SIGSEGV, status 139). The backtrace above says where;"
+             log "please include it, and the controller lines, in a bug report." ;;
+        143) log "DOOM was stopped (SIGTERM)" ;;
+        130) log "DOOM was interrupted (SIGINT)" ;;
+        *)   log "DOOM exited with status $status" ;;
+    esac
+
+    # Only a fall or a quit is worth getting up from.
+    case "$status" in
+        0)                   why="quit" ;;
+        132|134|136|138|139) why="crash" ;;
+        *)                   why="" ;;
+    esac
+
+    [ -n "$why" ] || break
+    [ "$SHUTTING_DOWN" = "0" ] || break
+    [ "$RESTART" = "1" ] || break
+
+    now=$(date +%s 2>/dev/null || echo 0)
+
+    if [ "$(( now - started ))" -lt 10 ]; then
+        crash_runs=$(( crash_runs + 1 ))
+    else
+        crash_runs=0
+    fi
+
+    if [ "$crash_runs" -ge 3 ]; then
+        log "that is three runs in a row that ended within seconds of starting,"
+        log "so this is not something restarting will fix. Stopping, with the"
+        log "reason above rather than buried under another hundred attempts."
+        break
+    fi
+
+    if [ "$why" = "quit" ]; then
+        log "starting the game again. Stopping the container is what stops the"
+        log "container; quitting just brings you back to the title screen."
+    else
+        log "restarting the engine. The picture, the sound and this session all"
+        log "stay up, so the browser comes back on its own -- but the game starts"
+        log "again at the title screen, and only a savegame leads back to where"
+        log "you were."
+    fi
+
+    log "Set DOOM_RESTART=0 to have the container stop instead."
+
+    sleep 1
+done
 
 exit "$status"

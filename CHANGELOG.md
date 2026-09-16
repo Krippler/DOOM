@@ -6,6 +6,49 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Changed
+- **A crash, or quitting, restarts the game instead of killing the container.**
+  Both used to end the entrypoint, taking the display, the sound and the proxy
+  with it — so the page said *"connection lost, reload to try again"* where
+  reloading could not possibly work, and getting back in meant a `docker
+  restart` from somewhere that was not the phone in your hand. Picking QUIT GAME
+  did the same thing, which is a strange fate for a menu item.
+
+  Everything except the engine now outlives it, so the browser reconnects to the
+  same session on its own and the game comes back at the title screen. There is
+  no crash recovery in 1997 code and this does not pretend otherwise: a savegame
+  is still the only way back to where you were.
+
+  Not restarted: a shutdown, or a fatal error the engine reported itself. And
+  three runs in a row that end within seconds of starting stop the loop and say
+  so, rather than burying the reason under an endless retry. `DOOM_RESTART=0`
+  turns the whole thing off.
+
+  Checked against the real entrypoint with a stub engine: a crash 15 s in
+  restarts, a clean quit restarts, an instant crash three times over gives up,
+  and a fatal error does not restart at all.
+
+### Added
+- **The page says whether the sound is playing, in the container's log.** "I
+  can't hear anything" has causes on both sides of the glass and they look
+  identical from here:
+
+  ```
+  [doom] sound: playing via the fallback, 22050 Hz in, 44100 Hz out, context running.
+  [doom] sound: not playing: this browser has no Web Audio.
+  ```
+
+  *Playing* means the page has done its part and the silence is the volume, a
+  phone's silent switch, or wherever the audio has been routed — a controller
+  with its own headphone socket can take the output while it is plugged in.
+
+  The iOS path was verified end to end rather than assumed: a browser with the
+  Pointer Lock API and AudioWorklet both removed, fed the real audio protocol,
+  renders through the `ScriptProcessorNode` fallback at the right rate with the
+  right amplitude.
+
 ## [1.10.69] — 2026-09-16
 
 ### Fixed

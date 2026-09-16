@@ -731,6 +731,32 @@ the worklet, and is worth nothing else.
 
 ### When there is no sound
 
+**Ask the container first.** The page writes what it is doing into the log, so
+a silent page and a silent phone can be told apart without guessing:
+
+```
+docker logs <container> 2>&1 | grep sound:
+```
+
+```
+[doom] sound: playing via the fallback, 22050 Hz in, 44100 Hz out, context running.
+[doom] sound: not playing: this browser has no Web Audio.
+```
+
+If it says **playing**, the page has done its part and nothing in this container
+will fix the silence. Check, in this order:
+
+- the volume, and on a phone the **silent switch** — iOS mutes Web Audio with it
+  and no web page can override that;
+- where the audio is being routed. A controller with its own headphone socket —
+  a Backbone, for instance — can become the output device while it is plugged in,
+  and then nothing comes out of the phone's own speaker whatever the page does;
+- Bluetooth, which may have taken it somewhere else entirely.
+
+If it says **not playing**, the reason is on that line, and the rest of this
+section explains the ones worth explaining.
+
+
 The start screen says so under the buttons. While the sound is working it says
 nothing at all — the line is there only when there is something to report:
 
