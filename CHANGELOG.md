@@ -35,6 +35,14 @@ The version follows the engine this is built from, linuxdoom-1.10.
   sound at all rather than the fallback that was sitting right there. Only an
   `AudioContext` constructor is required now, `webkitAudioContext` included.
 
+- **The controller log cut its most useful line in half.** Lines were capped at
+  200 characters, and the keymap line is 225 — so it arrived ending
+  `… key_use=32 mouseb_`, losing `mouseb_fire` and `mouseb_strafe`, which are
+  exactly the two settings the fire fallback turns on. The cap is 400 now, and
+  the build and the keymap are two lines rather than one over-long one. This is
+  the second time a cap has eaten this information; the first was the
+  `controller keys:` line at 120 characters in 1.10.59.
+
   Checked by running the page under a browser with `Element.prototype.requestPointerLock`
   removed and again with `AudioWorkletNode` removed: 1.10.65 gives the mouse
   warning and `via="" reason="this browser has no Web Audio."`, and this build
