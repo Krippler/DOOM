@@ -724,7 +724,7 @@ function flushMouse() {
   // re-bases where the next delta is measured from.
   if (vx + dx < cx - edgeX || vx + dx > cx + edgeX ||
       vy + dy < cy - edgeY || vy + dy > cy + edgeY) {
-    rfb._sendMouse(cx, cy, buttons);
+    rfb._sendMouse(cx, cy, buttons | padMouseMask);
     vx = cx;
     vy = cy;
   }
@@ -739,7 +739,7 @@ function flushMouse() {
   if (nx !== vx || ny !== vy) {
     vx = nx;
     vy = ny;
-    rfb._sendMouse(vx, vy, buttons);
+    rfb._sendMouse(vx, vy, buttons | padMouseMask);
   }
 
   if (pendingX !== 0 || pendingY !== 0) queueFlush();
@@ -751,6 +751,10 @@ function queueFlush() {
   requestAnimationFrame(flushMouse);
 }
 
+// What the controller is holding, kept apart from the real mouse's own state so
+// that releasing one does not release the other.
+let padMouseMask = 0;
+
 // A button change on its own. Sent at the centre, which the engine ignores for
 // movement, so pressing fire cannot also nudge the view.
 function sendButtons() {
@@ -759,7 +763,7 @@ function sendButtons() {
   const [cx, cy] = centreOf(c);
   vx = cx;
   vy = cy;
-  rfb._sendMouse(cx, cy, buttons);
+  rfb._sendMouse(cx, cy, buttons | padMouseMask);
 }
 
 // Let go of everything. Losing the capture with a button held would otherwise
@@ -800,6 +804,14 @@ const gamepad = new DoomGamepad({
   press:    (keysym, code) => rfb.sendKey(keysym, code, true),
   release:  (keysym, code) => rfb.sendKey(keysym, code, false),
   turn:     (dx) => { pendingX += dx; queueFlush(); },
+  //
+  // The pad's mouse buttons, folded into the same mask the real mouse uses.
+  //
+  // The engine reads fire as `gamekeydown[key_fire] || mousebuttons[mousebfire]`,
+  // so a player whose fire is the mouse has no key for it and a controller
+  // sending only keys can never fire, whatever it is bound to. The pad's bits sit
+  // above the real mouse's so neither clears the other.
+  mouse:    (mask) => { padMouseMask = mask; sendButtons(); },
   onChange: () => renderPad(),
 });
 
@@ -1035,7 +1047,12 @@ function renderPadBinds() {
     const src = gamepad.keySource(a.id);
     sends.className = 'sends' + (src === 'learned' ? ' custom' : '')
                               + (src === 'engine' ? ' engine' : '');
-    sends.textContent = gamepad.keysFor(a.id).map(([sym]) => keyName(sym)).join('+');
+    const mb = gamepad.mouseFor(a.id);
+    const rawv = gamepad.rawFor(a.id);
+    // The mouse button is only a fallback, so it is only mentioned where it is
+    // actually what gets sent -- the branch below handles that case.
+    sends.textContent = gamepad.keysFor(a.id).map(([sym]) => keyName(sym)).join('+')
+      + (rawv !== null ? ' (' + rawv + ')' : '');
     if (gamepad.wasAutoBound(a.id)) {
       const s2 = document.createElement('small');
       s2.textContent = ' \u2014 found as a trigger axis';
@@ -1050,10 +1067,19 @@ function renderPadBinds() {
     // is listening for something else and looking broken for no stated reason.
     const unknown = gamepad.unknownKeyFor(a.id);
     if (unknown !== null) {
-      sends.classList.add('none');
-      sends.textContent = 'game uses ' + unknown + ' \u2014 unknown here';
-      sends.title = 'The engine is bound to key number ' + unknown
-                  + ', which this page cannot express. Set it by hand with Key.';
+      if (mb !== null) {
+        // There is still a way to do it: the engine accepts a mouse button for
+        // this one, and that is what gets sent.
+        sends.textContent = 'mouse ' + (mb + 1) + ' (key ' + unknown + ' unusable)';
+        sends.title = 'The engine has no usable key for this, but it accepts'
+                    + ' mouse button ' + (mb + 1) + ', which is what the pad sends.';
+      } else {
+        sends.classList.add('none');
+        sends.textContent = 'key ' + unknown + ' \u2014 nothing to send';
+        sends.title = 'The engine is bound to key number ' + unknown + ', which'
+                    + ' this page cannot express, and there is no mouse button for'
+                    + ' it. Press Key and press the key you use.';
+      }
     }
 
     const act = document.createElement('td');

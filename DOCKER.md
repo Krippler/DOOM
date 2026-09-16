@@ -322,6 +322,28 @@ binding uses, so a squeezed trigger appears as `Axis 5 +` the moment you pull it
 A trigger that reports only an analog value and never sets `pressed` counts from
 30% of its travel, so one that tops out low still works.
 
+#### If Fire does nothing whatever it is bound to
+
+Then it is not the pad, and rebinding will not help: check what the **game** has
+fire bound to. `G_BuildTiccmd` reads it as
+
+```c
+gamekeydown[key_fire] || mousebuttons[mousebfire] || joybuttons[joybfire]
+```
+
+so somebody who fires with the mouse may have no *key* for firing at all. A
+controller that only sends keys can never fire for them, however it is mapped.
+
+The page reads `mouseb_fire` out of `.doomrc` alongside the keys, and where the
+engine has no usable key for an action it sends that mouse button instead. The
+panel says which: **`mouse 1 (key 0 unusable)`**. Where there is a usable key it
+sends only the key, because holding a mouse button in a menu reads as Return and
+a working fire key should not make menus confirm themselves.
+
+**Run has no mouse button** — the engine has no `mouseb_speed`, only
+`key_speed` — so if that row says `key 0 — nothing to send`, press **Key** on it
+and press the key you actually run with.
+
 #### If Fire or Run in particular do nothing
 
 Those two are the ones most often rebound, so check what the engine is actually

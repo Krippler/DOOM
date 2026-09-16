@@ -6,6 +6,47 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **Fire can be a mouse button, and the controller only ever sent keys.** The
+  report that settled it was *"mapped fire to B and it doesn't work there
+  either"* — B exists, Bind captured it, and fire still did not fire. So the pad
+  was never the problem and no amount of rebinding was going to help.
+
+  `G_BuildTiccmd` reads fire as
+  `gamekeydown[key_fire] || mousebuttons[mousebfire] || joybuttons[joybfire]`.
+  Somebody who fires with the mouse has **no key for firing at all**, and a
+  controller that sends only keys cannot fire for them however it is mapped.
+
+  The container now reads `mouseb_*` out of `.doomrc` beside the keys, and where
+  the engine has no usable key for an action the pad sends that mouse button
+  instead — folded into the same mask the real mouse uses, on its own bits so
+  neither clears the other. Only as a fallback: where there is a usable key it
+  sends just the key, because holding a mouse button in a menu reads as Return
+  and a working fire key should not make menus confirm themselves.
+
+  **Run has no mouse button to fall back on** — the engine has no `mouseb_speed`
+  — so that row now says `key 0 — nothing to send` and is fixed with **Key**.
+
+- **`unknownKeyFor` returned nothing when the setting was 0.** It ended in
+  `|| null`, and 0 is falsy, so the one value most likely to mean "this engine has
+  no key for that" was reported as no problem at all. The panel said nothing and
+  the action silently sent nothing. Now the row reads `key 0 — nothing to send`,
+  or `mouse 1 (key 0 unusable)` where a mouse button covers it.
+
+- **The panel shows the engine's own number beside each key** — `Control_L (157)`
+  — so a value that maps to a plausible-looking key can still be checked against
+  what the game was told, rather than taken on trust.
+
+### Notes
+- **Every previous guess about the pad is ruled out by one sentence.** Fire bound
+  to B, with B demonstrably read, still not firing means the fault was never in
+  which button or axis the pad reports. Five releases went at the pad side —
+  code names, axis binding, keysym passthrough, rest-position detection, adding
+  axes beside buttons — and the answer was on the other side of the action
+  entirely. `Y` is also fine: it is bound to Pistol and sends `2`, verified.
+
 ## [1.10.61] — 2026-09-16
 
 ### Added
