@@ -678,6 +678,23 @@ function locked() {
   return document.pointerLockElement === canvas();
 }
 
+//
+// Whether capturing the mouse is a thing this device can do at all.
+//
+// iOS has no Pointer Lock API, so on an iPhone the request is never even made
+// and the "did not capture the mouse" warning fired every time -- telling
+// somebody holding a phone to click the picture and turn off a mouse setting,
+// neither of which means anything there. A missing API is not a failure.
+//
+function canLock() {
+  // Asked of the platform, not of an element: this is called before the canvas
+  // exists as well as after, and a missing canvas is not a missing API.
+  return typeof Element !== 'undefined'
+      && typeof Element.prototype.requestPointerLock === 'function'
+      && 'pointerLockElement' in document;
+}
+
+
 function centreOf(c) {
   return [Math.round(c.width / 2), Math.round(c.height / 2)];
 }
@@ -1326,7 +1343,8 @@ let padKeysSettled = false;
 function padKeysDone(note) {
   if (padKeysSettled) return;
   padKeysSettled = true;
-  padLog('client __DOOM_VERSION__, keymap ' + note);
+  padLog('client __DOOM_VERSION__, pointerlock '
+         + (canLock() ? 'yes' : 'no') + ', keymap ' + note);
 }
 
 fetch('doom-keys.json', { cache: 'no-store' })
@@ -1863,7 +1881,14 @@ function audioURL() {
 async function startAudio() {
   if (!audioWanted || audioCtx) return;
 
-  if (!window.AudioContext || !window.AudioWorkletNode) {
+  // Only the context constructor. Requiring AudioWorkletNode here was wrong:
+  // the worklet is probed properly below and falls back to a ScriptProcessor
+  // when it is missing, so a browser that has no worklet still has sound -- and
+  // this gate turned it off before the fallback was ever reached. iOS Safari is
+  // where that showed up, reporting "no Web Audio" on a device that has it.
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+
+  if (!Ctx) {
     audioFailed('this browser has no Web Audio.');
     return;
   }
@@ -1876,7 +1901,7 @@ async function startAudio() {
   let ctx;
 
   try {
-    ctx = new AudioContext({ latencyHint: 'interactive' });
+    ctx = new Ctx({ latencyHint: 'interactive' });
   } catch (e) {
     audioFailed('the browser would not start an audio context.');
     return;
@@ -2136,12 +2161,17 @@ function enterPlay(fullscreen) {
   retireEscNote();
   closePad();
 
-  // Nothing reports a refused pointer lock reliably, so check.
+  // Nothing reports a refused pointer lock reliably, so check. But only where
+  // there was a lock to refuse: a device without the API has not failed at
+  // anything, and on a phone every word of that warning is wrong.
   setTimeout(() => {
-    if (!locked()) {
+    if (canLock() && !locked()) {
       status('The browser did not capture the mouse. Click the picture to try '
            + 'again. Until it does, turn GRAB POINTER off under Options → '
            + 'Setup → Mouse, or the view will jump about.');
+    } else if (!canLock() && !gamepad.available()) {
+      status('No mouse to capture on this device — pair a game controller and '
+           + 'press a button on it. Everything else works.');
     } else {
       status('');
     }
