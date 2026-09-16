@@ -199,6 +199,60 @@ class _WatchedTarget(object):
         return False
 
 
+#
+# The controller's own log, from the page into the container log.
+#
+# Everything about a gamepad happens in the browser: which pad the Gamepad API
+# admits to, what it calls its buttons, which of them the page saw move and
+# which keysym it sent for each. None of that is visible from here, and a
+# report of "the triggers do nothing" is unanswerable without it -- which is
+# how five releases went out fixing things that were already right.
+#
+# So the page asks for this URL with its log in the query string and the lines
+# are printed where the entrypoint can lift them into the container log. A URL
+# is used rather than a POST because it works from a page served over plain
+# http with no CORS preflight, and the body would have to be read here anyway.
+#
+# It cannot go through websockify's own request log: that is written by
+# SimpleHTTPRequestHandler only under --verbose, and stdio through the
+# entrypoint's pipe is block-buffered, so the lines would arrive in 4 KB
+# clumps or not at all. This prints them itself, flushed, like the picture
+# gap lines above.
+#
+PAD_PATH = '/doom-pad-log'
+PAD_MARK = 'controller:'
+PAD_MAX_LINES = 40
+PAD_MAX_CHARS = 200
+
+_do_GET = ProxyRequestHandler.do_GET
+
+
+def do_GET(self):
+    split = urlparse(self.path)
+
+    if split.path != PAD_PATH:
+        return _do_GET(self)
+
+    lines = (parse_qs(split.query).get('l') or [''])[0]
+
+    for line in lines.split('|')[:PAD_MAX_LINES]:
+        # Whitespace-collapsed, which also drops anything that could forge a
+        # second line of container log, and cut to a readable length.
+        line = ' '.join(line.split())[:PAD_MAX_CHARS]
+
+        if line:
+            print('%s %s' % (PAD_MARK, line), file=sys.stderr, flush=True)
+
+    # Nothing to send back. The page does not read the answer; it only needs
+    # the request to have arrived.
+    self.send_response(204)
+    self.send_header('Content-Length', '0')
+    self.end_headers()
+
+
+ProxyRequestHandler.do_GET = do_GET
+
+
 _do_proxy = ProxyRequestHandler.do_proxy
 
 

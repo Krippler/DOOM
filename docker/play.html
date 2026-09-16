@@ -838,6 +838,7 @@ function padMayTurn() {
   function step() {
     gamepad.poll(padActive());
     reportPad();
+    padWatch();
     padLive();
     requestAnimationFrame(step);
   }
@@ -1307,38 +1308,161 @@ document.getElementById('pad-reset').addEventListener('click', () => {
 // Setup → Controls, and a pad pressing the built-in defaults goes dead the
 // moment they do.
 //
-// A failure here is not worth a message. It means the bindings could not be
-// read, the defaults stand, and the panel still says which key each action
-// sends and still lets it be set by hand.
+// A failure here is not worth interrupting anybody over: the defaults stand,
+// and the panel still says which key each action sends and still lets it be
+// set by hand.
 //
+// It is worth a line in the container's log, though, and so is success. A page
+// quietly running the built-in defaults at an engine that was rebound behaves
+// exactly like a controller that does not work, and from the log of a
+// container that is serving the file perfectly well the two look identical.
+//
+let padKeysSettled = false;
+
+// One line per page load, whether or not there is ever a controller: which
+// build the browser is actually running, and what it believes the engine's
+// bindings to be. A report that begins "the pad does nothing" against a log
+// with no line here at all is a browser that never loaded this page.
+function padKeysDone(note) {
+  if (padKeysSettled) return;
+  padKeysSettled = true;
+  padLog('client __DOOM_VERSION__, keymap ' + note);
+}
+
 fetch('doom-keys.json', { cache: 'no-store' })
   .then(r => (r.ok ? r.json() : null))
-  .then(cfg => { if (cfg) gamepad.useEngineKeys(cfg); })
-  .catch(() => {});
+  .then(cfg => {
+    if (!cfg) return padKeysDone('unreadable, built-in defaults stand');
+    gamepad.useEngineKeys(cfg);
+    const seen = Object.entries(cfg)
+      .map(([k, v]) => k + '=' + v).sort().join(' ');
+    padKeysDone(seen ? 'from the engine: ' + seen : 'empty, built-in defaults stand');
+  })
+  .catch(() => padKeysDone('could not be fetched, built-in defaults stand'));
+
+// A request that never answers would otherwise hold back the plan below for
+// ever, and the plan is the half of the log worth having.
+setTimeout(() => padKeysDone('did not arrive in five seconds, carrying on'), 5000);
 
 //
-// Tell the container's log which controller this is.
+// Tell the container's log which controller this is, and what it will do.
 //
 // Every controller report so far has come down to a question only the pad can
-// answer -- how many buttons does it claim, where do its axes rest -- and there
-// is no channel from this page to the container's log, which is the thing
-// somebody actually pastes when a controller misbehaves. So the page asks for a
-// URL that does not exist, with the answer in the query string, and the
-// entrypoint lifts it out of websockify's request log. The 404 is the point.
+// answer -- how many buttons does it claim, where do its axes rest, which key
+// is each one going to send -- and none of it is visible from the container.
+// So it is written into the container's log, which is the thing somebody
+// actually pastes when a controller misbehaves.
 //
-// Once per pad, and nothing leaves the machine: it is a request to the same
-// container that is serving this page.
+// Once per pad, and nothing leaves the machine: it goes to the same container
+// that is serving this page, over the same connection.
 //
 let padReported = null;
+let padPlanned = null;
 
 function reportPad() {
   const r = gamepad.padReport();
-  if (!r || r.id === padReported) return;
-  padReported = r.id;
+  if (!r) return;
+
+  if (r.id !== padReported) {
+    padReported = r.id;
+    padLog('found id=' + r.id + ' mapping=' + r.mapping
+           + ' buttons=' + r.buttons + ' axes=' + r.axes
+           + (padActive() ? '' : ' (start screen, nothing sent yet)'));
+  }
+
+  // The plan waits for the engine's bindings. Printed any earlier it describes
+  // the built-in defaults and then the page goes and does something else, which
+  // is precisely the sort of wrong log that costs a release to believe.
+  if (padKeysSettled && r.id !== padPlanned) {
+    padPlanned = r.id;
+    for (const line of gamepad.plan()) padLog('plan ' + line);
+  }
+}
+
+//
+// A real log of what the controller does, in the container's log.
+//
+// Six releases went out on inference because the only instruments were on this
+// screen and nobody was going to read them mid-game. This writes what actually
+// happens to the place a report gets pasted from: every input as it goes down
+// and comes up, and every key or mouse button sent because of it.
+//
+// doom-wsproxy answers this URL itself and prints the lines for the entrypoint
+// to pick up. An earlier version aimed at a URL that did not exist and counted
+// on websockify's request log to carry the query string: it never appeared,
+// because that log is only written under --verbose and is block-buffered on the
+// way out besides. Nothing about this is a side effect any more.
+//
+// Batched, because one request per press would be absurd, and capped, because a
+// log that floods is a log nobody can read. Unbound axes are left out entirely
+// or the sticks would fill it by themselves.
+//
+const PAD_LOG_MAX = 400;
+let padLogQueue = [];
+let padLogSent = 0;
+let padLogTimer = 0;
+
+function padLog(line) {
+  if (padLogSent >= PAD_LOG_MAX) return;
+  padLogSent++;
+  if (padLogSent === PAD_LOG_MAX) line += ' (log full, no more)';
+  padLogQueue.push(line);
+  if (!padLogTimer) padLogTimer = setTimeout(padLogFlush, 400);
+}
+
+function padLogFlush() {
+  padLogTimer = 0;
+  if (!padLogQueue.length) return;
+  // A batch at a time, and never a URL long enough to be refused.
+  const batch = [];
+  let size = 0;
+  while (padLogQueue.length && size < 1200) {
+    const line = padLogQueue.shift();
+    size += line.length + 3;
+    batch.push(line);
+  }
   try {
-    fetch('doom-pad-report?' + new URLSearchParams(r).toString(),
+    fetch('doom-pad-log?l=' + encodeURIComponent(batch.join('|')),
           { cache: 'no-store' }).catch(() => {});
-  } catch (e) { /* not worth a word */ }
+  } catch (e) { /* nothing to be done */ }
+  if (padLogQueue.length) padLogTimer = setTimeout(padLogFlush, 400);
+}
+
+//
+// Watch what the pad is doing and write down the changes.
+//
+// Buttons always, so a press that is bound to nothing still shows up. Axes only
+// where something is bound to them, or the sticks would log continuously.
+//
+let padWasDown = [];
+let padWasKeys = 0;
+let padWasMouse = 0;
+
+function padWatch() {
+  if (!gamepad.available()) return;
+  const s = gamepad.snapshot();
+
+  const interesting = t => /^b/.test(t) || gamepad.bindings[t];
+  const now = s.down.filter(interesting);
+  for (const t of now)
+    if (!padWasDown.includes(t))
+      padLog('down ' + t + ' -> ' + (gamepad.bindings[t] || 'nothing bound')
+             + (padActive() ? '' : ' (start screen, not sent)'));
+  for (const t of padWasDown)
+    if (!now.includes(t)) padLog('up   ' + t);
+  padWasDown = now;
+
+  // And what actually went on the wire because of it. By sequence number, since
+  // the module's own log is a ring and its length says nothing about what is new.
+  for (const e of s.log)
+    if (e.seq > padWasKeys) padLog('sent ' + keyName(e.keysym) + (e.down ? ' down' : ' up'));
+  padWasKeys = s.logSeq;
+
+  // The mouse mask too, which is how fire works for anybody without a fire key.
+  if (s.mouseMask !== padWasMouse) {
+    padLog('mouse mask ' + padWasMouse + ' -> ' + s.mouseMask);
+    padWasMouse = s.mouseMask;
+  }
 }
 
 // The pad appears and disappears without a page load, so the line has to be

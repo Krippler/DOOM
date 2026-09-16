@@ -6,6 +6,57 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Added
+- **A real log of what the controller does, in the container's log.** Asked for
+  in as many words, and the right answer to the whole episode: nine releases went
+  out inferring what a pad three thousand miles away was doing, each one fixing
+  something that was already right. `docker logs <container> | grep controller:`
+  now answers it directly.
+
+  One line on every page load, with or without a pad:
+
+  ```
+  [doom] controller: client 1.10.63, keymap from the engine: key_fire=0 key_speed=0 ...
+  ```
+
+  — the build the browser is *actually* running, which distinguishes a controller
+  fault from a tab still running a client from two releases ago, and the engine's
+  bindings as the page received them. Then, once per pad, its name, layout,
+  button count and where every axis rests. Then what each of the twenty controls
+  is going to do:
+
+  ```
+  [doom] controller: plan fire in=b7,a5+ sends=mouse1  src=default doomrc=0 unusable=0
+  [doom] controller: plan run  in=b6,a2+ sends=NOTHING src=default doomrc=0 unusable=0
+  ```
+
+  `sends=NOTHING` is the answer wherever a control does nothing, printed before
+  anybody has to ask. Then, as you play, every button down and up — including
+  ones bound to nothing — and every key and mouse button sent because of it.
+  Capped at 400 lines; axes only where something is bound to them.
+
+### Fixed
+- **The pad report added in 1.10.61 never reached the log.** It asked for a URL
+  that did not exist and relied on websockify's request log to carry the query
+  string. That log is written **only under `--verbose`** — on a 404 all that gets
+  printed is the code — and Python block-buffers stdout through the entrypoint's
+  pipe besides, so even the lines that were written would have arrived in 4 KB
+  clumps long after the moment they described. Anybody who went looking for
+  `controller found:` on that release found nothing, and nothing was wrong with
+  their container.
+
+  `doom-wsproxy` now answers the URL itself, prints the lines flushed, and
+  returns 204. Whitespace is collapsed where it is printed, so nothing a page can
+  send can forge a line of container log.
+
+- **The plan was printed before the engine's bindings arrived.** `doom-keys.json`
+  is fetched, and the report fired the moment a pad appeared — often first — so
+  the log described the built-in defaults while the page went on to send
+  something else. It now waits for that fetch to settle, and says which way it
+  settled.
+
 ## [1.10.62] — 2026-09-16
 
 ### Fixed

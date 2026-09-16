@@ -74,6 +74,9 @@ once it did. Getting from there to a playable game took:
   into the same relative pointer motion a captured mouse produces, so the 1997
   code needed no change at all. Every button is rebindable, in the browser
   rather than in `.doomrc`, because the container never sees the controller.
+  When one misbehaves the page writes what it is doing into the container's
+  log — the pad it found, what each control is going to send, and what it
+  actually sent — so `docker logs` answers the question on its own.
 
 [`PORTING-NOTES.md`](PORTING-NOTES.md) documents every change, with the
 original code and why it broke — including [what the stutter turned out to
