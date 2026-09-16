@@ -550,6 +550,49 @@ set to `s` and a trace on `M_Responder`: two presses of the arrow gave
 the same pair, where before the second would have been a jump to item 3.
 `key_use` set to `e` arrived as `ch=13` and selected the item.
 
+## Some keys never reach the game at all
+
+`g_game.c`. `G_Responder` passes every event through four other responders
+before it reaches the code that records a keypress:
+
+```c
+if (HU_Responder (ev)) return true;	// chat ate the event
+if (ST_Responder (ev)) return true;	// status window ate it
+if (AM_Responder (ev)) return true;	// automap ate it
+...
+if (F_Responder (ev)) return true;	// finale ate the event
+```
+
+and `M_Responder` gets a look before any of that. Several keys never come out
+the far side, so a control bound to one of them is dead however correctly
+everything else works. `HU_MSGREFRESH` is the sharpest example — it is
+`KEY_ENTER`, and `HU_Responder` eats it unconditionally to re-show the last
+message.
+
+Measured rather than read, by setting `key_fire` to each in turn, warping into
+a level, holding the key and tracing `G_Responder`:
+
+| `key_fire` | reaches the game? |
+| --- | --- |
+| 157 `Control_L` | yes |
+| 32 `space` | yes |
+| 182 `Shift_L` | yes |
+| 13 `Enter` | **no** — `HU_Responder`, message refresh |
+| 9 `Tab` | **no** — `AM_Responder`, opens the automap |
+| 27 `Escape` | **no** — `M_Responder`, opens the menu |
+| 187 `F1` | **no** — `M_Responder`, the F-keys |
+
+`KEY_PAUSE` joins them: `G_Responder` handles it and returns before recording
+anything.
+
+This is why a real `.doomrc` with `key_fire 13` fired at nothing. The engine is
+left alone — the eaters are all doing their jobs — but the controller in the
+browser now treats such a setting exactly like one with no keysym at all: named
+in the panel, reported in the log, and sent as the mouse button instead where
+the engine has one. The defaults that deliberately use Tab and Escape, for the
+automap and for backing out of a menu, are untouched: being eaten is the point
+of those two.
+
 ## The sprite name list had no terminator
 
 `info.c`, `r_things.c`. `R_InitSpriteDefs` counts its argument by walking to a

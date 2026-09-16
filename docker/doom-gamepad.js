@@ -237,6 +237,44 @@ export const DEFAULT_BINDINGS = {
 // How far a trigger has to be squeezed, and an axis pushed, to count. A trigger
 // reporting only `value` never sets `pressed` on some pads, and one that tops
 // out around 0.5 would never have passed the old half-way mark.
+//
+// Keys the engine takes for itself before the game ever sees them.
+//
+// `G_Responder` hands each event to the heads-up display, the status bar, the
+// automap and the finale before it reaches the code that reads
+// `gamekeydown[key_fire]`, and the menu gets a look before any of that. Several
+// keys never come out the far side, so a control bound to one of them is dead
+// however correctly everything else works:
+//
+//   Enter   HU_Responder eats it to re-show the last message (HU_MSGREFRESH)
+//   Tab     AM_Responder eats it to open the automap
+//   Escape  M_Responder eats it to open the menu
+//   F1-F12  M_Responder eats them for help, save, load and the rest
+//   Pause   G_Responder handles it and returns before recording any key
+//
+// Established by running the engine with key_fire set to each in turn and
+// tracing G_Responder: Control_L, space and Shift_L arrive; Enter, Tab, Escape
+// and F1 never do.
+//
+// A control the engine has on one of these is treated exactly like a setting
+// with no keysym at all -- named in the panel, reported in the log, and sent as
+// the mouse button instead where there is one. Pressing the key would be worse
+// than useless: it is not that the game ignores it, it is that something else
+// acts on it.
+//
+function eatenByEngine(key) {
+  const n = Number(key);
+  if (!Number.isInteger(n)) return false;
+
+  return n === 13                       // KEY_ENTER
+      || n === 9                        // KEY_TAB
+      || n === 27                       // KEY_ESCAPE
+      || n === 0xff                     // KEY_PAUSE
+      || (n >= 0x80 + 0x3b && n <= 0x80 + 0x44)   // KEY_F1 .. KEY_F10
+      || n === 0x80 + 0x57                        // KEY_F11
+      || n === 0x80 + 0x58;                       // KEY_F12
+}
+
 const TRIGGER_AT = 0.3;
 const AXIS_AT    = 0.5;
 
@@ -871,7 +909,7 @@ export class DoomGamepad {
         const value = config[setting];
         if (value === undefined || value === null) continue;
         raw[id] = value;
-        const pair = doomKeyToX(value);
+        const pair = eatenByEngine(value) ? null : doomKeyToX(value);
         if (!pair) {
           // Nothing sensible to send. Recorded rather than ignored, so the panel
           // can say "the game uses key 164, which this page cannot express"

@@ -1437,15 +1437,17 @@ function reportPad() {
              + gamepad.filledIn.join(' '));
     for (const line of gamepad.plan()) padLog('plan ' + line);
 
-    // A control the engine has on Enter works in a level and confirms menu
-    // items everywhere else, which reads as the pad picking things at random.
-    // Worth saying outright: the engine's own Controls screen used to let Enter
-    // bind itself, so a config can carry one of these without anybody choosing
-    // it. (13 is KEY_ENTER; see doomdef.h.)
-    for (const a of ACTIONS)
-      if (gamepad.rawFor(a.id) === 13)
-        padLog('note ' + a.id + ' is Enter in the engine, which also confirms'
-               + ' menu items -- Options > Setup > Controls to move it');
+    // A control the engine has on a key it eats itself cannot work at all --
+    // Enter, Tab, Escape, the F-keys and Pause never reach the code that reads
+    // gamekeydown. Said outright, because the panel row alone is not where
+    // anybody looks, and because the engine's own Controls screen used to let
+    // Enter bind itself, so a config can carry one without anybody choosing it.
+    for (const a of ACTIONS) {
+      const raw = gamepad.rawFor(a.id);
+      if (raw !== null && gamepad.unknownKeyFor(a.id) === raw)
+        padLog('note ' + a.id + ' is key ' + raw + ' in the engine, which the'
+               + ' game never sees -- rebind it in Options > Setup > Controls');
+    }
   }
 }
 

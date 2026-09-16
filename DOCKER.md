@@ -413,6 +413,36 @@ if (ev->data1&1)
 so that is the same conflict by another route. Use an ordinary key — `Ctrl` is
 what fire is bound to out of the box.
 
+#### Buttons that send a key the game never receives
+
+`G_Responder` hands every event to the heads-up display, the status bar, the
+automap and the finale before the code that records a keypress, and the menu
+gets a look before all of them. Five keys never come out the far side, so a
+**game control** bound to one of them is dead however well the pad works:
+
+| key | who takes it |
+| --- | --- |
+| `Enter` (13) | the heads-up display, to re-show the last message |
+| `Tab` (9) | the automap |
+| `Escape` (27) | the menu |
+| `F1`–`F12` | the menu — help, save, load and the rest |
+| `Pause` | handled and returned before any key is recorded |
+
+The page treats such a setting as unusable, says so, and sends the engine's
+mouse button instead where there is one:
+
+```
+plan fire in=b7 sends=mouse1 src=default doomrc=13 unusable=13
+note fire is key 13 in the engine, which the game never sees
+```
+
+So fire still works, but the honest fix is **Options → Setup → Controls** and a
+key that is not on that list. `Ctrl` is the stock one.
+
+None of this applies to *Map* and *Back out*, whose defaults are Tab and Escape
+on purpose: being caught by the automap and the menu is exactly what they are
+for.
+
 #### If Fire does nothing whatever it is bound to
 
 Then it is not the pad, and rebinding will not help: check what the **game** has

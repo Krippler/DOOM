@@ -6,6 +6,43 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.69] — 2026-09-16
+
+### Fixed
+- **A control bound to Enter fires at nothing, and now the page knows it.**
+  Reported as "triggers don't work" with a log that plainly showed the trigger
+  working: `down b7 -> fire` / `sent Return down`, every press, correctly.
+
+  The key was arriving and the game was never seeing it. `G_Responder` passes
+  each event through the heads-up display, the status bar, the automap and the
+  finale before the code that records a keypress, and `HU_MSGREFRESH` — the key
+  that re-shows the last message — **is `KEY_ENTER`**. `HU_Responder` eats it
+  unconditionally. A `.doomrc` with `key_fire 13` can never fire.
+
+  Measured by setting `key_fire` to each in turn, warping into a level, holding
+  the key and tracing `G_Responder`:
+
+  | `key_fire` | reaches the game? |
+  | --- | --- |
+  | 157 `Control_L`, 32 `space`, 182 `Shift_L` | yes |
+  | 13 `Enter` | **no** — message refresh |
+  | 9 `Tab` | **no** — automap |
+  | 27 `Escape` | **no** — menu |
+  | 187 `F1` | **no** — the F-keys |
+
+  The engine is left alone; every one of those eaters is doing its job. The
+  controller now treats such a setting exactly like one with no keysym at all,
+  so **fire falls back to the mouse button and works without anybody editing a
+  config**:
+
+  ```
+  plan fire in=b7 sends=mouse1 src=default doomrc=13 unusable=13
+  note fire is key 13 in the engine, which the game never sees
+  ```
+
+  The defaults that deliberately use Tab and Escape — the automap, backing out
+  of a menu — are untouched, since being eaten is the point of those two.
+
 ## [1.10.68] — 2026-09-16
 
 ### Fixed
