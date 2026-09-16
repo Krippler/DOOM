@@ -947,6 +947,31 @@ None of these is a recommended setting. They are there to find out which part
 of x11vnc is holding the picture, on a machine where that is actually
 happening.
 
+## If the game crashes
+
+The log says which signal and where:
+
+```
+DOOM died on SIGSEGV (bad memory access). Innermost frame first:
+/usr/local/games/linuxxdoom(P_SetupLevel+0x1c4)[0x55e0...]
+/usr/local/games/linuxxdoom(G_DoLoadLevel+0x58)[0x55e0...]
+...
+[doom] DOOM crashed (SIGSEGV, status 139). The backtrace above says where;
+[doom] please include it, and the controller lines, in a bug report.
+```
+
+Quote the whole block. The innermost frame is at the top, and the names are what
+turn "it crashed" into something that can be looked at — this is 1997 C, and
+there are corners of it nobody has walked into for a long time.
+
+One cause is worth ruling out first, because it is in your own config rather
+than the game: a key binding with a value out of range. Check the keymap line
+in the controller log, or `.doomrc` directly. Every `key_*` should be between 0
+and 255; anything larger was an out-of-bounds read on every tic, and a large
+enough one crashed within a second. Fixed since 1.10.67, but a config written by
+an older build can still carry the value, and the fix makes it a dead control
+rather than a crash. Rebind it in **Options → Setup → Controls**.
+
 ## Troubleshooting
 
 **It starts, crashes immediately and keeps restarting.** Almost always a bad

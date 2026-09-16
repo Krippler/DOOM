@@ -8,7 +8,10 @@ CC?= gcc  # gcc or g++
 
 CFLAGS?=-O2 -g
 CFLAGS+=-Wall -DNORMALUNIX -DLINUX # -DUSEASM 
-LDFLAGS?=
+# -rdynamic puts the function names in the dynamic symbol table, which is what
+# lets the crash handler in i_main.c print a backtrace with names rather than
+# bare addresses -- and unlike the ordinary symbol table it survives `strip`.
+LDFLAGS?=-rdynamic
 # -lnsl is gone on modern glibc: those symbols now live in libc itself.
 LIBS=-lXext -lX11 -lm
 

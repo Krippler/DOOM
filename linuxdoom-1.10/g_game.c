@@ -196,6 +196,22 @@ fixed_t		angleturn[3] = {640, 1280, 320};	// + slow turn
 #define NUMKEYS		256 
 
 boolean         gamekeydown[NUMKEYS]; 
+
+//
+// Is this key held?
+//
+// Asked with whatever is in key_fire and the rest, which come straight out of
+// .doomrc through sscanf("%i") with no range check of any kind -- and which the
+// Controls menu could until recently set to any keysym X handed it. Anything
+// outside the array is not a key anybody can press: G_Responder below only
+// records 0..NUMKEYS-1, so the rest read memory that belongs to something else.
+// "key_fire 2000000000" in a config file was a reproducible segmentation fault
+// on the first tic of play, every time.
+//
+static boolean keyheld (int key)
+{
+    return key >= 0 && key < NUMKEYS && gamekeydown[key];
+}
 int             turnheld;				// for accelerative turning 
  
 boolean		mousearray[4]; 
@@ -268,9 +284,9 @@ void G_BuildTiccmd (ticcmd_t* cmd)
 	consistancy[consoleplayer][maketic%BACKUPTICS]; 
 
  
-    strafe = gamekeydown[key_strafe] || mousebuttons[mousebstrafe] 
+    strafe = keyheld(key_strafe) || mousebuttons[mousebstrafe] 
 	|| joybuttons[joybstrafe]; 
-    speed = gamekeydown[key_speed] || joybuttons[joybspeed];
+    speed = keyheld(key_speed) || joybuttons[joybspeed];
  
     forward = side = 0;
     
@@ -278,8 +294,8 @@ void G_BuildTiccmd (ticcmd_t* cmd)
     // on the keyboard and joystick
     if (joyxmove < 0
 	|| joyxmove > 0  
-	|| gamekeydown[key_right]
-	|| gamekeydown[key_left]) 
+	|| keyheld(key_right)
+	|| keyheld(key_left)) 
 	turnheld += ticdup; 
     else 
 	turnheld = 0; 
@@ -292,12 +308,12 @@ void G_BuildTiccmd (ticcmd_t* cmd)
     // let movement keys cancel each other out
     if (strafe) 
     { 
-	if (gamekeydown[key_right]) 
+	if (keyheld(key_right)) 
 	{
 	    // fprintf(stderr, "strafe right\n");
 	    side += sidemove[speed]; 
 	}
-	if (gamekeydown[key_left]) 
+	if (keyheld(key_left)) 
 	{
 	    //	fprintf(stderr, "strafe left\n");
 	    side -= sidemove[speed]; 
@@ -310,9 +326,9 @@ void G_BuildTiccmd (ticcmd_t* cmd)
     } 
     else 
     { 
-	if (gamekeydown[key_right]) 
+	if (keyheld(key_right)) 
 	    cmd->angleturn -= angleturn[tspeed]; 
-	if (gamekeydown[key_left]) 
+	if (keyheld(key_left)) 
 	    cmd->angleturn += angleturn[tspeed]; 
 	if (joyxmove > 0) 
 	    cmd->angleturn -= angleturn[tspeed]; 
@@ -320,12 +336,12 @@ void G_BuildTiccmd (ticcmd_t* cmd)
 	    cmd->angleturn += angleturn[tspeed]; 
     } 
  
-    if (gamekeydown[key_up]) 
+    if (keyheld(key_up)) 
     {
 	// fprintf(stderr, "up\n");
 	forward += forwardmove[speed]; 
     }
-    if (gamekeydown[key_down]) 
+    if (keyheld(key_down)) 
     {
 	// fprintf(stderr, "down\n");
 	forward -= forwardmove[speed]; 
@@ -334,19 +350,19 @@ void G_BuildTiccmd (ticcmd_t* cmd)
 	forward += forwardmove[speed]; 
     if (joyymove > 0) 
 	forward -= forwardmove[speed]; 
-    if (gamekeydown[key_straferight]) 
+    if (keyheld(key_straferight)) 
 	side += sidemove[speed]; 
-    if (gamekeydown[key_strafeleft]) 
+    if (keyheld(key_strafeleft)) 
 	side -= sidemove[speed];
     
     // buttons
     cmd->chatchar = HU_dequeueChatChar(); 
  
-    if (gamekeydown[key_fire] || mousebuttons[mousebfire] 
+    if (keyheld(key_fire) || mousebuttons[mousebfire] 
 	|| joybuttons[joybfire]) 
 	cmd->buttons |= BT_ATTACK; 
  
-    if (gamekeydown[key_use] || joybuttons[joybuse] ) 
+    if (keyheld(key_use) || joybuttons[joybuse] ) 
     { 
 	cmd->buttons |= BT_USE;
 	// clear double clicks if hit use button 
