@@ -8,6 +8,40 @@ The version follows the engine this is built from, linuxdoom-1.10.
 
 ## [Unreleased]
 
+### Fixed
+- **The music crashed the game.** A kernel log from the machine it happens on
+  named it outright:
+
+  ```
+  linuxxdoom[932935]: segfault at 14c9f8ed0414 error 4 in libfluidsynth.so.3.2.2
+  ```
+
+  Inside FluidSynth, not inside DOOM — and this file's fault all the same. The
+  music is rendered by a thread of its own, calling `fluid_synth_write_s16` in a
+  loop, while the game thread does `delete_fluid_player()` and builds a new one
+  every time the music changes, which is every level. There was **no
+  synchronisation between them at all** — not a mutex in `i_sound.c`. The player
+  was being freed out from under the thread rendering it, and `error 4` is a
+  read of an unmapped page.
+
+  It needs a level change to land in the wrong microsecond, which is why it was
+  rare, patternless, and looked like a fault in the music library.
+
+  ThreadSanitizer cannot catch it — both halves happen inside
+  `libfluidsynth.so`, which is not instrumented — so it was reproduced on its
+  own in forty lines doing nothing but those two things from two threads:
+
+  | | |
+  | --- | --- |
+  | without a lock | **SIGSEGV, five runs out of five** |
+  | with one lock over both | survived 4000 music changes, five out of five |
+
+  One mutex now covers the render call and every player operation. It is never
+  held across the blocking write into the music pipe, and shutdown releases it
+  before joining the thread, so neither the game nor the exit can stall on it.
+  Checked after the change: music still renders and the engine still shuts down
+  on the first ask.
+
 ### Changed
 - **A crash, or quitting, restarts the game instead of killing the container.**
   Both used to end the entrypoint, taking the display, the sound and the proxy

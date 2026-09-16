@@ -550,6 +550,52 @@ set to `s` and a trace on `M_Responder`: two presses of the arrow gave
 the same pair, where before the second would have been a jump to item 3.
 `key_use` set to `e` arrived as `ch=13` and selected the item.
 
+## The music crashed the game, and it was this file's fault
+
+`i_sound.c`. The music is rendered by a thread of its own — `I_FluidPipeThread`
+calls `fluid_synth_write_s16` in a loop, for ever, because the container has no
+sound device for FluidSynth's own drivers to push to. Meanwhile the game thread
+throws the player away and builds a new one every time the music changes:
+
+```c
+fluid_player_stop (fl_player);
+delete_fluid_player (fl_player);
+fl_player = new_fluid_player (fl_synth);
+```
+
+which is every level. **There was no synchronisation between them at all** — not
+a mutex in the file. So the player was freed while the rendering thread was
+inside FluidSynth walking the same object.
+
+It reached the kernel log of a real machine as
+
+```
+linuxxdoom[932935]: segfault at 14c9f8ed0414 ip 000014c8befc6fe1
+  error 4 in libfluidsynth.so.3.2.2
+```
+
+— `error 4` being a read of an unmapped page, from a thread inside FluidSynth
+rather than anywhere in DOOM, which is exactly what it looks like when the
+object under you has just been freed. It needs a level change to land in the
+wrong microsecond, so it is rare and arrives without a pattern, and it blames
+the music library for something this file did.
+
+ThreadSanitizer cannot see it: both halves of the conflict happen inside
+`libfluidsynth.so`, which is not instrumented. So it was reproduced on its own
+instead, in forty lines that do nothing but the same two things from two threads
+— render in one, replace the player in the other:
+
+| | |
+| --- | --- |
+| without a lock | **SIGSEGV, five runs out of five** |
+| with one lock over both | survived 4000 music changes, five runs out of five |
+
+One mutex now covers the render call and every player operation. It is never
+held across the blocking write into the pipe — that write waits on the far end
+by design, and holding a lock through it would stop the game whenever the reader
+paused. Shutdown drops the lock before joining the thread, because the thread
+needs it to finish the buffer it is on.
+
 ## Some keys never reach the game at all
 
 `g_game.c`. `G_Responder` passes every event through four other responders
