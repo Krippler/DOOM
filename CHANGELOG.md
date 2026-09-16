@@ -6,6 +6,83 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.70] — 2026-09-16
+
+### Fixed
+- **The music crashed the game.** A kernel log from the machine it happens on
+  named it outright:
+
+  ```
+  linuxxdoom[932935]: segfault at 14c9f8ed0414 error 4 in libfluidsynth.so.3.2.2
+  ```
+
+  Inside FluidSynth, not inside DOOM — and this file's fault all the same. The
+  music is rendered by a thread of its own, calling `fluid_synth_write_s16` in a
+  loop, while the game thread does `delete_fluid_player()` and builds a new one
+  every time the music changes, which is every level. There was **no
+  synchronisation between them at all** — not a mutex in `i_sound.c`. The player
+  was being freed out from under the thread rendering it, and `error 4` is a
+  read of an unmapped page.
+
+  It needs a level change to land in the wrong microsecond, which is why it was
+  rare, patternless, and looked like a fault in the music library.
+
+  ThreadSanitizer cannot catch it — both halves happen inside
+  `libfluidsynth.so`, which is not instrumented — so it was reproduced on its
+  own in forty lines doing nothing but those two things from two threads:
+
+  | | |
+  | --- | --- |
+  | without a lock | **SIGSEGV, five runs out of five** |
+  | with one lock over both | survived 4000 music changes, five out of five |
+
+  One mutex now covers the render call and every player operation. It is never
+  held across the blocking write into the music pipe, and shutdown releases it
+  before joining the thread, so neither the game nor the exit can stall on it.
+  Checked after the change: music still renders and the engine still shuts down
+  on the first ask.
+
+### Changed
+- **A crash, or quitting, restarts the game instead of killing the container.**
+  Both used to end the entrypoint, taking the display, the sound and the proxy
+  with it — so the page said *"connection lost, reload to try again"* where
+  reloading could not possibly work, and getting back in meant a `docker
+  restart` from somewhere that was not the phone in your hand. Picking QUIT GAME
+  did the same thing, which is a strange fate for a menu item.
+
+  Everything except the engine now outlives it, so the browser reconnects to the
+  same session on its own and the game comes back at the title screen. There is
+  no crash recovery in 1997 code and this does not pretend otherwise: a savegame
+  is still the only way back to where you were.
+
+  Not restarted: a shutdown, or a fatal error the engine reported itself. And
+  three runs in a row that end within seconds of starting stop the loop and say
+  so, rather than burying the reason under an endless retry. `DOOM_RESTART=0`
+  turns the whole thing off.
+
+  Checked against the real entrypoint with a stub engine: a crash 15 s in
+  restarts, a clean quit restarts, an instant crash three times over gives up,
+  and a fatal error does not restart at all.
+
+### Added
+- **The page says whether the sound is playing, in the container's log.** "I
+  can't hear anything" has causes on both sides of the glass and they look
+  identical from here:
+
+  ```
+  [doom] sound: playing via the fallback, 22050 Hz in, 44100 Hz out, context running.
+  [doom] sound: not playing: this browser has no Web Audio.
+  ```
+
+  *Playing* means the page has done its part and the silence is the volume, a
+  phone's silent switch, or wherever the audio has been routed — a controller
+  with its own headphone socket can take the output while it is plugged in.
+
+  The iOS path was verified end to end rather than assumed: a browser with the
+  Pointer Lock API and AudioWorklet both removed, fed the real audio protocol,
+  renders through the `ScriptProcessorNode` fallback at the right rate with the
+  right amplitude.
+
 ## [1.10.69] — 2026-09-16
 
 ### Fixed

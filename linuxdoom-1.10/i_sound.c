@@ -930,6 +930,31 @@ static fluid_synth_t*		fl_synth = NULL;
 static fluid_audio_driver_t*	fl_driver = NULL;
 static fluid_player_t*		fl_player = NULL;
 
+//
+// One lock over all of it.
+//
+// The music is rendered by a thread of its own -- see the pipe below -- while
+// the game thread throws the player away and builds a new one every time the
+// music changes, which is every level. Nothing here was synchronised, so
+// delete_fluid_player() ran while fluid_synth_write_s16() was walking the same
+// object, and the renderer read memory that had just been freed.
+//
+// That is a real crash, seen in the wild and reported by the kernel as
+//
+//   linuxxdoom[932935]: segfault at 14c9f8ed0414 ... error 4
+//     in libfluidsynth.so.3.2.2
+//
+// -- error 4 being a read of an unmapped page, from a thread inside FluidSynth
+// rather than anywhere in DOOM. It needs a level change to land in the wrong
+// microsecond, so it is rare, arrives without a pattern, and blames the music
+// library for something this file did.
+//
+// Held for the render call and for each player operation, and never across the
+// blocking write to the pipe: that write waits on the far end by design, and
+// holding a lock through it would stop the game every time the reader paused.
+//
+static pthread_mutex_t	fl_lock = PTHREAD_MUTEX_INITIALIZER;
+
 // Rendering into a pipe instead of to an audio device.
 //
 // FluidSynth's audio drivers all want a sound system to talk to, and the
@@ -992,7 +1017,10 @@ void I_FluidSetGain (int volume)
 	volume = 0;
 
     gain = (float)volume / 15.0f * MUSIC_MAX_GAIN;
+
+    pthread_mutex_lock (&fl_lock);
     fluid_synth_set_gain (fl_synth, gain);
+    pthread_mutex_unlock (&fl_lock);
 }
 
 
@@ -1050,8 +1078,10 @@ I_FluidPipeThread (void* unused)
 	size_t		left = sizeof(buf);
 
 	// Interleaved stereo: left in the even shorts, right in the odd ones.
+	pthread_mutex_lock (&fl_lock);
 	fluid_synth_write_s16 (fl_synth, MUSIC_PIPE_FRAMES,
 			       buf, 0, 2, buf, 1, 2);
+	pthread_mutex_unlock (&fl_lock);
 
 	while (left && fl_pipe_running)
 	{
@@ -1195,6 +1225,8 @@ void I_InitMusic(void)
 
 void I_ShutdownMusic(void)
 {
+    pthread_mutex_lock (&fl_lock);
+
     if (fl_player)
     {
 	fluid_player_stop (fl_player);
@@ -1202,6 +1234,12 @@ void I_ShutdownMusic(void)
 	fl_player = NULL;
     }
 
+    pthread_mutex_unlock (&fl_lock);
+
+    // Outside the lock: the thread takes it for every buffer it renders, so
+    // joining while holding it would wait for a thread that is waiting for us.
+    // Once it has been joined nothing else touches the synth, and the teardown
+    // below needs no lock at all.
     if (fl_pipe_running)
     {
 	// The reader keeps draining, so a thread blocked in write returns
@@ -1336,6 +1374,11 @@ void I_PlaySong(int handle, int loops)
     if (!fl_synth || !song_midi)
 	return;
 
+    // All of it under the lock, not just the delete: between throwing the old
+    // player away and the new one being ready there is no player at all, and
+    // the rendering thread must not be looking while that is true.
+    pthread_mutex_lock (&fl_lock);
+
     if (fl_player)
     {
 	fluid_player_stop (fl_player);
@@ -1346,19 +1389,25 @@ void I_PlaySong(int handle, int loops)
     fl_player = new_fluid_player (fl_synth);
 
     if (!fl_player)
+    {
+	pthread_mutex_unlock (&fl_lock);
 	return;
+    }
 
     if (fluid_player_add_mem (fl_player, song_midi, song_midi_len)
 	== FLUID_FAILED)
     {
 	delete_fluid_player (fl_player);
 	fl_player = NULL;
+	pthread_mutex_unlock (&fl_lock);
 	fprintf (stderr, "I_PlaySong: synth rejected the song\n");
 	return;
     }
 
     fluid_player_set_loop (fl_player, loops ? -1 : 1);
     fluid_player_play (fl_player);
+
+    pthread_mutex_unlock (&fl_lock);
 }
 
 
@@ -1366,14 +1415,18 @@ void I_PauseSong (int handle)
 {
     handle = 0;
 
-    if (!fl_player)
-	return;
+    pthread_mutex_lock (&fl_lock);
 
-    fluid_player_stop (fl_player);
+    if (fl_player)
+    {
+	fluid_player_stop (fl_player);
 
-    // Stopping mid-note would otherwise leave it sounding.
-    if (fl_synth)
-	fluid_synth_all_notes_off (fl_synth, -1);
+	// Stopping mid-note would otherwise leave it sounding.
+	if (fl_synth)
+	    fluid_synth_all_notes_off (fl_synth, -1);
+    }
+
+    pthread_mutex_unlock (&fl_lock);
 }
 
 
@@ -1381,10 +1434,12 @@ void I_ResumeSong (int handle)
 {
     handle = 0;
 
-    if (!fl_player)
-	return;
+    pthread_mutex_lock (&fl_lock);
 
-    fluid_player_play (fl_player);
+    if (fl_player)
+	fluid_player_play (fl_player);
+
+    pthread_mutex_unlock (&fl_lock);
 }
 
 
@@ -1394,6 +1449,8 @@ void I_StopSong(int handle)
 
     looping = 0;
     musicdies = 0;
+
+    pthread_mutex_lock (&fl_lock);
 
     if (fl_player)
     {
@@ -1407,6 +1464,8 @@ void I_StopSong(int handle)
 	fluid_synth_all_notes_off (fl_synth, -1);
 	fluid_synth_all_sounds_off (fl_synth, -1);
     }
+
+    pthread_mutex_unlock (&fl_lock);
 }
 
 
@@ -1425,8 +1484,19 @@ int I_QrySongPlaying(int handle)
 {
     handle = 0;
 
+    // Reads the player, so it queues behind whoever is replacing it.
+    pthread_mutex_lock (&fl_lock);
+
     if (fl_player)
-	return fluid_player_get_status (fl_player) == FLUID_PLAYER_PLAYING;
+    {
+	int	playing =
+	    fluid_player_get_status (fl_player) == FLUID_PLAYER_PLAYING;
+
+	pthread_mutex_unlock (&fl_lock);
+	return playing;
+    }
+
+    pthread_mutex_unlock (&fl_lock);
 
     return looping || musicdies > gametic;
 }

@@ -220,7 +220,6 @@ class _WatchedTarget(object):
 # gap lines above.
 #
 PAD_PATH = '/doom-pad-log'
-PAD_MARK = 'controller:'
 PAD_MAX_LINES = 40
 PAD_MAX_CHARS = 400
 
@@ -233,7 +232,15 @@ def do_GET(self):
     if split.path != PAD_PATH:
         return _do_GET(self)
 
-    lines = (parse_qs(split.query).get('l') or [''])[0]
+    query = parse_qs(split.query)
+    lines = (query.get('l') or [''])[0]
+
+    # Which part of the page is talking. Only a short word from a fixed set, so
+    # a page cannot invent a prefix that reads like something else in the log.
+    tag = (query.get('t') or ['controller'])[0]
+
+    if tag not in ('controller', 'sound'):
+        tag = 'controller'
 
     for line in lines.split('|')[:PAD_MAX_LINES]:
         # Whitespace-collapsed, which also drops anything that could forge a
@@ -243,7 +250,7 @@ def do_GET(self):
         line = ' '.join(line.split())[:PAD_MAX_CHARS]
 
         if line:
-            print('%s %s' % (PAD_MARK, line), file=sys.stderr, flush=True)
+            print('%s: %s' % (tag, line), file=sys.stderr, flush=True)
 
     # Nothing to send back. The page does not read the answer; it only needs
     # the request to have arrived.

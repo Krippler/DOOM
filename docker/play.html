@@ -1482,6 +1482,31 @@ function padLog(line) {
   if (!padLogTimer) padLogTimer = setTimeout(padLogFlush, 400);
 }
 
+//
+// The same channel, for the sound.
+//
+// "I can't hear anything" has causes on both sides of the glass, and from the
+// container the two are identical. This says what the page is doing, so a
+// silent phone can be told apart from a silent page: if this line says the
+// sound is playing, the page has done its part and the fault is the volume, the
+// phone's silent switch, or wherever the audio is being routed -- a controller
+// with its own headphone socket takes the output on some phones, and then
+// nothing comes out of the speaker whatever the page does.
+//
+// Not batched with the controller's lines: they go out under their own tag so
+// `docker logs | grep sound:` finds them on their own.
+//
+let soundLogged = 0;
+
+function soundLog(line) {
+  if (soundLogged >= 8) return;
+  soundLogged++;
+  try {
+    fetch('doom-pad-log?t=sound&l=' + encodeURIComponent(line),
+          { cache: 'no-store' }).catch(() => {});
+  } catch (e) { /* nothing to be done */ }
+}
+
 function padLogFlush() {
   padLogTimer = 0;
   if (!padLogQueue.length) return;
@@ -1622,6 +1647,7 @@ function audioFailed(why) {
   if (audioComplained) return;
   audioComplained = true;
   audioReason = why;
+  soundLog('not playing: ' + why);
   audioStatus('No sound: ' + why + ' The game is unaffected; the picture and '
             + 'the controls do not depend on it.');
   audioNote();
@@ -2077,6 +2103,13 @@ async function startAudio() {
       }
 
       audioNode.connect(ctx.destination);
+
+      soundLog('playing via the ' + audioVia + ', ' + srcRate + ' Hz in, '
+               + ctx.sampleRate + ' Hz out, context ' + ctx.state
+               + '. If nothing can be heard from here the page is not the'
+               + ' cause: check the volume, a phone\'s silent switch, and'
+               + ' whether a controller with a headphone socket has taken the'
+               + ' output.');
     }
 
     // Whole frames only: two channels of 16 bits each.
