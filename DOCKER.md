@@ -298,6 +298,21 @@ binding uses, so a squeezed trigger appears as `Axis 5 +` the moment you pull it
 A trigger that reports only an analog value and never sets `pressed` counts from
 30% of its travel, so one that tops out low still works.
 
+#### If Fire or Run in particular do nothing
+
+Those two are the ones most often rebound, so check what the engine is actually
+bound to. The container logs it at startup, in full:
+
+```
+[doom] controller keys: key_down=115 key_fire=120 key_left=172 key_menu=96 ...
+```
+
+If `key_fire` is a number the page cannot turn into a key — a few values have no
+keysym at all — the panel says **`game uses 144 — unknown here`** on that row and
+sends **nothing** rather than pressing the default at an engine listening for
+something else. Press **Key** on that row and press the key you use, and it will
+send that instead.
+
 **Rebinding** is in that panel: pick a line, press **Bind**, then press the
 button or squeeze the trigger.
 The sticks have a deadzone, a turn speed, invert, a swap, and a switch for

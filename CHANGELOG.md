@@ -6,6 +6,40 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.59] — 2026-09-16
+
+### Fixed
+- **A binding the page could not express sent the wrong key, silently.**
+  `doomKeyToX` inverts `xlatekey`, and it stopped at printable characters and the
+  `KEY_*` constants. But `xlatekey` returns the **keysym unchanged** for
+  everything else, so a control bound to a keypad key, Caps Lock, Insert, the
+  Menu key or Print Screen is stored as that keysym — 0xff8d, 0xffe5 and so on —
+  and every one of those fell through to the built-in default. The pad then
+  pressed Ctrl at an engine listening for something quite different, with nothing
+  said about it.
+
+  Values above 0xff are sent as keysyms now, which is exactly what they are.
+  Checked across the range: `KP_Enter`, `Caps_Lock`, `Control_R` and the Menu key
+  all map, the `KEY_*` constants and printable characters are unchanged.
+
+  Where a value genuinely has no keysym, the action now sends **nothing** and the
+  panel says **`game uses 144 — unknown here`** on that row. Pressing the wrong
+  key is worse than pressing none: the default may well be bound to something
+  else. **Key** on the row still sets it by hand.
+
+- **The log line meant to answer this truncated before reaching it.** 1.10.55
+  added `controller keys:` to the startup log and cut it at 120 characters, and
+  awk emits its keys in no particular order — so `key_fire` and `key_speed`, the
+  two a controller report is most likely to be about, were the ones that fell off
+  the end. It is now logged in full and sorted:
+
+  ```
+  [doom] controller keys: key_down=115 key_fire=120 key_left=172 key_menu=96 ...
+  ```
+
+  A diagnostic that hides the thing being asked about is worse than none, and
+  this one hid it for three releases.
+
 ## [1.10.58] — 2026-09-16
 
 ### Fixed

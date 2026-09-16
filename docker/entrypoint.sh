@@ -532,7 +532,18 @@ write_key_map() {
         printf '{}\n' >"$out" 2>/dev/null || true
     fi
 
-    log "controller keys: $(cat "$out" 2>/dev/null | cut -c1-120)"
+    #
+    # Logged in full, sorted, and not as JSON.
+    #
+    # The first version of this truncated at 120 characters and awk emits its
+    # keys in no particular order, so the two settings a controller report is
+    # most likely to be about -- key_fire and key_speed -- were the ones that
+    # fell off the end. A log line that hides the thing being asked about is
+    # worse than no log line.
+    #
+    log "controller keys: $(awk '
+        /^key_[a-z_]+[ \t]+-?[0-9]+[ \t]*$/ { printf "%s=%s\n", $1, $2 }
+    ' "$rc" 2>/dev/null | sort | tr '\n' ' ')"
 }
 
 write_key_map

@@ -1019,6 +1019,17 @@ function renderPadBinds() {
                 : src === 'engine'  ? "from the game's own config"
                 : 'the engine default';
 
+    // A setting this page could not turn into a keysym is worth saying out
+    // loud, because the alternative is pressing the default at an engine that
+    // is listening for something else and looking broken for no stated reason.
+    const unknown = gamepad.unknownKeyFor(a.id);
+    if (unknown !== null) {
+      sends.classList.add('none');
+      sends.textContent = 'game uses ' + unknown + ' \u2014 unknown here';
+      sends.title = 'The engine is bound to key number ' + unknown
+                  + ', which this page cannot express. Set it by hand with Key.';
+    }
+
     const act = document.createElement('td');
     act.className = 'act';
     const bind = document.createElement('button');
