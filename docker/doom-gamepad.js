@@ -47,8 +47,7 @@ const K = KeyTable;
 
 export const ACTIONS = [
   { id: 'fire',        label: 'Fire',              keys: [[K.XK_Control_L, 'ControlLeft']] },
-  { id: 'act',         label: 'Open / use',        keys: [[K.XK_space, 'Space'],
-                                                         [K.XK_Return, 'Enter']],
+  { id: 'act',         label: 'Open / use',        keys: [[K.XK_space, 'Space']],
     note: 'and confirms in menus' },
   { id: 'run',         label: 'Run',               keys: [[K.XK_Shift_L, 'ShiftLeft']] },
   { id: 'strafemod',   label: 'Strafe modifier',   keys: [[K.XK_Alt_L, 'AltLeft']],
@@ -118,12 +117,21 @@ const ASCII_CODES = {
 };
 
 //
-// One key for the game, plus the menus' own if they are not the same key.
+// One key per action, and exactly one.
 //
-export function withMenuKey(actionId, pair) {
-  const menu = ACTION_MENU_KEY[actionId];
-  if (!menu || menu[0] === pair[0]) return [pair];
-  return [pair, menu];
+// 1.10.56 sent the configured key *and* the menu's hardcoded one, so that a
+// rebound control still worked the menus. It worked and it was wrong: the menu
+// treats any other character as a hotkey for the item starting with it, so
+// pressing down sent 's', moved the cursor one line with the arrow and then
+// jumped to SAVE GAME -- four lines from where it started. Two keys also meant
+// two Returns for Open/use, which selects twice.
+//
+// The engine maps a bound control onto the menu's own key instead, in
+// M_Responder, which is where it belongs: the keys you walk with are the keys
+// you navigate with, and nothing is sent twice.
+//
+function oneKey(pair) {
+  return [pair];
 }
 
 export function doomKeyToX(code) {
@@ -143,27 +151,6 @@ export function doomKeyToX(code) {
   }
   return null;
 }
-
-//
-// The key the engine hardcodes for the same job in its menus.
-//
-// This is the whole shape of the thing. `m_menu.c` reads the arrows, Return and
-// Escape literally, and `am_map.c` pans the automap with the same arrows, while
-// play goes through the configurable bindings. So an action whose engine key has
-// been changed has to press *both*: the configured key, which is what moves the
-// player, and the hardcoded one, which is what the menus and the map listen for.
-//
-// Sending only the configured key was 1.10.55's regression -- the pad moved in a
-// level and went dead in the menus, which is precisely the bug it had just
-// fixed, arrived at from the other side.
-//
-const ACTION_MENU_KEY = {
-  forward:   [K.XK_Up,     'ArrowUp'],
-  back:      [K.XK_Down,   'ArrowDown'],
-  turnleft:  [K.XK_Left,   'ArrowLeft'],
-  turnright: [K.XK_Right,  'ArrowRight'],
-  act:       [K.XK_Return, 'Enter'],
-};
 
 // Which `.doomrc` setting each action is pressing.
 const ACTION_DOOMRC = {
@@ -560,7 +547,7 @@ export class DoomGamepad {
         if (raw === undefined || raw === null) continue;
         const pair = doomKeyToX(raw);
         if (!pair) continue;
-        out[id] = withMenuKey(id, pair);
+        out[id] = oneKey(pair);
       }
     }
     this.engineKeys = out;
@@ -577,9 +564,7 @@ export class DoomGamepad {
   setKey(actionId, keysym, code) {
     if (!ACTION_BY_ID.has(actionId)) return;
     if (!keysym) return;
-    // Same rule as the config: keep the menus' hardcoded key alongside, or
-    // learning 'w' for Forward would stop the menus answering the d-pad.
-    this.keys[actionId] = withMenuKey(actionId, [keysym, code || null]);
+    this.keys[actionId] = oneKey([keysym, code || null]);
     this._save();
     this._onChange();
   }
