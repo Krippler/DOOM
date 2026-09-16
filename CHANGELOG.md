@@ -6,6 +6,34 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.64] — 2026-09-16
+
+### Fixed
+- **A saved controller layout hid every button added after it was saved.** The
+  first log from a real pad answered the whole thing in one line — `weapon1`
+  through `weapon7`, `back_out` and both strafes all reading `in=-`, no button
+  at all, while B, X and Y logged `nothing bound` as they were pressed.
+
+  Loading the saved layout *replaced* the defaults rather than filling in around
+  them. So anybody who rebound one control before an action existed kept a
+  layout with a permanent hole in it: the action had no button, the panel had no
+  way to say why, and nothing short of **Reset to defaults** would bring it back.
+  That is the whole of *"Y doesn't map to any action"* and of *"left and right
+  stick buttons don't work — they never have"*, which were both reported as pad
+  faults and were neither.
+
+  A saved layout now has its gaps filled from the defaults. Only gaps: a button
+  you rebound keeps what you gave it, an action that already has a button is
+  left alone, and a default button you have since put something else on is not
+  taken back. **Clear** is remembered separately so it survives a reload, which
+  it has to now that a gap gets filled.
+
+  The log says when it happens, and which actions it was:
+
+  ```
+  [doom] controller: filled in from the defaults, saved layout had no button for: back_out=b1 weapon3=b2 ...
+  ```
+
 ## [1.10.63] — 2026-09-16
 
 ### Added
