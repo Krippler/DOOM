@@ -114,6 +114,7 @@
     margin: 0; font-size: 12px; letter-spacing: 0.14em;
     color: #b33; text-transform: uppercase; font-weight: normal;
   }
+  #pad-note b { color: #d8a; font-weight: normal; }
   #pad-note button, #pad-panel button {
     font: inherit; font-size: 12px; color: #d8d8d8; background: #1a1a1a;
     border: 1px solid #4a4a4a; border-radius: 3px; padding: 2px 8px;
@@ -940,8 +941,14 @@ function renderPadNote() {
     return;
   }
 
+  // Anything that cannot work is named here rather than left in the panel.
+  // Six releases went by with a controller half working and this screen saying
+  // only that a controller was present, which was the least useful true thing
+  // it could have said.
+  const bad = pad ? gamepad.troubled() : [];
   const state = (pad ? pad.id : 'none') + '|'
-              + (padPanelEl && !padPanelEl.hidden ? 'open' : 'shut');
+              + (padPanelEl && !padPanelEl.hidden ? 'open' : 'shut') + '|'
+              + bad.map(b => b.id + b.why).join(',');
   if (state === padNoteState) return;
   padNoteState = state;
 
@@ -949,6 +956,18 @@ function renderPadNote() {
   padNoteEl.append(pad
     ? 'Controller: ' + padName(pad.id) + '. '
     : 'Controller: none seen \u2014 press a button on it. ');
+
+  if (bad.length) {
+    // Named, but never at length: this screen is meant to be read at a glance,
+    // and a pad that reports almost nothing as buttons could otherwise fill it.
+    const say = document.createElement('b');
+    const shown = bad.slice(0, 3).map(b => b.label).join(', ');
+    const rest  = bad.length > 3 ? ' and ' + (bad.length - 3) + ' more' : '';
+    say.textContent = bad.every(b => b.why === 'button')
+      ? shown + rest + ': no such button on this pad. '
+      : shown + rest + ': needs a key. ';
+    padNoteEl.append(say);
+  }
 
   const open = document.createElement('button');
   open.type = 'button';
@@ -1015,6 +1034,11 @@ function renderPadBinds() {
     sends.className = 'sends' + (src === 'learned' ? ' custom' : '')
                               + (src === 'engine' ? ' engine' : '');
     sends.textContent = gamepad.keysFor(a.id).map(([sym]) => keyName(sym)).join('+');
+    if (gamepad.wasAutoBound(a.id)) {
+      const s2 = document.createElement('small');
+      s2.textContent = ' \u2014 found as a trigger axis';
+      name.append(s2);
+    }
     sends.title = src === 'learned' ? 'set here by hand'
                 : src === 'engine'  ? "from the game's own config"
                 : 'the engine default';
