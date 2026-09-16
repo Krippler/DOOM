@@ -37,7 +37,15 @@ rcsid[] = "$Id: info.c,v 1.3 1997/01/26 07:45:00 b1 Exp $";
 
 #include "p_mobj.h"
 
-char *sprnames[NUMSPRITES] = {
+// One longer than NUMSPRITES, and the extra entry is the NULL that
+// R_InitSpriteDefs walks this list looking for. Without it that walk ran off
+// the end of the array and went on reading whatever global followed, as char*,
+// until a zero turned up -- then dereferenced each one. AddressSanitizer
+// reports it as a global-buffer-overflow on every single startup. What it did
+// after that depended on what the linker happened to put next: usually
+// nothing, sometimes a sprite count too high and a corrupted sprite table to
+// crash on later.
+char *sprnames[NUMSPRITES + 1] = {
     "TROO","SHTG","PUNG","PISG","PISF","SHTF","SHT2","CHGG","CHGF","MISG",
     "MISF","SAWG","PLSG","PLSF","BFGG","BFGF","BLUD","PUFF","BAL1","BAL2",
     "PLSS","PLSE","MISL","BFS1","BFE1","BFE2","TFOG","IFOG","PLAY","POSS",
@@ -51,7 +59,8 @@ char *sprnames[NUMSPRITES] = {
     "POL3","POL1","POL6","GOR2","GOR3","GOR4","GOR5","SMIT","COL1","COL2",
     "COL3","COL4","CAND","CBRA","COL6","TRE1","TRE2","ELEC","CEYE","FSKU",
     "COL5","TBLU","TGRN","TRED","SMBT","SMGT","SMRT","HDB1","HDB2","HDB3",
-    "HDB4","HDB5","HDB6","POB1","POB2","BRS1","TLMP","TLP2"
+    "HDB4","HDB5","HDB6","POB1","POB2","BRS1","TLMP","TLP2",
+    NULL
 };
 
 

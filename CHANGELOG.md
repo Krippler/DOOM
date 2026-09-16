@@ -26,6 +26,21 @@ The version follows the engine this is built from, linuxdoom-1.10.
   **This is not the crash reported against 1.10.66** — that log's keymap line
   shows every value in range. It is a real one found while looking for it.
 
+- **The sprite name list had no terminator.** `R_InitSpriteDefs` counts its
+  argument by walking to a NULL, and `sprnames[NUMSPRITES]` in `info.c` holds
+  exactly `NUMSPRITES` entries and no NULL. The walk ran off the end of the
+  array and went on reading whatever global followed it, as `char*`, until a
+  zero turned up — then dereferenced each one.
+
+  AddressSanitizer reports it as a global-buffer-overflow **on every startup**,
+  which is how it was found: built with `-fsanitize=address` and started,
+  nothing else needed. What it did afterwards depended on what the linker put
+  next, which is why it survived thirty years unnoticed. The array is
+  `NUMSPRITES + 1` with a trailing `NULL` now; ASan is clean through startup and
+  several minutes of input.
+
+  Also **not** known to be the crash reported from a phone.
+
 ### Added
 - **A crash says where it died.** `Segmentation fault` on its own is not enough
   to act on, and there is no core file in a container nobody runs gdb in. The

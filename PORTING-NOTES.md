@@ -550,6 +550,43 @@ set to `s` and a trace on `M_Responder`: two presses of the arrow gave
 the same pair, where before the second would have been a jump to item 3.
 `key_use` set to `e` arrived as `ch=13` and selected the item.
 
+## The sprite name list had no terminator
+
+`info.c`, `r_things.c`. `R_InitSpriteDefs` counts its argument by walking to a
+NULL:
+
+```c
+check = namelist;
+while (*check != NULL)
+    check++;
+numsprites = check-namelist;
+```
+
+and the only thing ever passed to it was
+
+```c
+char *sprnames[NUMSPRITES] = { "TROO", ... "TLMP","TLP2" };
+```
+
+which holds exactly `NUMSPRITES` entries and **no NULL**. So the walk ran off
+the end of the array and kept reading whatever global the linker put next, as
+`char*`, until a zero turned up — and then `intname = *(int *)namelist[i]`
+dereferenced each one of those.
+
+AddressSanitizer reports it as a global-buffer-overflow in `R_InitSpriteDefs`
+on **every single startup**, which is how it was found: built with
+`-fsanitize=address` and started, nothing else required. What it does after that
+depends entirely on what follows the array in memory — usually nothing visible,
+which is why it survived thirty years, and otherwise a sprite count too high and
+a sprite table to fall over later.
+
+The array is `NUMSPRITES + 1` with a trailing `NULL` now, which is what the
+walk was always looking for. ASan is clean across startup and several minutes of
+input afterwards.
+
+Worth saying plainly: this was found while looking for a crash reported from a
+phone, and it is **not** known to be that crash.
+
 ## A key value out of range was a segmentation fault
 
 `g_game.c`. `G_Responder` records a key with a bounds check:
