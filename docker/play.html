@@ -1343,8 +1343,10 @@ let padKeysSettled = false;
 function padKeysDone(note) {
   if (padKeysSettled) return;
   padKeysSettled = true;
-  padLog('client __DOOM_VERSION__, pointerlock '
-         + (canLock() ? 'yes' : 'no') + ', keymap ' + note);
+  // Two lines, not one: together they run past what a single log line carries,
+  // and the keymap is the half that was getting cut off.
+  padLog('client __DOOM_VERSION__, pointerlock ' + (canLock() ? 'yes' : 'no'));
+  padLog('keymap ' + note);
 }
 
 fetch('doom-keys.json', { cache: 'no-store' })

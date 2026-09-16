@@ -222,7 +222,7 @@ class _WatchedTarget(object):
 PAD_PATH = '/doom-pad-log'
 PAD_MARK = 'controller:'
 PAD_MAX_LINES = 40
-PAD_MAX_CHARS = 200
+PAD_MAX_CHARS = 400
 
 _do_GET = ProxyRequestHandler.do_GET
 
@@ -237,7 +237,9 @@ def do_GET(self):
 
     for line in lines.split('|')[:PAD_MAX_LINES]:
         # Whitespace-collapsed, which also drops anything that could forge a
-        # second line of container log, and cut to a readable length.
+        # second line of container log, and cut to a readable length. 200 was
+        # too short: the keymap line is the longest and the most useful, and it
+        # arrived cut off in the middle of the last setting's name.
         line = ' '.join(line.split())[:PAD_MAX_CHARS]
 
         if line:
