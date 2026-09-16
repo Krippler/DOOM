@@ -1044,6 +1044,10 @@ static binding_t bindings[] =
 // Set while the next keypress is being captured for a binding.
 static boolean	bindingWait = false;
 
+// The size of G_Responder's gamekeydown array: the largest key value the game
+// can hold down, and so the largest one worth storing in a binding.
+#define MAXKEYVALUE	256
+
 
 typedef struct
 {
@@ -2096,7 +2100,13 @@ boolean M_Responder (event_t* ev)
 
 	bindingWait = false;
 
+	// Out of range is refused as well. xlatekey passes a keysym it does not
+	// recognise straight through, so a Super key or a media key arrives here
+	// as 65515 or thereabouts -- and G_Responder only ever records 0..255, so
+	// binding one produces a control that can never fire and a config file
+	// the game then reads that value back out of for ever.
 	if (ch != KEY_ESCAPE
+	    && ch >= 0 && ch < MAXKEYVALUE
 	    && currentMenu == &ControlsDef
 	    && itemOn >= 0 && itemOn < (short)NUM_BINDINGS)
 	{

@@ -771,5 +771,20 @@ if [ -n "$HELPERWATCH_PID" ]; then
     HELPERWATCH_PID=""
 fi
 
-log "DOOM exited with status $status"
+#
+# A status over 128 is a signal, and "status 139" is a poor way to say the game
+# crashed. Name it, and point at the backtrace the engine prints above it, so a
+# crash report has somewhere to start.
+#
+case "$status" in
+    134) log "DOOM was aborted (SIGABRT). The backtrace above says where." ;;
+    136) log "DOOM hit an arithmetic error (SIGFPE). The backtrace above says where." ;;
+    138) log "DOOM died on a bad address (SIGBUS). The backtrace above says where." ;;
+    139) log "DOOM crashed (SIGSEGV, status 139). The backtrace above says where;"
+         log "please include it, and the controller lines, in a bug report." ;;
+    143) log "DOOM was stopped (SIGTERM)" ;;
+    130) log "DOOM was interrupted (SIGINT)" ;;
+    *)   log "DOOM exited with status $status" ;;
+esac
+
 exit "$status"

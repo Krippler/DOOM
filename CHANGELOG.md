@@ -6,6 +6,45 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **A key value out of range was a segmentation fault.** `G_Responder` records a
+  key with a bounds check; `G_BuildTiccmd` reads the same array back with none —
+  and `key_fire` and the rest come out of `.doomrc` through `sscanf("%i")`
+  unchecked. A config file holding a large number is therefore an out-of-bounds
+  read on every tic. Reproduced with `key_fire 2000000000`: SIGSEGV within a
+  second, every time. `65515` and `-1` did not crash, which is worse rather than
+  better — they quietly read whatever sits next to the array.
+
+  Getting such a value in there took no effort: `xlatekey` passes an
+  unrecognised keysym straight through, so a Super key or a media key arrives as
+  65515 or thereabouts, and the Controls screen stored whatever it was handed.
+  Reads are range-checked now, and the Controls screen refuses a key the game
+  could never record.
+
+  **This is not the crash reported against 1.10.66** — that log's keymap line
+  shows every value in range. It is a real one found while looking for it.
+
+### Added
+- **A crash says where it died.** `Segmentation fault` on its own is not enough
+  to act on, and there is no core file in a container nobody runs gdb in. The
+  engine now prints a backtrace for SIGSEGV, SIGBUS, SIGFPE, SIGILL and SIGABRT
+  and re-raises, so the log names the function:
+
+  ```
+  DOOM died on SIGSEGV (bad memory access). Innermost frame first:
+  /usr/local/games/linuxxdoom(TryRunTics+0x220)[...]
+  /usr/local/games/linuxxdoom(D_DoomLoop+0x36f)[...]
+  ```
+
+  `backtrace_symbols_fd` rather than `backtrace_symbols`, because the latter
+  calls `malloc` and would deadlock exactly when it is needed. `-rdynamic` puts
+  the names in and they survive the image's `strip`, which was checked against a
+  stripped binary rather than assumed.
+
+- **The exit line names the signal**, rather than `DOOM exited with status 139`.
+
 ## [1.10.66] — 2026-09-16
 
 ### Fixed

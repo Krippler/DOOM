@@ -550,6 +550,65 @@ set to `s` and a trace on `M_Responder`: two presses of the arrow gave
 the same pair, where before the second would have been a jump to item 3.
 `key_use` set to `e` arrived as `ch=13` and selected the item.
 
+## A key value out of range was a segmentation fault
+
+`g_game.c`. `G_Responder` records a key with a bounds check:
+
+```c
+if (ev->data1 < NUMKEYS)
+    gamekeydown[ev->data1] = true;
+```
+
+but `G_BuildTiccmd` reads the array back with none:
+
+```c
+strafe = gamekeydown[key_strafe] || ...
+if (gamekeydown[key_fire] || ...)
+```
+
+and `key_fire` and the rest come out of `.doomrc` through `sscanf("%i")` with no
+range check of any kind. So a config file holding a large number is an
+out-of-bounds read of a 256-byte array on every tic. Reproduced by putting
+`key_fire 2000000000` in a `.doomrc` and starting the game: SIGSEGV, every time,
+within a second. `65515` and `-1` did not crash, which is worse rather than
+better — they read whatever happens to be next to the array.
+
+Getting such a value in there took no effort either: `xlatekey` passes a keysym
+it does not recognise straight through, so a Super key, a media key or anything
+else outside its switch arrives as 65515 or thereabouts, and the Controls screen
+stored whatever it was handed.
+
+Both ends are fixed. Reads go through a `keyheld()` that checks the range, so
+nothing in a config file can reach past the array however it got there; and the
+Controls screen refuses a key the game could never record, since binding one
+produces a control that cannot work.
+
+## Saying where it died
+
+A crash reached the container's log as the single word `Segmentation fault`,
+which is not enough to act on and not enough to ask about: there is no core file
+in a container nobody is going to run gdb in, and the one report of one said
+nothing about where the game had been.
+
+`i_main.c` installs a handler for SIGSEGV, SIGBUS, SIGFPE, SIGILL and SIGABRT
+that prints the stack and re-raises, so the log names the function. It uses
+`backtrace_symbols_fd`, which writes with `write(2)` and allocates nothing —
+`backtrace_symbols`, the obvious-looking one, calls `malloc` and would deadlock
+exactly when it is needed.
+
+`-rdynamic` in the Makefile is what puts the names in, and it survives the
+`strip` in the Dockerfile because those names go in `.dynsym` rather than
+`.symtab`. Checked against a stripped binary, which is what the image ships:
+
+```
+DOOM died on SIGSEGV (bad memory access). Innermost frame first:
+...
+/usr/local/games/linuxxdoom(I_WaitForTic+0x1ec)[...]
+/usr/local/games/linuxxdoom(TryRunTics+0x220)[...]
+/usr/local/games/linuxxdoom(D_DoomLoop+0x36f)[...]
+/usr/local/games/linuxxdoom(D_DoomMain+0x725)[...]
+```
+
 ## The key that opens a binding prompt could bind itself
 
 `m_menu.c`. The Controls screen added below is opened with Enter, and the next
