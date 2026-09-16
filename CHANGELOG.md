@@ -6,7 +6,7 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
-## [Unreleased]
+## [1.10.70] — 2026-09-16
 
 ### Fixed
 - **The music crashed the game.** A kernel log from the machine it happens on
