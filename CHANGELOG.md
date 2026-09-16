@@ -6,6 +6,38 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **The Controls screen let Enter bind itself.** It is opened with Enter, and
+  the next key pressed becomes the binding — so pressing Enter again, which is
+  what anybody does when they are not sure the first press registered, silently
+  bound the menu's own confirm key to a game control. Escape was refused;
+  Enter was not.
+
+  That control then works in a level and picks menu items everywhere else,
+  because `M_Responder` reads Enter as confirm whatever else it is bound to. A
+  real `.doomrc` arrived with `key_fire 13` by this route, reported as a
+  controller fault and nothing of the kind.
+
+  Enter is now ignored while the prompt is open, and the prompt stays open so
+  the next real key binds. Escape still cancels. Checked by driving the menus
+  over VNC and reading `key_fire` back out of the config afterwards: *Enter,
+  Enter again, then Ctrl* gave 13 before and gives 157 now, while *Enter then
+  Ctrl* and *Enter then space* are unchanged at 157 and 32.
+
+  **Moving the control to a mouse button would not have helped** — `M_Responder`
+  turns mouse button 1 into `KEY_ENTER` as well, so that is the same conflict by
+  another route. An ordinary key is the answer; `Ctrl` is the stock one.
+
+### Added
+- **The log says when a control is on Enter**, since an existing config can
+  still carry one:
+
+  ```
+  [doom] controller: note fire is Enter in the engine, which also confirms menu items
+  ```
+
 ## [1.10.64] — 2026-09-16
 
 ### Fixed

@@ -2082,8 +2082,18 @@ boolean M_Responder (event_t* ev)
 
     // Waiting for a key to bind. Take whatever was pressed, unless it is
     // escape, which backs out and leaves the binding alone.
+    //
+    // Enter is refused and the prompt left open. It is the key that opened the
+    // prompt, so pressing it again is what anybody does when they are not sure
+    // the first press registered -- and it would bind the menu's own confirm
+    // key to a game control, which makes that control confirm menu items from
+    // then on. A real config arrived with key_fire 13 by exactly this route.
+    // Escape still cancels, so nothing is stuck.
     if (bindingWait)
     {
+	if (ch == KEY_ENTER)
+	    return true;
+
 	bindingWait = false;
 
 	if (ch != KEY_ESCAPE
