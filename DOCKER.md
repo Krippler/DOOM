@@ -286,10 +286,28 @@ there is no button 6 or 7 at all. Every other control works, which from the
 outside looks exactly like "the triggers don't work".
 
 Those are found automatically now: an axis that **rests at one extreme** is a
-trigger, because a stick resting at ±1 is a broken stick. When the layout points
-Fire and Run at buttons the pad does not have, the lower-numbered trigger axis
-becomes Run and the next becomes Fire, and the panel marks the row *found as a
-trigger axis*. Nothing to set by hand.
+trigger, because a stick resting at ±1 is a broken stick. The lower-numbered one
+is added to Run and the next to Fire — *added*, not substituted, so the row reads
+`RT or Axis 5 +` and works whichever the pad really uses. Nothing to set by hand.
+
+#### What the container log says about your pad
+
+The page describes the controller it found into the container's log, once per pad:
+
+```
+[doom] controller found: id=Microsoft X-Box 360 pad (Vendor: 045e Product: 028e)
+       mapping=none buttons=11 axes=0.00,0.00,-1.00,0.00,0.00,-1.00,0.00,0.00
+```
+
+That is the whole shape of the pad: its name, whether the browser calls its
+layout standard, how many buttons it admits to, and where each axis rests. A
+`-1.00` is a trigger sitting at rest; `mapping=none` means the button numbers
+will not match their usual names. It is the one line worth quoting if a control
+does not work.
+
+It reaches the log by asking for a URL that does not exist, because there is no
+other channel from the browser to the container — the 404 in `websockify.log` is
+deliberate. Nothing leaves the machine.
 
 Where that does not apply, **Bind takes an axis as well as a button** — press
 **Bind** and squeeze the trigger. It records which way the axis travelled from where it was resting, so a
