@@ -11,116 +11,50 @@ docker run --rm -p 6080:6080 ghcr.io/krippler/doom
 Then open **<http://localhost:6080/play.html>** and click to play.
 
 Nothing is installed on the host — no X server, no display, no audio setup,
-and no game data to find: the shareware IWAD is in the image,
-so that command is the whole of it — picture and sound both arrive in the
-browser. To play the full game, mount your own IWAD and it takes precedence:
+and no game data to find: the shareware IWAD is in the image, so that command
+is the whole of it, and picture and sound both arrive in the browser.
+
+## Your own game data
+
+The shareware IWAD plays episode 1. To play the full game, mount a directory
+holding your own IWAD; a mounted one always takes precedence over the bundled
+file.
 
 ```
 docker run --rm -p 6080:6080 -v "$PWD/wads:/wads:ro" ghcr.io/krippler/doom
 ```
 
----
+`DOOM.WAD`, `DOOM2.WAD`, `TNT.WAD` and `PLUTONIA.WAD` are recognised, as are
+`DOOMU.WAD` and `DOOM2F.WAD`, case-insensitively. Mods go in the same
+directory and are loaded from the game's own **Options → Setup → Load WAD**.
 
-## What this actually is
+## Keeping savegames and settings
 
-id Software published these sources in December 1997. `README.TXT` is
-Carmack's note from that release and is left exactly as it was — it describes
-the code, not this repository.
+Savegames and `.doomrc` live in `/doom/state`. Without a volume there they go
+when the container does:
 
-What it does not describe is that the code no longer compiles, and did not run
-once it did. Getting from there to a playable game took:
+```
+docker run --rm -p 6080:6080 \
+  -v "$PWD/wads:/wads:ro" -v doom-state:/doom/state \
+  ghcr.io/krippler/doom
+```
 
-- **19 fixes before it would build and run correctly** — a one-byte heap overflow
-  in the IWAD search, a WAD structure whose on-disk layout shifted under
-  64-bit pointers, pointer arrays allocated at half their size, a 4× scaler
-  that assumed big-endian and mirrored every pixel pair, undefined behaviour
-  in the input queue, and a sound path that called `exit(-1)` on any system
-  without OSS — which is every system now.
-- **Sound**, through the mixer that shipped with the release. The original ran
-  it in a separate process writing to `/dev/dsp`, which no current kernel
-  provides, and PulseAudio's own OSS shim was removed upstream in PulseAudio
-  16. Sound bound for the browser is mixed by `audiostream` directly, from the
-  same code; a container sharing the host's PulseAudio socket still runs the
-  separate server, with a PulseAudio backend in place of the OSS one.
-- **Music**, which was never implemented at all: every music function in the
-  1997 sources is an empty stub. The WAD's MUS lumps are converted to Standard
-  MIDI and rendered by FluidSynth.
-- **A way for any of that to reach you.** The container has no sound card and
-  no sound daemon — the only packaged PulseAudio brings systemd, GStreamer and
-  a set of video codecs with it — and VNC carries a picture and nothing else.
-  So `audiostream` mixes the two and sends raw PCM to the page, which plays it
-  through an `AudioWorklet` where the browser allows one and a
-  `ScriptProcessorNode` where it does not. Nothing to mount, which matters
-  when the container is on a server in another room.
-- **A display the engine will accept.** It only ever supported an 8-bit
-  PseudoColor X visual, which no current X server offers, so the container
-  brings its own Xvfb at depth 8 and exports it over noVNC.
-- **A browser client that captures the mouse.** noVNC is a remote desktop
-  client and reports where the pointer is; a game needs to know how far it
-  moved. `play.html` locks the pointer instead, so turning never runs out of
-  screen and the cursor cannot wander off into the rest of your desktop —
-  fullscreen or in the window, whichever you pick.
-- **A picture that does not stutter.** x11vnc ships with `-wireframe` and
-  `-scrollcopyrect` on, which watch for a window being dragged or a pane
-  scrolled while a mouse button is held and hold the screen back while they
-  decide. A game holds the fire button down, so the picture stopped for about
-  300 ms at a time whenever you shot at anything. Both are off here: with the
-  button held that is the difference between 257 KB/s at a 41 ms median and
-  554 KB/s at 12 ms.
+With Compose:
 
-- **A game controller, on a phone as well as a desktop.** An Xbox pad, a
-  Backbone One, anything the browser calls a standard gamepad: the page turns
-  its buttons into the keysyms the engine already reads and its right stick
-  into the same relative pointer motion a captured mouse produces, so the 1997
-  code needed no change at all. Every button is rebindable, in the browser
-  rather than in `.doomrc`, because the container never sees the controller.
-  When one misbehaves the page writes what it is doing into the container's
-  log — the pad it found, what each control is going to send, and what it
-  actually sent — so `docker logs` answers the question on its own.
+```
+mkdir -p wads && cp /path/to/DOOM1.WAD wads/
+docker compose up --build
+```
 
-[`PORTING-NOTES.md`](PORTING-NOTES.md) documents every change, with the
-original code and why it broke — including [what the stutter turned out to
-be](PORTING-NOTES.md#the-stutter-while-the-fire-button-is-down), the dozen
-suspects measured and cleared before it, and the four instruments that exist
-because a confident answer turned out to be an artefact of how it was measured.
-
-## What was added
-
-Three pages under **Options → Setup**, none of which the 1997 release had any
-equivalent of:
-
-- **Controls** — rebind the eleven movement, action and menu keys. Saved to
-  `.doomrc`.
-- **Mouse** — turn the mouse on and off, assign its buttons, and capture the
-  pointer so it cannot slide out of the window while you turn.
-- **Load WAD** — list the `.wad` files you mounted, marked `GAME` or `MOD`,
-  and load one. The engine builds its textures, sprites and sound cache once
-  at startup, so choosing a file restarts it: a couple of seconds back to the
-  title screen.
-
-And one page in the browser rather than the game, because the container has no
-way to know it is there:
-
-- **Controller** — appears under the start screen's buttons once a pad has been
-  seen. Rebind every action, set the sticks' deadzone, turn speed, inversion
-  and whether a full push runs. Saved per browser, so a phone and a desktop
-  keep their own layouts.
-
-## Documentation
-
-| | |
-| --- | --- |
-| [DOCKER.md](DOCKER.md) | Running it: game data, controls, game controllers, options, saves, sound, measuring a stutter, troubleshooting |
-| [PORTING-NOTES.md](PORTING-NOTES.md) | Every change made to the 1997 sources, and why |
-| [PUBLISHING.md](PUBLISHING.md) | Releases, image tags, and the Unraid listing |
-| [CHANGELOG.md](CHANGELOG.md) | What changed in each release |
-| [README.TXT](README.TXT) | id Software's original 1997 release note |
+Running as root is not required. Started as root the container takes ownership
+of the state directory as `PUID:PGID` (1001 by default, 99:100 on Unraid) and
+drops to that user; started with `--user` it stays as whoever you gave it.
 
 ## Images
 
 Published to `ghcr.io/krippler/doom`, 609 MB unpacked including the shareware
-game data, `linux/amd64` only. `latest` is the newest release, `edge` tracks `master`.
-Signed with cosign on every push.
+game data, `linux/amd64` only. `latest` is the newest release, `edge` tracks
+`master`. Signed with cosign on every push.
 
 Unraid users: the Community Applications template is
 [`templates/unraid.xml`](templates/unraid.xml).
@@ -137,6 +71,21 @@ Or without a container, if you have an 8-bit X display to point it at:
 make -C linuxdoom-1.10
 make -C sndserv
 ```
+
+## Documentation
+
+| | |
+| --- | --- |
+| [ABOUT.md](ABOUT.md) | What this actually is: what the 1997 sources needed, and what the port added |
+| [DOCKER.md](DOCKER.md) | Running it: game data, controls, game controllers, options, saves, sound, measuring a stutter, troubleshooting |
+| [PORTING-NOTES.md](PORTING-NOTES.md) | Every change made to the 1997 sources, and why |
+| [PUBLISHING.md](PUBLISHING.md) | Releases, image tags, and the Unraid listing |
+| [CHANGELOG.md](CHANGELOG.md) | What changed in each release |
+| [README.TXT](README.TXT) | id Software's original 1997 release note |
+
+Every environment variable, every in-game and in-browser setting, and the
+troubleshooting for sound, controllers and a stuttering picture are in
+[DOCKER.md](DOCKER.md).
 
 ## Licence and game data
 
