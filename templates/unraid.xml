@@ -21,11 +21,11 @@
     &#13;
     The shareware game data is included, so this plays as soon as it starts - episode 1, nine levels. To play the full game, put your own DOOM.WAD, DOOM2.WAD, TNT.WAD or PLUTONIA.WAD into the WADs folder below and it will be used instead. The name is matched without regard to case. Commercial game data is not included and must come from your own copy of the game.&#13;
     &#13;
-    Click into the canvas before typing: noVNC only forwards the keyboard once it has focus. Ctrl fires and Alt strafes, which browsers like to intercept, so use the modifier pad in the noVNC toolbar if a key will not reach the game.&#13;
+    The WebUI opens a client that captures the mouse, so turning does not run out of screen and the cursor stays in the game. Escape hands the cursor back, and the ` key opens the game menu whatever the mouse is doing. Plain noVNC is still there at /vnc.html if you would rather it did not grab the pointer, though it carries no sound.&#13;
     &#13;
-    Keys and the mouse are set from inside the game, under Options - Setup. The same menu lists the WAD files in the folder below and loads the one you pick, so mods can be dropped in and switched to without touching the container settings.&#13;
+    A game controller works too, on a phone as well as a desktop - an Xbox pad, a Backbone One, anything the browser reports as a standard gamepad. Every button is rebindable from the start screen, and the layout is saved per browser, so a phone and a desktop keep their own. On a phone the controller is the whole of the input, and the sound comes out of the phone's own speaker.&#13;
     &#13;
-    The WebUI opens a client that captures the mouse, so turning does not run out of screen and the cursor stays in the game. Esc hands the cursor back, and the ` key opens the game menu whatever the mouse is doing. Plain noVNC is still there at /vnc.html if you would rather it did not grab the pointer, though it carries no sound.
+    Keys and the mouse are set from inside the game, under Options - Setup. The same menu lists the WAD files in the folder below and loads the one you pick, so mods can be dropped in and switched to without touching the container settings.
   </Overview>
   <Category>GameServers: Other:</Category>
   <WebUI>http://[IP]:[PORT:6080]/</WebUI>
@@ -39,6 +39,46 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.10.70 - 1.10.73
+- Fixes a crash that could end the game at a level change. The music is
+  rendered on a thread of its own while the game replaces the player on every
+  new level, and nothing was keeping the two apart - so the renderer could be
+  reading something that had just been freed. Rare, unpredictable, and it
+  looked like a fault in the music library rather than in this.
+- A crash, or choosing QUIT GAME, now starts the game again instead of taking
+  the container down with it. The picture, the sound and the session all stay
+  up, so the browser reconnects on its own. Set DOOM_RESTART=0 for the old
+  behaviour.
+- On a phone the sound now comes out of the phone's own speaker rather than a
+  plugged-in controller's headphone socket.
+
+### 1.10.63 - 1.10.69
+- Fixes for game controllers, most of which were not the controller's fault: a
+  saved layout hid every button added to the game after it was saved, the start
+  screen never went away on an iPhone so the pad was never allowed to send
+  anything, and a control bound to Enter could never work because the game
+  takes that key for itself before the level ever sees it.
+- The container's log now says what the controller is doing - which pad was
+  found, what each control will send, and what it actually sent - so "the
+  controller does not work" can be answered from docker logs.
+- A crash now prints where it died instead of the single word "Segmentation
+  fault".
+
+### 1.10.51 - 1.10.62
+- A game controller works, on a phone as well as a desktop. Every button is
+  rebindable from the start screen, the sticks have a deadzone, turn speed and
+  invert, and the layout is saved per browser.
+- The controller presses the keys this engine is actually bound to, read from
+  its own config, so rebinding in Options - Setup - Controls does not leave the
+  pad pressing the old ones.
+- The start screen is quiet unless something is wrong. Add ?stats=1 to the
+  address for the sound and picture measurements.
+
+### 1.10.48 - 1.10.50
+- Quitting the game no longer reports a fault on the way out.
+- The stutter fixed in 1.10.47 is written up in full in DOCKER.md, with the
+  measurements.
+
 ### 1.10.47
 - Fixes the stutter: the picture pausing for about a third of a second,
   usually while you were shooting. x11vnc was watching for a window being
@@ -243,6 +283,18 @@
   <Config Name="Scale" Target="DOOM_SCALE" Default="2"
           Description="Pixel scale, 1 to 4. The picture is 320x200 multiplied by this, so 2 gives 640x400. Larger values cost more bandwidth to the browser."
           Type="Variable" Display="always" Required="false" Mask="false">2</Config>
+
+  <Config Name="Which IWAD" Target="DOOM_IWAD" Default=""
+          Description="Optional. With several games in the WADs folder, which one to start - a filename such as doom2.wad. Leave empty and Doom is preferred over Doom II."
+          Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="Sound" Target="DOOM_SOUND" Default="1"
+          Description="Set to 0 for no sound at all, which saves the bandwidth the audio stream uses."
+          Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
+
+  <Config Name="Restart on crash" Target="DOOM_RESTART" Default="1"
+          Description="Start the game again if it crashes or you choose QUIT GAME, leaving the container up so the browser reconnects on its own. Set to 0 to have the container stop instead."
+          Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
 
   <Config Name="VNC Password" Target="DOOM_VNC_PASSWORD" Default=""
           Description="Optional. If set, the browser and any VNC client must supply this password. Leave empty for no password, which is fine on a LAN you trust."
