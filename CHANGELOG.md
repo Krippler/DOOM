@@ -6,6 +6,28 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.72] — 2026-09-17
+
+### Changed
+- **A phone gets the sound through a media element by default.** `?speaker=1`
+  was confirmed on the iPhone it was added for: the sound comes out of the
+  phone's own speaker with it, and out of the attached controller's headphone
+  socket without it. So it is now the default wherever there is no pointer to
+  capture, and `?speaker=0` goes back to the plain output. Desktop browsers are
+  unchanged — they never had the problem, and one object fewer sits in the way.
+
+  Each case was checked: desktop takes `ctx.destination`, a phone takes the
+  media element, and either parameter overrides either default, with audio
+  flowing in all four.
+
+- **Music and effects were confirmed to be one stream**, which answers "what
+  about the music?" — `audiostream` mixes the engine's music with the sound
+  server's effects and sends the sum, so music goes wherever the effects go.
+  Measured out of the real mixer with the engine idle in a level and nothing
+  firing: 99.9% non-zero at a peak of 11649, and the only thing making that is
+  the music. One of the two being silent is therefore a volume in **Options →
+  Sound Volume**, not a routing fault.
+
 ## [1.10.71] — 2026-09-17
 
 ### Added

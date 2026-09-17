@@ -818,13 +818,21 @@ const SHOW_STATS = new URLSearchParams(location.search).get('stats') === '1';
 // through a media element is governed like any other app's audio instead, and a
 // MediaStreamAudioDestinationNode is how the same samples get there.
 //
-// Off by default because it cannot be tested from here and the present path
-// does work, into the socket at least: `?speaker=1` tries it, `?speaker=0`
-// forces it off. If it turns out to be the answer it becomes the default on
-// devices with no pointer to capture.
+// Confirmed from the phone it was reported on: with this, the sound comes out
+// of the iPhone's own speaker. So it is the default wherever there is no
+// pointer to capture, which is the same test the rest of this page uses for
+// "a phone". Desktop browsers keep the plain output, which has never had the
+// problem and is one object fewer in the way.
 //
+// `?speaker=1` forces it on anywhere, `?speaker=0` forces it off.
+//
+const AUDIO_SPEAKER_PARAM =
+      new URLSearchParams(location.search).get('speaker');
+
 const AUDIO_VIA_ELEMENT =
-      new URLSearchParams(location.search).get('speaker') === '1';
+      AUDIO_SPEAKER_PARAM === '1' ? true
+    : AUDIO_SPEAKER_PARAM === '0' ? false
+    : !canLock();
 
 
 //
