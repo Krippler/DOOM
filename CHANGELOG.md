@@ -6,6 +6,45 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.74] — 2026-09-17
+
+Documentation and the Unraid template. Nothing in the image changed.
+
+### Changed
+- **The README is installation and setup, and nothing else.** It had grown into
+  the project's essay — seven paragraphs on what the 1997 sources needed, the
+  instruments built to chase a stutter, a tour of the menus the port added — all
+  worth reading, none of it what a README is for, and it pushed the volume mount
+  and the state directory past the fold.
+
+  It now covers running it, mounting your own IWAD, keeping savegames, the
+  images, building it, where the rest is documented, and the licence. Cutting
+  the prose exposed two things it had never said: **a state volume**, without
+  which savegames go when the container does, and what **PUID/PGID** do when it
+  starts as root.
+
+  *What this actually is* and *What was added* move whole to **ABOUT.md**,
+  since neither belonged in the two documents that already exist —
+  `PORTING-NOTES.md` is engine changes and `DOCKER.md` is how to run it.
+
+- **The Unraid template is current again.** Its change list stopped at 1.10.47,
+  twenty-six releases back — the same drift 1.10.50 fixed once already when it
+  had stopped at 1.10.21. Anyone reading it in Community Applications was
+  deciding on notes that predate controller support, the iPhone work and the
+  crash fix.
+
+  The overview gained the controller and the phone, and lost two pieces of
+  advice that stopped being true — clicking into the canvas before typing, and
+  reaching for noVNC's modifier pad when Ctrl or Alt will not go through. The
+  client the WebUI opens handles both.
+
+  Three settings the container reads were not offered: `DOOM_IWAD`, `DOOM_SOUND`
+  and `DOOM_RESTART`.
+
+  Audited rather than eyeballed: every required CA field is populated, every
+  variable the template offers is genuinely read by the entrypoint, the icon is
+  a 128×128 png that resolves on `master`, and both XML files parse.
+
 ## [1.10.73] — 2026-09-17
 
 Nothing in the image changed. This release added a script and a backup
