@@ -803,6 +803,29 @@ function releaseButtons() {
 //
 const SHOW_STATS = new URLSearchParams(location.search).get('stats') === '1';
 
+//
+// Where the sound comes out, on a phone with something plugged into it.
+//
+// Reported from an iPhone with a Backbone controller attached: the game's sound
+// came out of the controller's headphone socket and never out of the phone's
+// own speaker, while every other app on the same phone, with the same
+// controller attached, used the speaker perfectly well. So iOS is not routing
+// everything to the accessory -- it is routing *this* to the accessory.
+//
+// The difference is which audio session the sound belongs to. Web Audio going
+// straight to ctx.destination is WebKit's own, and a page has no API to choose
+// an output device for it -- setSinkId does not exist on iOS. Sound played
+// through a media element is governed like any other app's audio instead, and a
+// MediaStreamAudioDestinationNode is how the same samples get there.
+//
+// Off by default because it cannot be tested from here and the present path
+// does work, into the socket at least: `?speaker=1` tries it, `?speaker=0`
+// forces it off. If it turns out to be the answer it becomes the default on
+// devices with no pointer to capture.
+//
+const AUDIO_VIA_ELEMENT =
+      new URLSearchParams(location.search).get('speaker') === '1';
+
 
 //
 // The controller.
@@ -1618,6 +1641,8 @@ let audioRing = null;      // the fallback's, for the note; the worklet has its 
 let audioWanted = true;
 let audioFrames = 0;
 let audioSrcRate = 0;
+let audioEl = null;          // the media element, where one is used
+let audioOutVia = '';        // ... and which way the sound went out
 let audioWatchdog = null;
 let audioVia = '';
 
@@ -2102,9 +2127,42 @@ async function startAudio() {
         return;
       }
 
-      audioNode.connect(ctx.destination);
+      // Straight out, or through a media element -- see AUDIO_VIA_ELEMENT.
+      if (AUDIO_VIA_ELEMENT && typeof ctx.createMediaStreamDestination === 'function') {
+        try {
+          const dest = ctx.createMediaStreamDestination();
+          audioNode.connect(dest);
 
-      soundLog('playing via the ' + audioVia + ', ' + srcRate + ' Hz in, '
+          audioEl = document.createElement('audio');
+          audioEl.setAttribute('playsinline', '');   // or iOS takes it fullscreen
+          audioEl.autoplay = true;
+          audioEl.srcObject = dest.stream;
+
+          // Kept out of the layout but in the document, which Safari wants
+          // before it will play one.
+          audioEl.style.display = 'none';
+          document.body.appendChild(audioEl);
+
+          const started = audioEl.play();
+          if (started && started.catch)
+            started.catch((e) => soundLog('the media element would not play ('
+                                          + e + '); the sound is still going to'
+                                          + ' the default output'));
+
+          audioOutVia = 'a media element';
+        } catch (e) {
+          // Anything goes wrong and the ordinary output is still there.
+          audioEl = null;
+          audioNode.connect(ctx.destination);
+          audioOutVia = 'the default output (the media element failed: ' + e + ')';
+        }
+      } else {
+        audioNode.connect(ctx.destination);
+        audioOutVia = 'the default output';
+      }
+
+      soundLog('playing via the ' + audioVia + ' into ' + audioOutVia + ', '
+               + srcRate + ' Hz in, '
                + ctx.sampleRate + ' Hz out, context ' + ctx.state
                + '. If nothing can be heard from here the page is not the'
                + ' cause: check the volume, a phone\'s silent switch, and'
@@ -2169,6 +2227,15 @@ function stopAudio() {
     audioNode.disconnect();
     audioNode = null;
   }
+  if (audioEl) {
+    // Stopped and detached, or Safari keeps the session -- and the route it
+    // chose -- alive after the game has finished with it.
+    try { audioEl.pause(); } catch (e) { /* already gone */ }
+    audioEl.srcObject = null;
+    audioEl.remove();
+    audioEl = null;
+  }
+  audioOutVia = '';
   audioPush = null;
   audioRing = null;
   if (audioCtx)    { audioCtx.close().catch(() => {}); audioCtx = null; }
