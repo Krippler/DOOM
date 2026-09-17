@@ -6,6 +6,41 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.73] — 2026-09-17
+
+Nothing in the image changed. This is the tooling for tidying the release list,
+which has to live on `master` to be run from an ordinary checkout.
+
+### Added
+- **`prune-releases.sh`**, which removes the GitHub releases, the git tags and
+  the container images for **v1.10.31 – v1.10.45** — the run of instrumentation
+  releases that chased the picture stutter.
+
+  It could not be done from the session this repository is worked on from.
+  Releases are refused there outright (*"Creating, editing, or deleting releases
+  is not permitted for this session type"*) and the packages API is out of reach
+  entirely (*"sessions are bound to their configured repositories"*). Both are
+  guardrails rather than missing permissions, so neither is worked around — the
+  script takes a token of the owner's instead.
+
+  Safe by default: it prints what it would do and changes nothing without
+  `--yes`. The release goes before the tag, so a release is never left pointing
+  at a tag that has gone. An image version is removed only when **every** tag on
+  it is in range, so one that also answers to a kept tag is left alone and said
+  so — GHCR deletes by version rather than by tag, and that is the way to take
+  `1.10` down by accident.
+
+  `--keep-images` leaves the container images alone.
+
+- **`releases-backup/`** — the notes for all fifteen releases, the commit each
+  tag pointed at, and each image's digest.
+
+  Checked before any of it was written: every one of those fifteen commits is on
+  `master`, so pruning loses no history — the versions stop being listed, they do
+  not stop existing. And no tag being kept (`latest`, `edge`, `master`, `1.10`,
+  `1`, or the versions either side) shares a digest with any of the fifteen
+  images, so removing them removes nothing else.
+
 ## [1.10.72] — 2026-09-17
 
 ### Changed
