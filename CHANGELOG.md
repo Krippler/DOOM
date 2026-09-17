@@ -6,6 +6,28 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.71] — 2026-09-17
+
+### Added
+- **`?speaker=1`, for a phone that sends the game's sound to the wrong place.**
+  Reported from an iPhone with a Backbone plugged in: the sound came out of the
+  controller's headphone socket and never out of the phone's speaker — while
+  every other app on that phone, with the same controller plugged in, used the
+  speaker. So iOS is not routing everything to the accessory, it is routing
+  *this* to the accessory.
+
+  The difference is which audio session the sound belongs to. Web Audio straight
+  to `ctx.destination` is WebKit's own, and a page cannot pick an output device
+  for it: `setSinkId` does not exist on iOS. Sound played through a media element
+  is governed like any other app's, so `?speaker=1` sends the same samples
+  through a `MediaStreamAudioDestinationNode` into a hidden `<audio>` instead.
+
+  Off by default, because it cannot be tested from this side and the ordinary
+  path does work into the socket. Both routes were checked to carry identical
+  audio — same frames, same callbacks, same amplitude — so switching it on
+  cannot cost the sound that already works; the only question is which output
+  iOS then picks. The log says which way it went.
+
 ## [1.10.70] — 2026-09-16
 
 ### Fixed

@@ -756,6 +756,33 @@ will fix the silence. Check, in this order:
 If it says **not playing**, the reason is on that line, and the rest of this
 section explains the ones worth explaining.
 
+#### `?speaker=1` — sound out of a phone's own speaker
+
+Reported from an iPhone with a Backbone controller plugged in: the game's sound
+came out of the controller's headphone socket and never out of the phone's
+speaker, while **every other app on that phone, with the same controller
+plugged in, used the speaker perfectly well**. So iOS is not sending everything
+to the accessory; it is sending *this* to the accessory.
+
+What differs is the audio session the sound belongs to. Web Audio going straight
+to the context's destination is WebKit's own session, and a page cannot choose an
+output device for it — `setSinkId` does not exist on iOS. Sound played through a
+**media element** is governed like any other app's audio, which is what
+`?speaker=1` does: the same samples, through a `MediaStreamAudioDestinationNode`
+into a hidden `<audio>`.
+
+It is off by default because it cannot be tested from this side and the ordinary
+path does work, into the socket at least. `?speaker=0` forces it off again. The
+log says which way the sound went:
+
+```
+[doom] sound: playing via the fallback into a media element, 22050 Hz in, ...
+```
+
+Both routes were checked to carry identical audio, so turning it on cannot cost
+you the sound you already have — the question is only which output iOS picks.
+
+
 
 The start screen says so under the buttons. While the sound is working it says
 nothing at all — the line is there only when there is something to report:
