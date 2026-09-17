@@ -756,6 +756,22 @@ will fix the silence. Check, in this order:
 If it says **not playing**, the reason is on that line, and the rest of this
 section explains the ones worth explaining.
 
+#### Music and effects are one stream
+
+There is a single audio connection to the browser. `audiostream` mixes the
+engine's music with the sound server's effects and sends the sum, so music goes
+wherever the effects go — there is no separate music connection to fail on its
+own, and nothing to route differently.
+
+Measured on the way out, with the engine sitting in a level and no effects
+firing: the stream is 99.9% non-zero at a peak of 11649, and the only thing
+producing that is the music.
+
+So **music playing but effects silent, or the reverse, is not a routing
+problem**. It is one of the volumes: the game's own **Options → Sound Volume**
+has separate sliders for the two, and either at zero sounds exactly like a
+broken stream.
+
 #### `?speaker=1` — sound out of a phone's own speaker
 
 Reported from an iPhone with a Backbone controller plugged in: the game's sound
@@ -771,9 +787,11 @@ output device for it — `setSinkId` does not exist on iOS. Sound played through
 `?speaker=1` does: the same samples, through a `MediaStreamAudioDestinationNode`
 into a hidden `<audio>`.
 
-It is off by default because it cannot be tested from this side and the ordinary
-path does work, into the socket at least. `?speaker=0` forces it off again. The
-log says which way the sound went:
+Confirmed on the phone it was reported from: with this, the sound comes out of
+the iPhone's own speaker. So it is **the default wherever there is no pointer to
+capture**, which is this page's test for "a phone". Desktop browsers keep the
+plain output, which never had the problem. `?speaker=1` forces it on anywhere
+and `?speaker=0` forces it off. The log says which way the sound went:
 
 ```
 [doom] sound: playing via the fallback into a media element, 22050 Hz in, ...
