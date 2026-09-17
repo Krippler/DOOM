@@ -6,7 +6,7 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
-## [Unreleased]
+## [1.10.72] — 2026-09-17
 
 ### Changed
 - **A phone gets the sound through a media element by default.** `?speaker=1`
