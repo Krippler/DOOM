@@ -1,9 +1,8 @@
 # DOOM (linuxdoom-1.10) in a container, playable in a browser.
 #
-# The engine only ever learned to talk to an 8-bit PseudoColor X visual, which
-# no modern X server still offers. The container supplies one of its own with
-# Xvfb, then exports it over VNC and noVNC, so the game is reachable from a
-# browser on any host.
+# The engine draws into an X server of the container's own (Xvfb), which is
+# exported over VNC and noVNC, so the game is reachable from a browser on any
+# host and nothing is needed on it.
 #
 #   docker build -t doom .
 #   docker run --rm -p 6080:6080 -v "$PWD/wads:/wads:ro" doom

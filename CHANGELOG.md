@@ -6,6 +6,26 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Changed
+- **The engine draws in truecolour, and the container's display is depth 24.**
+  The 1997 X driver only accepted an 8-bit colour-mapped display, which is why
+  the container ran one and x11vnc converted every frame to truecolour for the
+  browser (`-8to24`) — the most expensive thing it did. The engine now turns its
+  palette into pixels itself. With a client pulling frames at the game's 35 a
+  second, x11vnc dropped from 26% of a core to 13% and Xvfb from 17% to 11%, the
+  engine the same and the picture identical pixel for pixel. `DOOM_X_DEPTH=8`
+  puts the old way back.
+
+### Fixed
+- **The view border and status bar could stay tinted after a damage or pickup
+  flash.** A palette change recolours the screen without touching a pixel, so
+  x11vnc never saw anything to send, and whatever was not redrawn afterwards
+  stayed in the flash's colours in the browser — sampled for a minute, a border
+  pixel was still red in every sample. In truecolour a palette change is a new
+  frame like any other.
+
 ## [1.10.74] — 2026-09-17
 
 Documentation and the Unraid template. Nothing in the image changed.

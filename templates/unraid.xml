@@ -15,7 +15,7 @@
   <Overview>
     The original 1997 linuxdoom-1.10 sources, built from source and playable in a browser.&#13;
     &#13;
-    The engine only ever supported an 8-bit PseudoColor X visual, which no current X server offers, so the container runs its own Xvfb at depth 8 and exports it over noVNC. Nothing needs to be installed on the host.&#13;
+    The container runs its own X server (Xvfb) and exports it over noVNC, so nothing needs to be installed on the host.&#13;
     &#13;
     Sound comes out of the browser, with nothing to set up. Effects and music - the music converted from the WAD's MUS lumps to MIDI and rendered by FluidSynth - are mixed inside the container and sent to the same page as the picture, over the WebUI port you already mapped. Click to start playing and the sound starts with it, because browsers will not play audio without a click.&#13;
     &#13;

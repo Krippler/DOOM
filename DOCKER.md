@@ -601,6 +601,7 @@ Everything is set through the environment:
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `DOOM_SCALE` | `2` | Pixel scale, 1–4. The window is 320×200 times this. |
+| `DOOM_X_DEPTH` | `24` | Bit depth of the container's X screen. `8` uses the colour-mapped display the engine was written for, which x11vnc then has to convert to truecolour for every frame: twice its CPU for the same picture. |
 | `DOOM_WADDIR` | `/wads` | Where to look for IWADs. |
 | `DOOM_BUNDLED_WAD` | `/usr/share/doom/doom1.wad` | Shareware IWAD used when nothing is mounted. |
 | `DOOM_IWAD` | unset | Which IWAD to start when several are mounted. A filename or a path. |
@@ -670,6 +671,11 @@ a machine others can reach.
 
 ## Why it runs its own X server
 
+So that nothing is needed on the host: the container brings `Xvfb`, draws into
+it, and `x11vnc` and noVNC carry the picture to a browser. That is what makes
+it work the same on Unraid, on macOS and on Windows, where there is no X server
+at all.
+
 The 1997 code only ever supported one kind of display:
 
 ```c
@@ -677,12 +683,17 @@ if (!XMatchVisualInfo(X_display, X_screen, 8, PseudoColor, &X_visualinfo))
     I_Error("xdoom currently only supports 256-color PseudoColor screens");
 ```
 
-An 8-bit PseudoColor visual is something no current X server still offers, so
-handing the container your host's `$DISPLAY` will generally fail with that
-error. The container sidesteps this by running its own `Xvfb` at depth 8 —
-which is also what makes it work identically on macOS and Windows hosts, where
-there is no X server at all. `x11vnc -8to24` converts the colormapped output
-to true colour for the VNC client.
+An 8-bit PseudoColor visual keeps the palette in the X server's colormap, and
+no current X server offers one. The container used to run Xvfb at depth 8 to
+provide it, and x11vnc then converted every frame to truecolour (`-8to24`) for
+the browser — the most expensive thing it did. The engine now draws in
+truecolour itself: its palette becomes a table of 256 pixel values, and each
+frame goes through it on the way to the screen. Xvfb runs at depth 24, and
+x11vnc just sends what is there. Measured with a client pulling frames at the
+game's 35 a second, x11vnc went from 26% of a core to 13% and Xvfb from 17% to
+11%, with the engine unchanged and the picture identical pixel for pixel.
+
+`DOOM_X_DEPTH=8` puts the old path back, colormap and all.
 
 ## Sound
 
@@ -1046,7 +1057,7 @@ of MOVING silences against a run without it. Still ones do not count.
 | --- | --- |
 | `DOOM_VNC_ARGS=-noxdamage` | Stops x11vnc trusting the X DAMAGE extension to tell it what changed, and makes it compare the framebuffer itself. DOOM draws through MIT-SHM, and if those writes are not reported as damage, x11vnc only notices on a later pass. |
 | `DOOM_VNC_ARGS=-threads` | Gives each client its own thread in libvncserver. x11vnc is single-threaded by default, so anything that blocks its one loop stops every client at once — which is the shape of what the probe sees. |
-| `DOOM_VNC_8TO24=0` | Turns off the depth 8 to truecolor translation, the most expensive thing x11vnc does here. **The picture will be wrong**, and not subtly: noVNC cannot use a colour map at all — it drops the connection if one arrives — so at depth 8 it asks for two bits per channel and gets 64 colours. Measured against the same scene: 50 distinct colours instead of 15,746. It halves the bandwidth by throwing the colours away. Diagnostic only, and only for counting stalls. |
+| `DOOM_VNC_8TO24=0` | Only read at `DOOM_X_DEPTH=8`. Turns off the depth 8 to truecolor translation, the most expensive thing x11vnc does here. **The picture will be wrong**, and not subtly: noVNC cannot use a colour map at all — it drops the connection if one arrives — so at depth 8 it asks for two bits per channel and gets 64 colours. Measured against the same scene: 50 distinct colours instead of 15,746. It halves the bandwidth by throwing the colours away. Diagnostic only, and only for counting stalls. |
 
 None of these is a recommended setting. They are there to find out which part
 of x11vnc is holding the picture, on a machine where that is actually

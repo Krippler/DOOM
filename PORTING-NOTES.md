@@ -796,6 +796,59 @@ running and the bindings it read, which by itself distinguishes "the controller
 does not work" from "the tab is running a client from two releases ago" — a
 distinction the container's log previously could not make at all.
 
+## Drawing in truecolour
+
+The X driver only ever accepted one kind of display:
+
+```c
+if (!XMatchVisualInfo(X_display, X_screen, 8, PseudoColor, &X_visualinfo))
+    I_Error("xdoom currently only supports 256-color PseudoColor screens");
+```
+
+On an 8-bit PseudoColor visual the frame is palette indices and the X server's
+colormap turns them into colours, so `I_SetPalette` is `XStoreColors` and a
+damage flash costs nothing. No current X server offers that visual, so the
+container ran Xvfb at depth 8 and x11vnc presented it to browsers as truecolour
+with `-8to24` -- which walks the window tree, reads the screen back and
+transforms all of it, and which x11vnc's own manual says "does hog resources".
+
+It also got colours wrong. A palette change alters what every pixel means
+without changing any pixel, so the X server reports no damage and x11vnc sends
+nothing: the parts of the screen that were not redrawn afterwards stay in the
+old colours in the browser. Sampled through noVNC once every half second for a
+minute, a pixel of the view border read 100,50,32 in all 120 samples -- still
+tinted from a damage flash -- where the right colour is 56,64,40.
+
+`i_video.c` now takes whatever the display is. On an 8-bit one it runs as
+before. On TrueColor at depth 15, 16, 24 or 30, the palette is turned into a table
+of 256 pixel values, built from the visual's masks and redone on every
+`I_SetPalette` (gamma included), and `I_FinishUpdate` sends the frame through
+it into the image: one row translated and scaled, then copied for the rows
+under it, which is 64,000 lookups at any scale. Byte order follows the image's,
+so a remote display on a machine of the other endianness gets the right bytes.
+Scale 4, which the 8-bit path marked "Broken" and does its own way, is the same
+loop.
+
+Measured in the container with a client pulling frames at the game's 35 a
+second, 20 seconds each and twice over:
+
+| | engine | x11vnc | Xvfb |
+| --- | --- | --- | --- |
+| depth 8, `-8to24` | 8-10% | 26% | 16-17% |
+| depth 24 | 8-13% | 13% | 11% |
+
+of one core, with the same 35 updates a second either way. The picture is the
+same pixel for pixel: the status bar compared across both came out 33,600
+pixels identical and none different.
+
+Two smaller things went with it. `grabsharedmemory` reused another user's
+stale shared memory segment when it was *smaller* than the one needed, the
+comparison the wrong way round, and a truecolour image is four times the
+size. And the image without MIT-SHM is sized from the stride X computes rather
+than assuming one byte per pixel.
+
+`DOOM_X_DEPTH=8` runs the container the old way.
+
 ## Added
 
 Three things the 1997 release had no way to do, all reachable from

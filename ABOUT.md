@@ -30,8 +30,9 @@ once it did. Getting from there to a playable game took:
   `ScriptProcessorNode` where it does not. Nothing to mount, which matters
   when the container is on a server in another room.
 - **A display the engine will accept.** It only ever supported an 8-bit
-  PseudoColor X visual, which no current X server offers, so the container
-  brings its own Xvfb at depth 8 and exports it over noVNC.
+  PseudoColor X visual, which no current X server offers. It now draws in
+  truecolour, turning its palette into pixels itself, and the container brings
+  its own Xvfb and exports it over noVNC.
 - **A browser client that captures the mouse.** noVNC is a remote desktop
   client and reports where the pointer is; a game needs to know how far it
   moved. `play.html` locks the pointer instead, so turning never runs out of
