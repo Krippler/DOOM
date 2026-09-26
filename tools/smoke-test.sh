@@ -25,6 +25,8 @@
 #             General MIDI soundfont is installed)
 #   depth 8   the colour-mapped path the engine was written for draws the
 #             status bar exactly as the truecolour one does
+#   pointer   with capture on, the pointer is held at the centre in a level
+#             and let go in the menu (needs xdotool; skipped without it)
 #   crash     SIGSEGV prints "DOOM died on" and a backtrace with names in it
 #
 # Timings are waited for, not slept on, where there is anything to wait for:
@@ -128,7 +130,11 @@ start_game() {  # log, then engine arguments
 # succeeding on a zombie -- which is how the first version of this reported a
 # two-second shutdown as a ten-second hang.
 wait_game() {
-    ( sleep "$1"; kill -KILL "$game_pid" 2>/dev/null; touch "$work/.timeout" ) &
+    # In tenths, so that killing the watchdog leaves at most a tenth of a
+    # second of sleep behind rather than an orphan for the whole wait.
+    ( i=0
+      while [ "$i" -lt $(($1 * 10)) ]; do sleep 0.1; i=$((i + 1)); done
+      kill -KILL "$game_pid" 2>/dev/null; touch "$work/.timeout" ) &
     dog=$!
     rm -f "$work/.timeout"
     wait "$game_pid"
@@ -211,17 +217,45 @@ kill "$game_pid" 2>/dev/null
 wait_game 10
 stop_x
 
-# -------------------------------------------------------------------- crash
-say "crash: what a segmentation fault leaves in the log"
+# ------------------------------------------------------------ pointer, crash
 start_x 24
-start_game crash.log -warp 1 1 -nojoy
+start_game crash.log -warp 1 1 -nojoy -grabmouse
 i=0
 until grep -q "I_InitGraphics" "$work/crash.log" 2>/dev/null; do
     i=$((i + 1))
     [ "$i" -gt 200 ] && die "the engine never opened its window; see $work/crash.log"
     sleep 0.1
 done
-sleep 1
+sleep 2
+
+# Where X says the pointer is, after putting it in the corner.
+pointer_after_corner() {
+    DISPLAY="$disp" xdotool mousemove 10 10
+    sleep 0.4
+    DISPLAY="$disp" xdotool getmouselocation | sed 's/ screen.*//'
+}
+
+if command -v xdotool >/dev/null 2>&1; then
+    say "pointer: held while playing, let go in the menu"
+    at=$(pointer_after_corner)
+    [ "$at" = "x:320 y:200" ] \
+        || die "in a level with capture on, the pointer should be held at the centre; it is at $at"
+    DISPLAY="$disp" xdotool key Escape
+    sleep 0.5
+    at=$(pointer_after_corner)
+    [ "$at" = "x:10 y:10" ] \
+        || die "with the menu up the pointer should be free; it was put back to $at"
+    DISPLAY="$disp" xdotool key Escape
+    sleep 0.5
+    at=$(pointer_after_corner)
+    [ "$at" = "x:320 y:200" ] \
+        || die "back in the level the pointer should be held again; it is at $at"
+    say "the pointer is the game's in a level, and free in the menu"
+else
+    say "pointer: skipped, xdotool is not installed"
+fi
+
+say "crash: what a segmentation fault leaves in the log"
 kill -SEGV "$game_pid"
 wait_game 10
 [ "$st" = 139 ] || die "a segfault should end with 139; got $st"

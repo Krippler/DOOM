@@ -50,6 +50,24 @@ Running as root is not required. Started as root the container takes ownership
 of the state directory as `PUID:PGID` (1001 by default, 99:100 on Unraid) and
 drops to that user; started with `--user` it stays as whoever you gave it.
 
+## On a Linux desktop, without Docker
+
+Each [release](https://github.com/Krippler/DOOM/releases) carries
+`doom-linux-x86_64-VERSION.tar.gz`: the engine, its sound server, the shareware
+episode and a launcher. Unpack it and install it for yourself:
+
+```
+tar xzf doom-linux-x86_64-*.tar.gz
+cd doom-linux-x86_64-*/
+./install.sh                  # into ~/.local; sudo ./install.sh /usr/local for everyone
+```
+
+Then start **DOOM** from your desktop's menu, or run `doom`. It finds a Steam
+or GOG copy by itself where it can; otherwise `doom --data /path/to/DOOM.WAD`,
+once. Settings, saves and mods live in `~/.local/share/doom`. It runs on Ubuntu
+22.04, Debian 12, Fedora 36 or newer, under X11 or XWayland; its `README.txt`
+lists the few libraries it needs.
+
 ## Images
 
 Published to `ghcr.io/krippler/doom`, 609 MB unpacked including the shareware
@@ -71,6 +89,9 @@ Or without a container, on any Linux X display:
 make -C linuxdoom-1.10
 make -C sndserv
 ```
+
+`tools/build-linux-tarball.sh VERSION` builds the desktop tarball above; CI
+builds one on every push.
 
 `tools/smoke-test.sh` checks a build: it plays a little of E1M1 on Xvfb and
 says what worked. See [PORTING-NOTES.md](PORTING-NOTES.md#verifying).

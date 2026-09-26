@@ -796,6 +796,36 @@ running and the bindings it read, which by itself distinguishes "the controller
 does not work" from "the tab is running a client from two releases ago" — a
 distinction the container's log previously could not make at all.
 
+## Playing on a desktop
+
+With truecolour the engine runs on any X display, which made a desktop build
+possible, and a desktop showed what the X driver had never had to do with
+nothing else on the screen:
+
+- **The pointer grab outlived the game.** `I_InitGraphics` called
+  `XGrabPointer` at startup when capture was on, and nothing ever let go: in
+  the menus, on the title screen, and in any other window you switched to, the
+  pointer stayed inside DOOM's. `I_UpdateGrab` now takes it only while a level
+  is being played, no menu is up and the window has the keyboard (FocusIn and
+  FocusOut are watched for that), and hands it back otherwise, with the
+  desktop's own cursor. The recentring warp follows the same rule. In the
+  container nothing else ever wants the pointer, so nothing changes there.
+- **No name, no class, a stretchable window.** The window is now called DOOM,
+  has the class `Doom` for a `.desktop` file's `StartupWMClass` to match, and
+  asks for a fixed size, because the picture does not scale with the window.
+- **The close button killed it.** Without `WM_DELETE_WINDOW` a window manager
+  closes a window by destroying the client's connection, and the engine died
+  in Xlib's I/O error handler with the config unsaved. It now asks for the
+  protocol and answers it with `I_Quit`.
+- **`-autoscale`** picks the largest multiple of 320x200, up to 4, that fits in
+  nine tenths of the screen, for the launcher to pass.
+
+The launcher itself (`desktop/doom`) is the container's entrypoint for one
+person: it finds the game, links it into `~/.local/share/doom/wads` under the
+name the engine and the sound server look for, runs the engine there with
+`-config` pointing at its own settings file, and lets the engine's own
+`DOOMWADDIR` and `DOOM_WADPATH` do the rest.
+
 ## The controller moved into the engine
 
 A controller used to be entirely the page's business. The 1997 engine had never

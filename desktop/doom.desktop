@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=DOOM
+Comment=id Software's DOOM, from the 1997 Linux source release
+Exec=doom
+Icon=doom
+Terminal=false
+Categories=Game;ActionGame;
+StartupWMClass=Doom

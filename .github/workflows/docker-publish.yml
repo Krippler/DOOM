@@ -168,18 +168,83 @@ jobs:
           git tag -a "v${VERSION}" -m "Release v${VERSION}"
           git push origin "v${VERSION}"
 
+  # The desktop build: the engine, the PulseAudio sound server, the launcher,
+  # a menu entry, the shareware episode and install.sh, as a tarball. Built on
+  # the oldest runner there is, not the latest, because a binary runs on the C
+  # library it was linked against or a newer one: 22.04's asks for glibc 2.34,
+  # which Ubuntu 22.04, Debian 12, Fedora 36 and every rolling distribution
+  # have, and links libfluidsynth.so.3, which they have too. Every push builds
+  # one, kept as a workflow artifact; a release attaches it.
+  linux:
+    name: Linux desktop build
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc libc6-dev make binutils \
+            libx11-dev libxext-dev libpulse-dev libfluidsynth-dev
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build the tarball
+        id: tarball
+        env:
+          RELEASE_VERSION: ${{ needs.build.outputs.release_version }}
+        run: |
+          set -eu
+          if [ -n "$RELEASE_VERSION" ]; then
+            VERSION="$RELEASE_VERSION"
+          elif [ "${GITHUB_REF#refs/tags/v}" != "$GITHUB_REF" ]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="edge-$(printf '%s' "$GITHUB_SHA" | cut -c1-7)"
+          fi
+          file=$(sh tools/build-linux-tarball.sh "$VERSION" dist | tail -n 1)
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$file")" >> "$GITHUB_OUTPUT"
+
+      # What the binaries ask of the system, in the log: the newest C library
+      # version they need, and the libraries they link.
+      - name: Show what it needs
+        run: |
+          set -eu
+          tar -xzf "${{ steps.tarball.outputs.file }}" -C dist
+          for bin in dist/*/lib/doom/linuxxdoom dist/*/lib/doom/sndserver; do
+            echo "== $bin"
+            objdump -T "$bin" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -n 1
+            objdump -p "$bin" | awk '/NEEDED/ {print $2}'
+          done
+          sh -n dist/*/bin/doom
+          sh -n dist/*/install.sh
+
+      - name: Keep the tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.tarball.outputs.name }}
+          path: ${{ steps.tarball.outputs.file }}
+
   # Create or update the GitHub Release from the matching CHANGELOG section,
   # for either path: a manual tag push, or a release-PR merge.
   github-release:
     name: GitHub Release
     if: startsWith(github.ref, 'refs/tags/v') || needs.build.outputs.is_release_merge == 'true'
-    needs: build
+    needs: [build, linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Fetch the Linux desktop build
+        uses: actions/download-artifact@v4
+        with:
+          path: linux-dist
+          merge-multiple: true
 
       - name: Create / update GitHub Release
         env:
@@ -215,7 +280,12 @@ jobs:
             echo '```'
             echo "Also published as \`latest\`, \`${VERSION%.*}\`, and \`${VERSION%%.*}\`."
             echo ""
-            echo "Game data is not included. Supply an IWAD; see DOCKER.md."
+            echo "The shareware episode is included. For the full game, supply your"
+            echo "own IWAD; see DOCKER.md."
+            echo ""
+            echo "### Linux desktop"
+            echo "To play without Docker, download \`doom-linux-x86_64-${VERSION}.tar.gz\`"
+            echo "below, unpack it and run \`./install.sh\`. Its README.txt has the rest."
           } > notes.md
 
           if gh release view "$TAG" >/dev/null 2>&1; then
@@ -223,3 +293,8 @@ jobs:
           else
             gh release create "$TAG" --title "$TAG" --notes-file notes.md --target "${GITHUB_SHA}"
           fi
+
+          for f in linux-dist/*.tar.gz; do
+            [ -f "$f" ] || continue
+            gh release upload "$TAG" "$f" --clobber
+          done

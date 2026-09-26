@@ -35,12 +35,26 @@ The version follows the engine this is built from, linuxdoom-1.10.
   motors, and the container log says whether this one can.
 
 ### Added
+- **A Linux desktop build, without Docker or VNC.** Every release now carries
+  `doom-linux-x86_64-VERSION.tar.gz`: the engine, the sound server, the
+  shareware episode, a `doom` launcher and a menu entry, with `./install.sh`.
+  The launcher finds a Steam or GOG copy of the game by itself, or takes
+  `--data /path/to/DOOM.WAD` once and remembers it, keeps settings and saves in
+  `~/.local/share/doom`, and opens the largest window that fits the screen.
+  Sound goes through PulseAudio or PipeWire, and a controller through SDL2.
+  Built on Ubuntu 22.04 so it runs on distributions that old.
+- **The engine behaves on a desktop.** It holds the pointer only while a level
+  is being played and its window has the keyboard, and lets go in the menus —
+  it used to take it at startup and keep it. The window has a title and a class
+  for the desktop to match, a size the window manager will not stretch, and its
+  close button quits the way Quit Game does, saving the config.
 - **A smoke test, run on every push.** `tools/smoke-test.sh` starts the engine
   on Xvfb against the shareware WAD and plays a little of E1M1 with a simulated
   controller: the level has to appear, the sticks walk and turn, a shot is
   heard and felt, Start opens the menu, quitting saves the config, the title
   music plays, the 8-bit display draws exactly what the truecolour one does,
-  and a crash leaves a readable backtrace. Half a minute, and CI keeps the
+  the pointer is held in a level and let go in the menu, and a crash leaves a
+  readable backtrace. Half a minute, and CI keeps the
   screenshots. Until now every release was checked by hand, on a phone.
 
 ### Fixed

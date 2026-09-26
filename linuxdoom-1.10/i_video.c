@@ -113,6 +113,13 @@ static int	multiply=1;
 // The 8-bit path is still here, and is what runs on an 8-bit display
 // (DOOM_X_DEPTH=8 in the container).
 //
+// Whether the pointer is held by this window right now, and whether the
+// window has the keyboard. See I_UpdateGrab.
+static boolean		X_grabbed;
+static boolean		X_focused = true;
+static Cursor		X_nullcursor;
+static Atom		X_wmdelete;
+
 static boolean		X_truecolor;
 static unsigned int	X_pixels[256];	// palette index -> pixel value
 static byte		X_palette[768];	// the last palette set, to rebuild from
@@ -227,6 +234,45 @@ void I_StartFrame (void)
 
 }
 
+//
+// Whether the pointer should be the game's: the capture setting is on, a
+// level is being played, no menu is up, and the window has the keyboard.
+//
+// Anything less and the pointer goes back to whoever wants it. That matters
+// on a desktop, where a grab that outlived the level -- the original took it
+// at startup and kept it -- left the pointer stuck inside the window in the
+// menus, and in any other window you switched to. In the container nothing
+// else wants it, and the answer is the same as it always was while playing.
+//
+static boolean I_WantGrab (void)
+{
+    return grabMouse && usemouse && X_focused
+	&& !menuactive && gamestate == GS_LEVEL;
+}
+
+static void I_UpdateGrab (void)
+{
+    boolean	want = I_WantGrab ();
+
+    if (want == X_grabbed || !X_display)
+	return;
+    X_grabbed = want;
+
+    if (want)
+    {
+	XDefineCursor (X_display, X_mainWindow, X_nullcursor);
+	XGrabPointer (X_display, X_mainWindow, True,
+		      ButtonPressMask|ButtonReleaseMask|PointerMotionMask,
+		      GrabModeAsync, GrabModeAsync,
+		      X_mainWindow, None, CurrentTime);
+    }
+    else
+    {
+	XUngrabPointer (X_display, CurrentTime);
+	XUndefineCursor (X_display, X_mainWindow);
+    }
+}
+
 static int	lastmousex = 0;
 static int	lastmousey = 0;
 boolean		mousemoved = false;
@@ -327,7 +373,7 @@ void I_GetEvent(void)
 		// motion is measured from the middle however many arrive in
 		// between. The warp lands exactly on the centre, which the
 		// test above ignores, so this does not feed itself.
-		if (grabMouse && !menuactive && gamestate == GS_LEVEL)
+		if (I_WantGrab ())
 		{
 		    XWarpPointer( X_display,
 				  None,
@@ -356,6 +402,25 @@ void I_GetEvent(void)
 	}
 	break;
 	
+      case FocusIn:
+	X_focused = true;
+	break;
+      case FocusOut:
+	// A grab of our own reports a focus change too; only a real one, to
+	// another window, lets go of the pointer.
+	if (X_event.xfocus.mode == NotifyNormal
+	    || X_event.xfocus.mode == NotifyWhileGrabbed)
+	    X_focused = false;
+	break;
+
+      // The window manager's close button, as Quit Game with no question:
+      // the config is saved on the way out, which it was not when the window
+      // simply vanished and took the X connection with it.
+      case ClientMessage:
+	if ((Atom) X_event.xclient.data.l[0] == X_wmdelete)
+	    I_Quit ();
+	break;
+
       case Expose:
       case ConfigureNotify:
 	break;
@@ -424,7 +489,9 @@ void I_StartTic (void)
     //
     // Only while actually playing: in the menus the pointer stands in for a
     // cursor, and at the title screen there is nothing to aim.
-    if (grabMouse && !menuactive && gamestate == GS_LEVEL)
+    I_UpdateGrab ();
+
+    if (I_WantGrab ())
     {
 	XWarpPointer( X_display,
 		      None,
@@ -944,16 +1011,8 @@ void grabsharedmemory(int size)
 //
 void I_SetMouseGrab (boolean grab)
 {
-    if (!X_display)
-	return;
-
-    if (grab)
-	XGrabPointer (X_display, X_mainWindow, True,
-		      ButtonPressMask|ButtonReleaseMask|PointerMotionMask,
-		      GrabModeAsync, GrabModeAsync,
-		      X_mainWindow, None, CurrentTime);
-    else
-	XUngrabPointer (X_display, CurrentTime);
+    grab = 0;			// grabMouse has already been set
+    I_UpdateGrab ();
 }
 
 
@@ -1038,6 +1097,22 @@ void I_InitGraphics(void)
 	    I_Error("Could not open display (DISPLAY=[%s])", getenv("DISPLAY"));
     }
 
+    // -autoscale: the largest multiple of 320x200, up to 4, that fits in the
+    // screen with room left for a window's frame and a desktop's panels. The
+    // desktop launcher asks for it; the container sizes its own screen.
+    if (M_CheckParm ("-autoscale"))
+    {
+	int	sw = DisplayWidth (X_display, DefaultScreen (X_display));
+	int	sh = DisplayHeight (X_display, DefaultScreen (X_display));
+
+	for (multiply = 4; multiply > 1; multiply--)
+	    if (SCREENWIDTH * multiply <= sw * 9 / 10
+		&& SCREENHEIGHT * multiply <= sh * 9 / 10)
+		break;
+	X_width = SCREENWIDTH * multiply;
+	X_height = SCREENHEIGHT * multiply;
+    }
+
     // The display's own kind of visual: 8-bit PseudoColor on an 8-bit
     // display, as the original required, and TrueColor on anything else.
     X_screen = DefaultScreen(X_display);
@@ -1100,7 +1175,7 @@ void I_InitGraphics(void)
 	KeyPressMask
 	| KeyReleaseMask
 	| PointerMotionMask | ButtonPressMask | ButtonReleaseMask
-	| ExposureMask;
+	| ExposureMask | FocusChangeMask;
 
     attribs.colormap = X_cmap;
     attribs.border_pixel = 0;
@@ -1117,8 +1192,36 @@ void I_InitGraphics(void)
 					attribmask,
 					&attribs );
 
-    XDefineCursor(X_display, X_mainWindow,
-		  createnullcursor( X_display, X_mainWindow ) );
+    // Invisible while the game has the pointer, the desktop's own otherwise:
+    // I_UpdateGrab switches between them.
+    X_nullcursor = createnullcursor (X_display, X_mainWindow);
+    XDefineCursor (X_display, X_mainWindow, X_nullcursor);
+
+    // What a window manager needs to know: a name for the title bar and the
+    // task list, a class for the desktop file to match (StartupWMClass=Doom),
+    // a size it should not change -- the picture does not scale with the
+    // window -- and that the close button should ask rather than kill.
+    {
+	XClassHint	class_hint;
+	XSizeHints*	size = XAllocSizeHints ();
+
+	XStoreName (X_display, X_mainWindow, "DOOM");
+	class_hint.res_name = "doom";
+	class_hint.res_class = "Doom";
+	XSetClassHint (X_display, X_mainWindow, &class_hint);
+
+	if (size)
+	{
+	    size->flags = PMinSize | PMaxSize;
+	    size->min_width = size->max_width = X_width;
+	    size->min_height = size->max_height = X_height;
+	    XSetWMNormalHints (X_display, X_mainWindow, size);
+	    XFree (size);
+	}
+
+	X_wmdelete = XInternAtom (X_display, "WM_DELETE_WINDOW", False);
+	XSetWMProtocols (X_display, X_mainWindow, &X_wmdelete, 1);
+    }
 
     // create the GC
     valuemask = GCGraphicsExposures;
@@ -1150,12 +1253,7 @@ void I_InitGraphics(void)
     // and the game's keyboard depended on where the pointer had drifted to.
     XSetInputFocus (X_display, X_mainWindow, RevertToPointerRoot, CurrentTime);
 
-    // grabs the pointer so it is restricted to this window
-    if (grabMouse)
-	XGrabPointer(X_display, X_mainWindow, True,
-		     ButtonPressMask|ButtonReleaseMask|PointerMotionMask,
-		     GrabModeAsync, GrabModeAsync,
-		     X_mainWindow, None, CurrentTime);
+    // The pointer is taken when a level starts, not here: I_UpdateGrab.
 
     if (doShm)
     {

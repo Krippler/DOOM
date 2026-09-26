@@ -1,0 +1,175 @@
+#!/bin/sh
+#
+# doom -- starts DOOM on a Linux desktop.
+#
+#   doom                    play; finds your copy of the game by itself, or
+#                           plays the shareware episode that comes with it
+#   doom --data PATH        play the game in PATH (DOOM.WAD, DOOM2.WAD, ... or
+#                           a directory holding one), and remember it
+#   doom [engine options]   anything else goes to the engine: -warp 1 1,
+#                           -skill 4, -file mod.wad, -3 for a fixed size, ...
+#
+# What this does is what the container's entrypoint does, for one person on
+# one machine. The engine finds its game and its sound server by looking in
+# $DOOMWADDIR, writes its savegames into the directory it runs in, and keeps
+# its settings in the file -config names. So it runs in a directory of its own,
+# ~/.local/share/doom, with the game linked into wads/ there, and everything it
+# writes lands beside it. Your game files are only ever read.
+#
+# The game is looked for, in order: --data, $DOOM_DATA, the one used last
+# time, the usual Steam and GOG places, and then the shareware episode.
+# Mods go in ~/.local/share/doom/wads, where Options -> Setup -> Load WAD
+# lists them.
+#
+
+set -u
+
+here=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+engine="${DOOM_ENGINE:-$here/../lib/doom/linuxxdoom}"
+sndserver="$here/../lib/doom/sndserver"
+shareware="$here/../lib/doom/doom1.wad"
+base="${XDG_DATA_HOME:-$HOME/.local/share}/doom"
+wads="$base/wads"
+remembered="$base/.iwad"
+
+# The IWADs the engine knows, by the names it and the sound server look for.
+IWADS="doom2f.wad doom2.wad plutonia.wad tnt.wad doomu.wad doom.wad doom1.wad"
+
+say() { printf 'doom: %s\n' "$*" >&2; }
+
+# Said in a window as well when there is no terminal to say it in -- started
+# from the desktop's menu, a message on stderr goes nowhere.
+complain() {
+    say "$*"
+    [ -t 2 ] && return 0
+    if command -v zenity >/dev/null 2>&1; then
+        zenity --error --title=DOOM --text="$*" 2>/dev/null
+    elif command -v kdialog >/dev/null 2>&1; then
+        kdialog --title DOOM --error "$*" 2>/dev/null
+    elif command -v xmessage >/dev/null 2>&1; then
+        xmessage -center "$*" 2>/dev/null
+    fi
+}
+
+data=""
+case "${1:-}" in
+    --data)
+        [ $# -ge 2 ] || { say "--data needs a file or a directory"; exit 2; }
+        data="$2"
+        shift 2
+        ;;
+    --data=*)
+        data="${1#--data=}"
+        shift
+        ;;
+    -h|--help)
+        sed -n '3,10p' "$0" | sed 's/^# \{0,1\}//'
+        exit 0
+        ;;
+esac
+
+if [ ! -x "$engine" ]; then
+    complain "The engine is not at $engine. Reinstall, or set DOOM_ENGINE."
+    exit 1
+fi
+
+mkdir -p "$wads" || { complain "Cannot create $wads"; exit 1; }
+
+# An IWAD in a directory, in the engine's order of preference, matched without
+# regard to case: Steam ships DOOM.WAD, a CD copy doom.wad.
+iwad_in() {
+    for want in $IWADS; do
+        match=$(find "$1" -maxdepth 1 -type f -iname "$want" 2>/dev/null | head -n 1)
+        [ -n "$match" ] && { printf '%s\n' "$match"; return 0; }
+    done
+    return 1
+}
+
+# A file or a directory, down to the IWAD it means.
+resolve() {
+    if [ -f "$1" ]; then
+        printf '%s\n' "$1"
+    elif [ -d "$1" ]; then
+        iwad_in "$1"
+    else
+        return 1
+    fi
+}
+
+iwad=""
+if [ -n "$data" ]; then
+    iwad=$(resolve "$data") || {
+        complain "No DOOM game file in $data. Point --data at DOOM.WAD or DOOM2.WAD,
+or at the directory that holds it."
+        exit 1
+    }
+elif [ -n "${DOOM_DATA:-}" ]; then
+    iwad=$(resolve "$DOOM_DATA") || iwad=""
+fi
+[ -z "$iwad" ] && [ -f "$remembered" ] && iwad=$(cat "$remembered") \
+    && [ ! -f "$iwad" ] && iwad=""
+
+if [ -z "$iwad" ]; then
+    for d in \
+        "$HOME/.local/share/Steam/steamapps/common/Ultimate Doom/base" \
+        "$HOME/.local/share/Steam/steamapps/common/Doom 2/base" \
+        "$HOME/.local/share/Steam/steamapps/common/Final Doom/base" \
+        "$HOME/.steam/steam/steamapps/common/Ultimate Doom/base" \
+        "$HOME/.steam/steam/steamapps/common/Doom 2/base" \
+        "$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Ultimate Doom/base" \
+        "$HOME/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Doom 2/base" \
+        "$HOME/GOG Games/DOOM" "$HOME/GOG Games/DOOM 2" \
+        "$HOME/Games/doom" "$HOME/.doom" \
+        "/usr/share/games/doom" "/usr/share/doom"
+    do
+        iwad=$(iwad_in "$d") && break
+        iwad=""
+    done
+fi
+
+if [ -z "$iwad" ]; then
+    iwad="$shareware"
+    [ -f "$iwad" ] || { complain "No DOOM game file found, and the shareware
+episode that comes with this is missing too: $iwad. Reinstall, or start it
+with doom --data /path/to/DOOM.WAD."; exit 1; }
+    say "playing the shareware episode; for the full game, doom --data /path/to/DOOM.WAD"
+elif [ "$iwad" != "$shareware" ]; then
+    iwad=$(cd "$(dirname "$iwad")" && pwd)/$(basename "$iwad")
+    printf '%s\n' "$iwad" > "$remembered"
+fi
+
+# wads/ holds the one game being played, under the name the engine and the
+# sound server look for, beside whatever mods are in there. Other IWAD links
+# from earlier runs go: the sound server takes the first it finds.
+name=$(basename "$iwad" | tr 'A-Z' 'a-z')
+for w in $IWADS; do
+    [ -L "$wads/$w" ] && rm -f "$wads/$w"
+done
+ln -sfn "$iwad" "$wads/$name"
+
+# Effects come from the 1997 sound server, which plays through PulseAudio --
+# or PipeWire's stand-in for it, which is what most desktops run now. Music
+# is FluidSynth inside the engine, and needs a General MIDI soundfont.
+if [ -x "$sndserver" ]; then
+    ln -sfn "$sndserver" "$wads/sndserver"
+else
+    rm -f "$wads/sndserver"
+fi
+
+# A first run takes the pointer while playing, which is what a mouse wants on
+# a desktop; the engine lets go of it in the menus and when another window has
+# the keyboard. Options -> Setup -> Mouse -> Grab pointer turns it off.
+config="$base/doomrc"
+[ -f "$config" ] || printf 'grab_mouse\t\t1\n' > "$config"
+
+# The largest size that fits the screen, unless a size was asked for.
+scale="-autoscale"
+for a in "$@"; do
+    case "$a" in -1|-2|-3|-4) scale="" ;; esac
+done
+
+cd "$base" || exit 1
+export DOOMWADDIR="$wads"
+export DOOM_WADPATH="$wads"
+# shellcheck disable=SC2086
+exec "$engine" -config "$config" -iwad "$wads/$name" $scale "$@"
