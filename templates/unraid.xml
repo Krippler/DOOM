@@ -23,9 +23,9 @@
     &#13;
     The WebUI opens a client that captures the mouse, so turning does not run out of screen and the cursor stays in the game. Escape hands the cursor back, and the ` key opens the game menu whatever the mouse is doing. Plain noVNC is still there at /vnc.html if you would rather it did not grab the pointer, though it carries no sound.&#13;
     &#13;
-    A game controller works too, on a phone as well as a desktop - an Xbox pad, a Backbone One, anything the browser reports as a standard gamepad. Every button is rebindable from the start screen, and the layout is saved per browser, so a phone and a desktop keep their own. On a phone the controller is the whole of the input, and the sound comes out of the phone's own speaker.&#13;
+    A game controller works too, on a phone as well as a desktop - an Xbox pad, a Backbone One, anything the browser reports as a standard gamepad - and it vibrates when you fire or are hurt, where the browser can drive the pad's motors. It is set up in the game, under Options - Setup - Controller. On a phone the controller is the whole of the input, and the sound comes out of the phone's own speaker.&#13;
     &#13;
-    Keys and the mouse are set from inside the game, under Options - Setup. The same menu lists the WAD files in the folder below and loads the one you pick, so mods can be dropped in and switched to without touching the container settings.
+    Keys, the mouse and the controller are set from inside the game, under Options - Setup. The same menu lists the WAD files in the folder below and loads the one you pick, so mods can be dropped in and switched to without touching the container settings.
   </Overview>
   <Category>GameServers: Other:</Category>
   <WebUI>http://[IP]:[PORT:6080]/</WebUI>

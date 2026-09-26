@@ -13,7 +13,7 @@
     starts; your own IWAD takes precedence when you add one. Commercial game
     data is not included and comes from your own copy of the game.
 
-    Keys and the mouse are configured from inside the game, under Options -
+    Keys, the mouse and a controller are configured from inside the game, under Options -
     Setup, which also lists the WAD files in the mounted folder and loads the
     one you pick, so mods can be added without changing the container.
 

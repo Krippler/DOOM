@@ -796,6 +796,64 @@ running and the bindings it read, which by itself distinguishes "the controller
 does not work" from "the tab is running a client from two releases ago" — a
 distinction the container's log previously could not make at all.
 
+## The controller moved into the engine
+
+A controller used to be entirely the page's business. The 1997 engine had never
+heard of one, so `doom-gamepad.js` turned buttons into X key presses and the
+right stick into pointer motion, and the engine could not tell the difference.
+That was 1,120 lines of JavaScript and most of the bug reports in this file:
+keys the engine eats before the game sees them ([above](#some-keys-never-reach-the-game-at-all)),
+bindings the page had to be told about separately every time one was changed
+in the game, a trigger that fired through the mouse because the fire key was
+unusable, and a page that could not tell a menu from a level.
+
+`i_pad.c` reads the pad itself now, the way the Quake port next door does.
+Where the state comes from is the only thing that differs:
+
+- **In the container** the pad is plugged into the machine running the
+  browser. The page reads it through the Gamepad API and sends its state
+  across on a third WebSocket (`token=pad`), which websockify hands to a TCP
+  port on localhost that the engine listens on (`DOOM_PAD_PORT`). Sixteen bytes
+  a message: connected, a button mask, four stick axes, two triggers. The page
+  is 223 lines and has nothing to configure.
+- **On a desktop** SDL2's game controller API, opened with `dlopen` when the
+  engine starts, so a machine without SDL still runs the game and building it
+  needs nothing installed.
+
+Each button is set to one of the game's *actions* on a new **Options → Setup →
+Controller** page, saved in `.doomrc` as `pad_a`, `pad_rt` and so on. Pressing
+it posts the key that action is bound to at that moment straight into
+`D_PostEvent`, so it never goes near X, and a key rebound on the Controls page
+is followed with nothing else to change. In a menu the buttons are menu keys
+instead (`M_PadKey`, which knows whether a question is waiting for yes or no,
+a savegame is being named, or the Controls page wants a key). The key a
+button went down as is the key it comes up as, so a trigger held to fire and
+let go after the menu opened does not leave the player firing.
+
+The sticks go into `G_BuildTiccmd` as speeds: forward and side in proportion
+to how far the left one is pushed, running when it is pushed all the way, and
+the right one as a turn rate on a curve, 90 to 360 degrees a second. A
+keyboard cannot do any of that.
+
+**Vibration** is sent back the other way, seven bytes, and the page plays it
+through `vibrationActuator`. Firing is hooked in `P_FireWeapon`, with a kick for
+each weapon, and the BFG in `A_FireBFG` when it actually goes off. Being hurt
+needed no hook at all: `P_DamageMobj` has always called
+
+```c
+if (player == &players[consoleplayer])
+    I_Tactile (40,10,40+temp*2);
+```
+
+and `I_Tactile` was an empty function marked `// UNUSED.` id wrote the call
+for force feedback in 1993 and nothing ever answered it. It answers now.
+
+One thing the move turned up. Nothing reads input while the screen melts
+between states, which is fine for a keyboard: X keeps the keys until they are
+asked for. A pad reports what is held, not what was pressed, so a tap made and
+let go inside the second a melt takes was never seen. `D_Display` polls the pad
+inside the melt loop too; the events queue like the keyboard's.
+
 ## Drawing in truecolour
 
 The X driver only ever accepted one kind of display:

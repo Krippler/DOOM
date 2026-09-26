@@ -197,8 +197,7 @@ Controls**, the menu key included. Pick a line, press Return, then press the key
 choice is written to `.doomrc` in the state directory, so it survives a
 restart.
 
-A game controller works too, and is rebound in the browser rather than in the
-game — see below.
+A game controller works too, and is set up in the same place — see below.
 
 The mouse turns you. It does **not** walk you forward and back — the original
 used the mouse's Y axis for movement, since there was nothing to aim
@@ -217,347 +216,96 @@ Plug it in or pair it, open `play.html`, and **press a button on it**. That last
 step is not optional and is not this page being fussy: browsers do not admit a
 gamepad exists until something on it has been pressed, so a pad that is paired,
 charged and idle is genuinely invisible. Once it has been seen, a line appears
-under the buttons naming it, with **Buttons** beside it to rebind anything.
+under the start screen's buttons naming it.
+
+**Everything about it is set in the game**, under **Options → Setup →
+Controller**, and saved in `.doomrc` beside the keys:
+
+| | |
+| --- | --- |
+| Use controller | on or off |
+| Buttons… | what each button does — any of the game's actions, or nothing |
+| Turn speed | how fast the right stick turns, 0–9. 5 is the keyboard's own fast turn |
+| Vibration | 0 (off) to 9. The pad pulses as you set it, so you can feel the strength |
+| Swap sticks | left stick turns, right stick moves |
+| Push stick to run | a full push breaks into a run, without holding Run |
 
 The layout out of the box:
 
 | | |
 | --- | --- |
-| Left stick | move and sidestep — push it all the way to break into a run |
-| Right stick | turn. Analog, so a nudge turns slowly |
+| Left stick | walk and sidestep, as far as it is pushed; all the way runs |
+| Right stick | turn, as far as it is pushed — a nudge aims finely |
 | RT | fire |
 | LT | run |
-| A | open / use, and confirm in menus |
-| B | back out of a menu |
-| X, Y, LB, RB | shotgun, pistol, chaingun, rockets |
-| Left stick click, Right stick click | fist/chainsaw, plasma rifle |
-| D-pad | move and turn, for menus and for keyboard-style play |
-| View, Menu | automap, game menu |
+| A | open / use; chooses in menus, and is *yes* to a question |
+| B | the game menu; goes back a page in menus, and is *no* to a question |
+| X, Y, LB, RB | weapons 3, 2, 4 and 5: shotgun, pistol, chaingun, rocket launcher |
+| Left stick click, Right stick click | weapons 1 and 6: fist or chainsaw, plasma rifle |
+| D-pad | walk and turn; moves the cursor in menus |
+| View | automap |
+| Menu (Start) | the game menu, always, as Escape is |
+
+In menus the d-pad and left stick move the cursor, LB and RB change a setting,
+A chooses and B goes back. A button is set to an *action*, not a key, so
+rebinding a key under **Controls** needs nothing changing here: a button set to
+*Fire* presses whatever fire is bound to.
+
+**Vibration** comes on firing — each weapon has its own kick, the super shotgun
+hardest — and on being hurt, harder for more damage. The damage half goes
+through `I_Tactile`, a force-feedback hook id left in the 1997 code and never
+filled in. It needs a browser that can drive the pad's motors, which not every
+browser can for every pad; the container log says whether this one can, below.
 
 The BFG has no button by default — there is one weapon more than there are
-comfortable buttons — and neither do the sidestep keys or the strafe modifier,
-because the left stick already does that. All of them are in the panel if you
-want them.
+comfortable buttons — and there is no next-weapon action, because the 1997
+engine has none: it only has *select weapon N*.
 
-There is no next-weapon button because the 1997 engine has no such key: it
-only has *select weapon N*, and the page cannot cycle on your behalf since it
-has no idea which weapons you are carrying. A digit for a weapon you have not
-picked up is ignored, so a cycle would stick on the gaps.
+#### How it reaches the game
 
-#### The pad works in the menus but not in the game
+The pad is plugged into the machine running the browser, not into the
+container, so the page reads it through the Gamepad API and sends its state —
+which buttons are down, where the sticks and triggers are — over a third
+WebSocket to the same port as the picture and the sound. The engine listens
+for it on `DOOM_PAD_PORT` (5902, inside the container only) and does the rest
+itself: `linuxdoom-1.10/i_pad.c`.
 
-This is handled automatically now, and is worth knowing about anyway because it
-explains the shape of it. The engine **hardcodes the arrow keys and Return in its
-menus** but reads *configurable* bindings during play — `key_up`, `key_down`,
-`key_fire`, `key_use`, `key_speed`, `key_strafe`, all from `.doomrc`. A pad
-pressing the built-in defaults therefore drives menus perfectly and goes
-completely dead in a level as soon as those have been changed under **Options →
-Setup → Controls**.
-
-The container reads `.doomrc` at startup and serves the bindings beside the page
-as `doom-keys.json`, so the pad presses whatever *this* engine listens for — one
-key per action, and the engine's menus now accept the movement bindings as
-navigation. So with `key_up` set to `w`, the d-pad's up sends `w`: it walks you
-forward in a level and moves the cursor in a menu, because `M_Responder` maps it
-onto its own up key.
-
-The panel's third column shows each key and where it came from: **green** from
-the game's own config, **grey** the engine default, **pink** set here by hand.
-
-Because it is read at startup, a binding changed in the game reaches the pad on
-the next restart — the engine writes `.doomrc` when it exits. **Key** on a row
-overrides it straight away without waiting: press **Key**, then press the key you
-actually use. **Default key** hands the row back to the config.
-
-Two things that look like the same fault and are not:
-
-- **Turning still works** when everything else has stopped, because the sticks
-  turn by sending pointer motion rather than a key, and the mouse is not
-  rebindable. It is the one input that cannot be broken this way.
-- **Most weapon buttons do nothing at the start of a level**, correctly: the
-  engine ignores a weapon you are not carrying, and E1M1 starts with a fist and
-  a pistol.
-
-#### Triggers, and pads that report them as axes
-
-The standard layout puts LT and RT at buttons 6 and 7, and plenty of pads and
-browsers do not: they report the triggers as **analog axes** instead, and then
-there is no button 6 or 7 at all. Every other control works, which from the
-outside looks exactly like "the triggers don't work".
-
-Those are found automatically now: an axis that **rests at one extreme** is a
-trigger, because a stick resting at ±1 is a broken stick. The lower-numbered one
-is added to Run and the next to Fire — *added*, not substituted, so the row reads
-`RT or Axis 5 +` and works whichever the pad really uses. Nothing to set by hand.
-
-#### What the container log says about your pad
-
-Everything about a controller happens in the browser, where the container cannot
-see it — so the page writes what it does into the container's log, which is the
-thing anyone actually pastes when a control does not work. Read it with
-`docker logs <container>` and look for `[doom] controller:`.
-
-One line goes in on every page load, whether or not there is a pad:
-
-```
-[doom] controller: client 1.10.63, keymap from the engine: key_down=115 key_fire=0 ...
-```
-
-That is the build the browser is really running — not the one you pulled, the one
-the tab has — and the engine's own bindings as the page received them. No such
-line at all means the browser is not running this page: a stale tab, or a cached
-copy from before controllers existed. Reload it.
-
-Then, once per pad:
-
-```
-[doom] controller: found id=Microsoft X-Box 360 pad (Vendor: 045e Product: 028e)
-       mapping=none buttons=11 axes=0.00,0.00,-1.00,0.00,0.00,-1.00,0.00,0.00
-```
-
-That is the whole shape of the pad: its name, whether the browser calls its
-layout standard, how many buttons it admits to, and where each axis rests. A
-`-1.00` is a trigger sitting at rest; `mapping=none` means the button numbers
-will not match their usual names.
-
-Then what every control is *going* to do, one line each:
-
-```
-[doom] controller: plan fire in=b7,a5+ sends=mouse1 src=default doomrc=0 unusable=0
-[doom] controller: plan act  in=b0     sends=e      src=engine  doomrc=101
-[doom] controller: plan run  in=b6,a2+ sends=NOTHING src=default doomrc=0 unusable=0
-```
-
-`in=` is what you press — `b7` is button 7, `a5+` an axis pushed positive, and
-**`-` nothing at all**, which is the other answer worth looking for: a control
-with no button cannot work however the keys are set. (`strafeleft`,
-`straferight` and `strafemod` read `-` on a stock layout by design — the left
-stick strafes, and there are not sixteen buttons to go round.) `sends=` is what the game will receive, and **`sends=NOTHING`
-is the answer** wherever a control does nothing: that one says the engine has no
-key for Run, so nothing can be sent for it. `src=` is where the key came from
-(`engine` from `.doomrc`, `default` built in, `learned` set in the panel),
-`doomrc=` the engine's own number, and `unusable=` a number that has no key at
-all. This is the half of the log worth reading: it is the answer before the
-question, for all twenty controls at once.
-
-A line before the plan means a layout saved by an earlier build was missing
-buttons for actions that build did not have, and the defaults were put back:
-
-```
-[doom] controller: filled in from the defaults, saved layout had no button for: back_out=b1 weapon3=b2 ...
-```
-
-Only gaps are filled. Anything you rebound stays where you put it, and anything
-you **Clear**ed stays cleared.
-
-Finally, as you play, what actually happened:
-
-```
-[doom] controller: down b0 -> act
-[doom] controller: sent e down
-[doom] controller: up   b0
-[doom] controller: sent e up
-[doom] controller: down b7 -> fire
-[doom] controller: mouse mask 0 -> 1
-```
-
-Every button as it goes down and comes up, including ones bound to nothing
-(`down b4 -> nothing bound`), and every key and mouse button sent because of it.
-Axes appear only where something is bound to them, or the sticks would fill the
-log by themselves. It stops after 400 lines, which is far more than a diagnosis
-needs.
-
-It reaches the log over the same connection that carries the picture: the page
-asks the container's own proxy for a URL, and the proxy prints it. Nothing
-leaves the machine.
-
-Where that does not apply, **Bind takes an axis as well as a button** — press
-**Bind** and squeeze the trigger. It records which way the axis travelled from where it was resting, so a
-trigger that sits at -1 and runs to +1 binds correctly and is not treated as held
-while it rests. The panel shows such a binding as `Axis 5 +`.
-
-Two things make this visible rather than mysterious. A row whose button does not
-exist on the connected pad says so — **`RT — not on this pad`** — and the
-readout's *pressed now* line names every input that is on, in the same form a
-binding uses, so a squeezed trigger appears as `Axis 5 +` the moment you pull it.
-
-A trigger that reports only an analog value and never sets `pressed` counts from
-30% of its travel, so one that tops out low still works.
-
-#### If a control also picks things in menus
-
-Then the engine has it on **Enter**, and the log says so:
-
-```
-[doom] controller: plan fire in=b7 sends=Return src=engine doomrc=13
-[doom] controller: note fire is Enter in the engine, which also confirms menu items
-```
-
-`M_Responder` reads Enter as *confirm* whatever else it is bound to, so a
-control sitting on it works in a level and picks menu items everywhere else.
-Fix it in the game's own **Options → Setup → Controls**.
-
-Nobody chooses this: the Controls screen is opened with Enter, so pressing Enter
-again — the obvious thing to do when you are not sure the first press
-registered — used to bind Enter to whatever row you were on. It no longer can;
-the prompt now ignores Enter and waits for a real key, and Escape still cancels.
-
-**Moving it to the mouse button instead does not help.** `M_Responder` reads
-mouse button 1 as Enter as well:
-
-```c
-if (ev->data1&1)
-    ch = KEY_ENTER;
-```
-
-so that is the same conflict by another route. Use an ordinary key — `Ctrl` is
-what fire is bound to out of the box.
-
-#### Buttons that send a key the game never receives
-
-`G_Responder` hands every event to the heads-up display, the status bar, the
-automap and the finale before the code that records a keypress, and the menu
-gets a look before all of them. Five keys never come out the far side, so a
-**game control** bound to one of them is dead however well the pad works:
-
-| key | who takes it |
-| --- | --- |
-| `Enter` (13) | the heads-up display, to re-show the last message |
-| `Tab` (9) | the automap |
-| `Escape` (27) | the menu |
-| `F1`–`F12` | the menu — help, save, load and the rest |
-| `Pause` | handled and returned before any key is recorded |
-
-The page treats such a setting as unusable, says so, and sends the engine's
-mouse button instead where there is one:
-
-```
-plan fire in=b7 sends=mouse1 src=default doomrc=13 unusable=13
-note fire is key 13 in the engine, which the game never sees
-```
-
-So fire still works, but the honest fix is **Options → Setup → Controls** and a
-key that is not on that list. `Ctrl` is the stock one.
-
-None of this applies to *Map* and *Back out*, whose defaults are Tab and Escape
-on purpose: being caught by the automap and the menu is exactly what they are
-for.
-
-#### If Fire does nothing whatever it is bound to
-
-Then it is not the pad, and rebinding will not help: check what the **game** has
-fire bound to. `G_BuildTiccmd` reads it as
-
-```c
-gamekeydown[key_fire] || mousebuttons[mousebfire] || joybuttons[joybfire]
-```
-
-so somebody who fires with the mouse may have no *key* for firing at all. A
-controller that only sends keys can never fire for them, however it is mapped.
-
-The page reads `mouseb_fire` out of `.doomrc` alongside the keys, and where the
-engine has no usable key for an action it sends that mouse button instead. The
-panel says which: **`mouse 1 (key 0 unusable)`**. Where there is a usable key it
-sends only the key, because holding a mouse button in a menu reads as Return and
-a working fire key should not make menus confirm themselves.
-
-**Run has no mouse button** — the engine has no `mouseb_speed`, only
-`key_speed` — so if that row says `key 0 — nothing to send`, press **Key** on it
-and press the key you actually run with.
-
-#### If Fire or Run in particular do nothing
-
-Those two are the ones most often rebound, so check what the engine is actually
-bound to. The container logs it at startup, in full:
-
-```
-[doom] controller keys: key_down=115 key_fire=120 key_left=172 key_menu=96 ...
-```
-
-If `key_fire` is a number the page cannot turn into a key — a few values have no
-keysym at all — the panel says **`game uses 144 — unknown here`** on that row and
-sends **nothing** rather than pressing the default at an engine listening for
-something else. Press **Key** on that row and press the key you use, and it will
-send that instead.
-
-**Rebinding** is in that panel: pick a line, press **Bind**, then press the
-button or squeeze the trigger.
-The sticks have a deadzone, a turn speed, invert, a swap, and a switch for
-whether a full push runs. Everything is saved in the browser — not in
-`.doomrc` — because the container never sees the controller, and because the
-pad on your phone and the pad on your desk are different browsers and usually
-want different layouts. **Reset to defaults** puts it all back.
-
-Two things worth knowing:
-
-- The panel sends **keys**, not intentions. Rebind fire in the game's own
-  **Options → Setup → Controls** and the controller's *Fire* has to be pointed
-  at the new key as well, or it will go on pressing Ctrl.
-- On a phone there is no pointer to capture, so the controller is the whole of
-  the input. Up to 1.10.67 that stopped the pad working entirely: the start
-  screen was hidden only by a pointer-lock event, iOS has no Pointer Lock API,
-  so the screen never went away — and the page will not send a key while it is
-  up, however well the pad is detected. The *grab pointer* warning does not
-  apply either. Turning still works:
-  the right stick sends the same relative motion a captured mouse would. iOS has
-  no Pointer Lock API at all, so the page no longer warns about a capture it
-  never attempted — it says to pair a controller instead, and says nothing once
-  one is connected. The controller log line records which it found:
-  `client 1.10.66, pointerlock no, keymap …`.
+Up to 1.10.74 the page did everything instead, turning buttons into X key
+presses and the sticks into mouse motion, with its own panel of bindings kept
+in the browser. That could only press keys the X server would pass on — Enter,
+Tab and the F keys never reached the game — could not tell a menu from a level,
+and had to be told separately about every key rebound in the game. Bindings
+saved in a browser by those versions are not read any more.
 
 Nothing reaches the game while the start screen is up, so a pad knocked off a
 desk cannot empty a chaingun into a room nobody is watching, and a pad that
-disconnects mid-game lets go of whatever it was holding rather than leaving the
-trigger down.
+disconnects mid-game lets go of whatever it was holding.
 
-#### When only some of it works
+On a phone there is no pointer to capture, so the controller is the whole of
+the input, and the start screen says so rather than explaining mouse capture.
 
-**Start with the container's log.** `docker logs <container> | grep controller:`
-answers this without anyone having to watch a screen — see *what the container
-log says about your pad* above. The rest of this section is the same information
-from inside the browser, for when the log is not to hand.
+#### What the container log says about it
 
-The panel ends with **what the pad is reporting**, which exists because "some
-buttons work and the rest do nothing" has three completely different causes and
-they cannot be told apart by playing. It shows, live, how many pads the browser
-admits to, the name and layout it claims, how many buttons and axes it has,
-which button indices are pressed *right now*, and — kept from the last spell of
-play, since nothing is sent while you are reading it — the keys that actually
-went out.
+```
+Controller: from the browser, port 5902
+[doom] controller: client 1.10.75, pointerlock yes
+[doom] controller: pad Xbox Wireless Controller (STANDARD GAMEPAD Vendor: 045e Product: 0b13), standard layout, 17 buttons, 4 axes, can vibrate, passed to the game
+Controller: Xbox Wireless Controller
+```
 
-Play, press the things that do not work, press Escape, open the panel and read
-the bottom of it:
+The `Controller:` lines are the engine's: where it is listening, and the name
+of each pad it is handed, or `disconnected`. The `[doom] controller:` lines are
+the page's, sent to the container's own proxy and printed here: the build the
+tab is really running — no such line at all means a stale tab, reload it —
+and, for each pad, its name, whether the browser knows its layout, whether it
+can vibrate, and whether it reached the game.
 
 | | |
 | --- | --- |
-| `pads seen 0` | The browser is not giving the page the pad at all. Press a button on it; if it stays at 0, no binding here can help. |
-| A button you pressed never appears in `pressed now` | The browser is not reporting that button. If `layout` is not `standard` the indices will not match the names, and rebinding by pressing is the fix. |
-| It appears in `pressed now`, but no key is listed | The page saw the button and sent nothing — the action is unbound. Bind it. |
-| The key is listed and the game ignored it | It reached the far end. Almost always the engine's own binding was changed under **Options → Setup → Controls**, so the key the panel sends is no longer the key the game listens for. |
-
-**The quickest answer is on screen while you play.** Open
-`/play.html?stats=1` and a strip sits over the top-left of the picture:
-
-```
-pads 1  ·  layout standard  ·  pressed 7=RT  ·  holding Control_L  ·  last key Control_L down
-```
-
-Hold the button that does nothing and read that line as the game fails to react.
-It settles the whole question in one look, because the panel cannot: the panel
-is only visible when the game is not, and the moment worth watching is the one
-moment it is hidden.
-
-| what the strip says | what it means |
-| --- | --- |
-| `pads 0` | the pad is not reaching the page; nothing here can help |
-| `pressed —` while you hold the button | the browser is not reporting that button |
-| `pressed 7=RT` but `last key none sent yet` | the page saw it and sent nothing — it is unbound |
-| `pressed 7=RT` and `holding Control_L` | the key went out — see **the pad works in menus but not in the game** below |
-
-`?stats=1` also shows the controller line when no pad has been seen, so the panel
-and its readout are reachable when the fault is that nothing is detected. The
-panel's readout has a **Copy this** button, which is the easiest thing to paste
-into a bug report.
+| no `pad` line | the browser has not seen the pad. Press a button on it |
+| `non-standard layout` | the browser does not know this pad, so its buttons may not be where the names say. Set them on **Buttons…** by trying them |
+| `not reaching the game yet` | the page has the pad and the engine does not — usually the engine restarting, which takes a couple of seconds |
+| `no vibration` | the browser cannot drive this pad's motors. Nothing in the game can change that |
 
 ## Loading WADs from the game
 
@@ -615,6 +363,7 @@ Everything is set through the environment:
 | `DOOM_SOUND` | `1` | Set to `0` for no sound at all. |
 | `DOOM_AUDIO_RATE` | `22050` | Rate the sound reaches the browser at. `11025` or `44100` also work. |
 | `DOOM_AUDIO_PORT` | `5901` | Internal mixer port. Nothing to publish. |
+| `DOOM_PAD_PORT` | `5902` | Internal port the engine hears the controller on. Nothing to publish; the controller shares the web port. |
 | `PULSE_SERVER` | unset | Send the sound to this PulseAudio server instead of the browser. |
 | `DOOM_SOUNDFONT` | auto | General MIDI soundfont for music; empty means search for an installed one. |
 | `PUID` / `PGID` | `1001` | User to drop to, when the container starts as root. |
@@ -1081,8 +830,8 @@ turn "it crashed" into something that can be looked at — this is 1997 C, and
 there are corners of it nobody has walked into for a long time.
 
 One cause is worth ruling out first, because it is in your own config rather
-than the game: a key binding with a value out of range. Check the keymap line
-in the controller log, or `.doomrc` directly. Every `key_*` should be between 0
+than the game: a key binding with a value out of range. Check `.doomrc` in the
+state directory. Every `key_*` should be between 0
 and 255; anything larger was an out-of-bounds read on every tic, and a large
 enough one crashed within a second. Fixed since 1.10.67, but a config written by
 an older build can still carry the value, and the fix makes it a dead control

@@ -66,6 +66,7 @@ rcsid[] = "$Id: m_menu.c,v 1.7 1997/02/03 22:45:10 b1 Exp $";
 #include "m_menu.h"
 #include "m_misc.h"
 #include "i_sound.h"
+#include "i_pad.h"
 
 
 
@@ -246,6 +247,8 @@ void M_DrawSetup(void);
 void M_Controls(int choice);
 void M_MouseOptions(int choice);
 void M_WadSelect(int choice);
+void M_PadOptions(int choice);
+void M_PadButtons(int choice);
 void M_ChangeBinding(int choice);
 void M_ToggleMouse(int choice);
 void M_ToggleMouseGrab(int choice);
@@ -1115,6 +1118,7 @@ enum
 {
     setup_controls,
     setup_mouse,
+    setup_pad,
     setup_wads,
     setup_end
 } setup_e;
@@ -1123,6 +1127,7 @@ menuitem_t SetupMenu[] =
 {
     {1,"",M_Controls,'c',"CONTROLS"},
     {1,"",M_MouseOptions,'m',"MOUSE"},
+    {1,"",M_PadOptions,'p',"CONTROLLER"},
     {1,"",M_WadSelect,'w',"LOAD WAD"}
 };
 
@@ -1338,6 +1343,261 @@ void M_DrawMouseOptions (void)
     y += MouseDef.lineheight;
 
     M_WriteText (56, 140, "SENSITIVITY IS UNDER OPTIONS");
+}
+
+
+//
+// The controller.
+//
+// Its settings, and a page of its own for what each button does. A button is
+// set to one of the game's actions rather than to a key: pressing it presses
+// whatever that action is bound to on the Controls page, so rebinding a key
+// there needs nothing changing here. See i_pad.c.
+//
+enum
+{
+    pad_on,
+    pad_buttons,
+    pad_turn,
+    pad_vibration,
+    pad_swap,
+    pad_pushrun,
+    pad_end
+} pad_e;
+
+void M_TogglePad (int choice);
+void M_ChangePadTurn (int choice);
+void M_ChangePadRumble (int choice);
+void M_TogglePadSwap (int choice);
+void M_TogglePadPushRun (int choice);
+void M_DrawPadOptions (void);
+void M_CyclePadButton (int choice);
+void M_DrawPadButtons (void);
+
+menuitem_t PadMenu[] =
+{
+    {1,"",M_TogglePad,'u'},
+    {1,"",M_PadButtons,'b'},
+    {2,"",M_ChangePadTurn,'t'},
+    {2,"",M_ChangePadRumble,'v'},
+    {1,"",M_TogglePadSwap,'s'},
+    {1,"",M_TogglePadPushRun,'p'}
+};
+
+menu_t PadDef =
+{
+    pad_end,
+    &SetupDef,
+    PadMenu,
+    M_DrawPadOptions,
+    56,48,
+    0,
+    SMALLLINEHEIGHT
+};
+
+static char* padactionnames[PA_COUNT] =
+{
+    "NOTHING",
+    "FIRE", "USE / OPEN", "RUN", "STRAFE ON",
+    "FORWARD", "BACK", "TURN LEFT", "TURN RIGHT",
+    "STRAFE LEFT", "STRAFE RIGHT",
+    "WEAPON 1", "WEAPON 2", "WEAPON 3", "WEAPON 4",
+    "WEAPON 5", "WEAPON 6", "WEAPON 7",
+    "AUTOMAP", "MENU"
+};
+
+// The buttons that can be set, in the order the page lists them. Start is
+// always the menu, as Escape is, and Guide belongs to the system.
+static struct { int button; char* label; } padrows[] =
+{
+    {PB_A,	"A"},
+    {PB_B,	"B"},
+    {PB_X,	"X"},
+    {PB_Y,	"Y"},
+    {PB_LB,	"LB"},
+    {PB_RB,	"RB"},
+    {PB_LT,	"LT"},
+    {PB_RT,	"RT"},
+    {PB_BACK,	"VIEW"},
+    {PB_LS,	"LEFT STICK"},
+    {PB_RS,	"RIGHT STICK"},
+    {PB_UP,	"D-PAD UP"},
+    {PB_DOWN,	"D-PAD DOWN"},
+    {PB_LEFT,	"D-PAD LEFT"},
+    {PB_RIGHT,	"D-PAD RIGHT"}
+};
+
+#define NUM_PADROWS	(sizeof(padrows)/sizeof(padrows[0]))
+
+// Fifteen rows is more than the small font's 13 pixel spacing fits between
+// the title and the status bar, so this page packs them at 10: seven pixels
+// of text and three between. The skull hangs over its neighbours' margin,
+// which has nothing in it.
+#define PADROWHEIGHT	10
+
+menuitem_t PadButtonsMenu[] =
+{
+    {2,"",M_CyclePadButton,0}, {2,"",M_CyclePadButton,0},
+    {2,"",M_CyclePadButton,0}, {2,"",M_CyclePadButton,0},
+    {2,"",M_CyclePadButton,0}, {2,"",M_CyclePadButton,0},
+    {2,"",M_CyclePadButton,0}, {2,"",M_CyclePadButton,0},
+    {2,"",M_CyclePadButton,0}, {2,"",M_CyclePadButton,0},
+    {2,"",M_CyclePadButton,0}, {2,"",M_CyclePadButton,0},
+    {2,"",M_CyclePadButton,0}, {2,"",M_CyclePadButton,0},
+    {2,"",M_CyclePadButton,0}
+};
+
+menu_t PadButtonsDef =
+{
+    NUM_PADROWS,
+    &PadDef,
+    PadButtonsMenu,
+    M_DrawPadButtons,
+    48,16,
+    0,
+    PADROWHEIGHT
+};
+
+
+void M_PadOptions (int choice)
+{
+    choice = 0;
+    M_SetupNextMenu (&PadDef);
+}
+
+void M_PadButtons (int choice)
+{
+    choice = 0;
+    M_SetupNextMenu (&PadButtonsDef);
+}
+
+void M_TogglePad (int choice)
+{
+    choice = 0;
+    usepad = !usepad;
+    S_StartSound (NULL, sfx_pistol);
+}
+
+void M_TogglePadSwap (int choice)
+{
+    choice = 0;
+    padswapsticks = !padswapsticks;
+    S_StartSound (NULL, sfx_pistol);
+}
+
+void M_TogglePadPushRun (int choice)
+{
+    choice = 0;
+    padpushrun = !padpushrun;
+    S_StartSound (NULL, sfx_pistol);
+}
+
+static void M_Step (int* value, int choice, int max)
+{
+    if (choice && *value < max)
+	(*value)++;
+    else if (!choice && *value > 0)
+	(*value)--;
+    S_StartSound (NULL, sfx_stnmov);
+}
+
+void M_ChangePadTurn (int choice)	{ M_Step (&padturnspeed, choice, 9); }
+
+void M_ChangePadRumble (int choice)
+{
+    M_Step (&padrumble, choice, 9);
+    // Felt while it is being set, if there is a pad to feel it on.
+    I_PadRumbleTest ();
+}
+
+void M_CyclePadButton (int choice)
+{
+    int*	a;
+
+    if (itemOn < 0 || itemOn >= (short)NUM_PADROWS)
+	return;
+    a = &padbind[padrows[itemOn].button];
+    if (*a < 0 || *a >= PA_COUNT)
+	*a = PA_NONE;
+    *a = choice ? (*a + 1) % PA_COUNT : (*a + PA_COUNT - 1) % PA_COUNT;
+    S_StartSound (NULL, sfx_stnmov);
+}
+
+// A pad's name, fitted to the screen: the small font is 320 pixels of
+// about eight each, and the start of a name is the useful part.
+static void M_WritePadName (int y)
+{
+    char	buf[40];
+    char*	name = I_PadName ();
+    char*	s;
+
+    if (!name)
+    {
+	M_WriteText (56, y, "NO CONTROLLER CONNECTED");
+	return;
+    }
+    snprintf (buf, sizeof(buf), "%.34s", name);
+    for (s = buf; *s; s++)
+    {
+	*s = toupper (*s);
+	if (*s < HU_FONTSTART || *s > HU_FONTEND)
+	    *s = ' ';
+    }
+    M_WriteText (56, y, buf);
+}
+
+void M_DrawPadOptions (void)
+{
+    int		y = PadDef.y;
+    char	buf[16];
+
+    M_WriteText (56, 14, "CONTROLLER");
+    M_WritePadName (28);
+
+    M_WriteText (PadDef.x, y, "USE CONTROLLER");
+    M_WriteText (PadDef.x + 148, y, usepad ? "ON" : "OFF");
+    y += PadDef.lineheight;
+
+    M_WriteText (PadDef.x, y, "BUTTONS...");
+    y += PadDef.lineheight;
+
+    snprintf (buf, sizeof(buf), "%d", padturnspeed);
+    M_WriteText (PadDef.x, y, "TURN SPEED");
+    M_WriteText (PadDef.x + 148, y, buf);
+    y += PadDef.lineheight;
+
+    snprintf (buf, sizeof(buf), "%d", padrumble);
+    M_WriteText (PadDef.x, y, "VIBRATION");
+    M_WriteText (PadDef.x + 148, y, padrumble ? buf : "OFF");
+    y += PadDef.lineheight;
+
+    M_WriteText (PadDef.x, y, "SWAP STICKS");
+    M_WriteText (PadDef.x + 148, y, padswapsticks ? "ON" : "OFF");
+    y += PadDef.lineheight;
+
+    M_WriteText (PadDef.x, y, "PUSH STICK TO RUN");
+    M_WriteText (PadDef.x + 148, y, padpushrun ? "ON" : "OFF");
+
+    M_WriteText (56, 140, "LEFT STICK MOVES, RIGHT STICK TURNS");
+    M_WriteText (56, 152, "START IS ALWAYS THE MENU");
+}
+
+void M_DrawPadButtons (void)
+{
+    unsigned	i;
+    int		y = PadButtonsDef.y;
+    int		a;
+
+    M_WriteText (48, 4, "CONTROLLER BUTTONS");
+
+    for (i = 0; i < NUM_PADROWS; i++)
+    {
+	a = padbind[padrows[i].button];
+	M_WriteText (PadButtonsDef.x, y + 1, padrows[i].label);
+	M_WriteText (PadButtonsDef.x + 112, y + 1,
+		     a >= 0 && a < PA_COUNT ? padactionnames[a] : "?");
+	y += PadButtonsDef.lineheight;
+    }
 }
 
 
@@ -1978,6 +2238,50 @@ M_WriteText
 //
 // CONTROL PANEL
 //
+
+//
+// M_PadKey
+//
+// What a controller button means while the menu is up, as a key the menu
+// already answers to. Start is Escape everywhere. A chooses and B goes back a
+// page, closing the menu from the top one -- except on a question, where they
+// are yes and no, and while a savegame is being named, where B abandons it
+// as Escape does rather than rubbing out a letter. While the Controls page is
+// waiting for a key, B and Start cancel and nothing else is taken, so a pad
+// button cannot end up bound to a keyboard action.
+//
+int M_PadKey (int b)
+{
+    if (b == PB_START)
+	return KEY_ESCAPE;
+
+    if (messageToPrint)
+    {
+	if (messageNeedsInput)
+	    return b == PB_A ? 'y' : b == PB_B ? 'n' : 0;
+	return b == PB_A || b == PB_B ? KEY_ENTER : 0;
+    }
+
+    if (bindingWait)
+	return b == PB_B ? KEY_ESCAPE : 0;
+
+    if (saveStringEnter)
+	return b == PB_A ? KEY_ENTER : b == PB_B ? KEY_ESCAPE : 0;
+
+    switch (b)
+    {
+      case PB_A:	return KEY_ENTER;
+      case PB_B:	return currentMenu->prevMenu ? KEY_BACKSPACE : KEY_ESCAPE;
+      case PB_UP:	return KEY_UPARROW;
+      case PB_DOWN:	return KEY_DOWNARROW;
+      case PB_LEFT:	return KEY_LEFTARROW;
+      case PB_RIGHT:	return KEY_RIGHTARROW;
+      case PB_LB:	return KEY_LEFTARROW;
+      case PB_RB:	return KEY_RIGHTARROW;
+    }
+    return 0;
+}
+
 
 //
 // M_Responder

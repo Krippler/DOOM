@@ -40,6 +40,7 @@ rcsid[] = "$Id: p_pspr.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 #include "sounds.h"
 
 #include "p_pspr.h"
+#include "i_pad.h"
 
 #define LOWERSPEED		FRACUNIT*6
 #define RAISESPEED		FRACUNIT*6
@@ -243,12 +244,35 @@ boolean P_CheckAmmo (player_t* player)
 //
 // P_FireWeapon.
 //
+//
+// How each weapon feels on a controller that vibrates: the heavy motor, the
+// light one, and for how long. The BFG goes off when it fires, not when the
+// trigger is pulled, so it has its own in A_FireBFG.
+//
+static const struct { float low, high; int ms; } weaponrumble[NUMWEAPONS] =
+{
+    { 0.00, 0.30,  60 },	// fist
+    { 0.10, 0.45,  70 },	// pistol
+    { 0.60, 0.60, 140 },	// shotgun
+    { 0.15, 0.50, 110 },	// chaingun
+    { 0.50, 0.30, 180 },	// rocket launcher
+    { 0.05, 0.35,  60 },	// plasma rifle
+    { 0.00, 0.00,   0 },	// BFG9000
+    { 0.20, 0.40, 120 },	// chainsaw
+    { 0.90, 0.80, 180 }		// super shotgun
+};
+
 void P_FireWeapon (player_t* player)
 {
     statenum_t	newstate;
 	
     if (!P_CheckAmmo (player))
 	return;
+
+    if (player == &players[consoleplayer])
+	I_PadRumble (weaponrumble[player->readyweapon].low,
+		     weaponrumble[player->readyweapon].high,
+		     weaponrumble[player->readyweapon].ms);
 	
     P_SetMobjState (player->mo, S_PLAY_ATK1);
     newstate = weaponinfo[player->readyweapon].atkstate;
@@ -567,6 +591,9 @@ A_FireBFG
 {
     player->ammo[weaponinfo[player->readyweapon].ammo] -= BFGCELLS;
     P_SpawnPlayerMissile (player->mo, MT_BFG);
+
+    if (player == &players[consoleplayer])
+	I_PadRumble (1.0, 0.6, 400);
 }
 
 

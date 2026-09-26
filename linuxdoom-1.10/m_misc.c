@@ -58,6 +58,7 @@ rcsid[] = "$Id: m_misc.c,v 1.6 1997/02/03 22:45:10 b1 Exp $";
 #include "dstrings.h"
 
 #include "m_misc.h"
+#include "i_pad.h"
 
 //
 // M_DrawText
@@ -283,6 +284,27 @@ default_t	defaults[] =
     {"mouseb_forward",&mousebforward,2},
     {"novert",&novert,1},
     {"grab_mouse",&grabMouse,0},
+
+    {"use_pad",&usepad, 1},
+    {"pad_a",&padbind[PB_A], PA_USE},
+    {"pad_b",&padbind[PB_B], PA_MENU},
+    {"pad_x",&padbind[PB_X], PA_WEAPON3},
+    {"pad_y",&padbind[PB_Y], PA_WEAPON2},
+    {"pad_lb",&padbind[PB_LB], PA_WEAPON4},
+    {"pad_rb",&padbind[PB_RB], PA_WEAPON5},
+    {"pad_lt",&padbind[PB_LT], PA_RUN},
+    {"pad_rt",&padbind[PB_RT], PA_FIRE},
+    {"pad_view",&padbind[PB_BACK], PA_AUTOMAP},
+    {"pad_lstick",&padbind[PB_LS], PA_WEAPON1},
+    {"pad_rstick",&padbind[PB_RS], PA_WEAPON6},
+    {"pad_up",&padbind[PB_UP], PA_FORWARD},
+    {"pad_down",&padbind[PB_DOWN], PA_BACK},
+    {"pad_left",&padbind[PB_LEFT], PA_TURNLEFT},
+    {"pad_right",&padbind[PB_RIGHT], PA_TURNRIGHT},
+    {"pad_turnspeed",&padturnspeed, 5},
+    {"pad_vibration",&padrumble, 5},
+    {"pad_swapsticks",&padswapsticks, 0},
+    {"pad_pushrun",&padpushrun, 1},
 
     {"use_joystick",&usejoystick, 0},
     {"joyb_fire",&joybfire,0},

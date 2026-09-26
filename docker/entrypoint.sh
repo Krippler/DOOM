@@ -17,6 +17,7 @@ SNDSERVER_BIN="${DOOM_SNDSERVER_BIN:-/usr/local/games/sndserver}"
 AUDIOSTREAM_BIN="${DOOM_AUDIOSTREAM_BIN:-/usr/local/games/audiostream}"
 WSPROXY_BIN="${DOOM_WSPROXY_BIN:-/usr/local/bin/doom-wsproxy}"
 AUDIO_PORT="${DOOM_AUDIO_PORT:-5901}"
+PAD_PORT="${DOOM_PAD_PORT:-5902}"
 AUDIO_RATE="${DOOM_AUDIO_RATE:-22050}"
 NOVNC_ROOT="${DOOM_NOVNC_ROOT:-/usr/share/novnc}"
 RESTART="${DOOM_RESTART:-1}"
@@ -502,77 +503,22 @@ if [ "$AUDIO_TO_BROWSER" = "1" ]; then
     done
 fi
 
-# One WebSocket port, two streams behind it: the screen and, when the sound is
-# going to the browser, the sound. See docker/doom-wsproxy.py -- a connection
-# that asks for neither gets the screen, so stock /vnc.html still works.
+# One WebSocket port, three streams behind it: the screen, the sound when it
+# is going to the browser, and the controller. See docker/doom-wsproxy.py -- a
+# connection that asks for none of them gets the screen, so stock /vnc.html
+# still works.
+#
+# The controller is plugged into the machine running the browser, so the page
+# reads it and sends its state here, and the engine listens for it on
+# DOOM_PAD_PORT (linuxdoom-1.10/i_pad.c). Everything else about it -- what each
+# button does, the sticks, vibration -- is in the game, under Options -> Setup
+# -> Controller.
 {
     printf 'vnc: localhost:%s\n' "$VNC_PORT"
     [ "$AUDIO_TO_BROWSER" = "1" ] && printf 'audio: localhost:%s\n' "$AUDIO_PORT"
+    printf 'pad: localhost:%s\n' "$PAD_PORT"
 } > "$STATE/ws-targets"
-
-#
-# Hand the browser the engine's own key bindings.
-#
-# The controller in the page presses keys, so it has to press the keys *this*
-# engine listens for -- and those live in .doomrc, which only this side can see.
-# Without them a pad works perfectly in the menus, where the engine hardcodes
-# the arrows and Return, and does nothing at all in a level as soon as anybody
-# has been through Options -> Setup -> Controls.
-#
-# Read at startup, which is the right moment: the engine writes .doomrc when it
-# exits, so what is on disk now is what it is about to load.
-#
-write_key_map() {
-    rc="$STATE/.doomrc"
-    out="$STATE/doom-keys.json"
-
-    if [ ! -r "$rc" ]; then
-        # No config yet: a first run, so the engine will use its own defaults,
-        # which are the page's defaults too. An empty object says "nothing to
-        # override" rather than leaving a stale file from a previous container.
-        printf '{}\n' >"$out" 2>/dev/null || true
-        return
-    fi
-
-    # The key_* and mouseb_* integers. Anything else in there is none of the
-    # page's business, and a value that is not a plain number is skipped rather
-    # than guessed at.
-    #
-    # The mouse buttons matter because G_BuildTiccmd reads fire as
-    # "gamekeydown[key_fire] || mousebuttons[mousebfire]" -- so a player whose
-    # fire is a mouse button has no key for it at all, and a controller sending
-    # only keys can never fire.
-    if awk '
-        /^(key|mouseb)_[a-z_]+[ \t]+-?[0-9]+[ \t]*$/ {
-            keys[$1] = $2
-        }
-        END {
-            printf "{"
-            n = 0
-            for (k in keys) printf "%s\"%s\":%s", (n++ ? "," : ""), k, keys[k]
-            printf "}\n"
-        }' "$rc" >"$out.tmp" 2>/dev/null; then
-        mv -f "$out.tmp" "$out" 2>/dev/null || rm -f "$out.tmp"
-    else
-        rm -f "$out.tmp"
-        printf '{}\n' >"$out" 2>/dev/null || true
-    fi
-
-    #
-    # Logged in full, sorted, and not as JSON.
-    #
-    # The first version of this truncated at 120 characters and awk emits its
-    # keys in no particular order, so the two settings a controller report is
-    # most likely to be about -- key_fire and key_speed -- were the ones that
-    # fell off the end. A log line that hides the thing being asked about is
-    # worse than no log line.
-    #
-    log "controller keys: $(awk '
-        /^(key|mouseb)_[a-z_]+[ \t]+-?[0-9]+[ \t]*$/ { printf "%s=%s\n", $1, $2 }
-    ' "$rc" 2>/dev/null | sort | tr '\n' ' ')"
-}
-
-write_key_map
+export DOOM_PAD_PORT="$PAD_PORT"
 
 log "starting noVNC on port $WEB_PORT"
 #

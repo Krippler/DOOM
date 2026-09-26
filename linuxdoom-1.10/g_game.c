@@ -68,6 +68,7 @@ rcsid[] = "$Id: g_game.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 
 
 
+#include "i_pad.h"
 #include "g_game.h"
 
 
@@ -433,6 +434,9 @@ void G_BuildTiccmd (ticcmd_t* cmd)
 	} 
     } 
  
+    // A controller's sticks, as speeds rather than keys.
+    I_PadTiccmd (cmd, &forward, &side, speed);
+
     if (!novert) 
 	forward += mousey; 
     if (strafe) 

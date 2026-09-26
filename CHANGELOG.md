@@ -17,6 +17,22 @@ The version follows the engine this is built from, linuxdoom-1.10.
   second, x11vnc dropped from 26% of a core to 13% and Xvfb from 17% to 11%, the
   engine the same and the picture identical pixel for pixel. `DOOM_X_DEPTH=8`
   puts the old way back.
+- **The engine reads the controller itself, and it vibrates.** A pad used to be
+  the page's business: it turned buttons into X key presses and needed its own
+  panel of bindings in the browser, told separately about every key rebound in
+  the game, and some keys — Enter, Tab, the F keys — never reached the game at
+  all. The page now only passes the pad's state across, and the engine does the
+  rest (`i_pad.c`), the way the Quake port does. It is set up in the game, on a
+  new **Options → Setup → Controller** page: what each button does, turn speed,
+  vibration, swapping the sticks, and whether a full push runs — saved in
+  `.doomrc`. The sticks walk and turn in proportion to how far they are pushed.
+  In menus A chooses, B goes back, and on a question they are yes and no.
+  Bindings saved in a browser by earlier versions are not read any more; the
+  default layout is the same one.
+- **Vibration**, on firing — each weapon its own kick — and on being hurt,
+  harder for more damage, through the force-feedback hook id left in the 1997
+  code and never filled in. It needs a browser that can drive the pad's
+  motors, and the container log says whether this one can.
 
 ### Fixed
 - **The view border and status bar could stay tinted after a damage or pickup

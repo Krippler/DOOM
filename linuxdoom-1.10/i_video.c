@@ -56,6 +56,7 @@ int XShmGetEventBase( Display* dpy ); // problems with g++?
 #include "v_video.h"
 #include "m_argv.h"
 #include "d_main.h"
+#include "i_pad.h"
 
 #include "doomdef.h"
 
@@ -402,6 +403,9 @@ void I_StartTic (void)
 
     while (XPending(X_display))
 	I_GetEvent();
+
+    // The controller's buttons arrive as key events too, posted from here.
+    I_PadPoll ();
 
     // Put the pointer back in the middle of the window, so there is always
     // room to move in every direction and the next motion is measured from a

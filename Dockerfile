@@ -122,17 +122,10 @@ ARG DOOM_VERSION=dev
 COPY docker/play.html /usr/share/novnc/play.html
 COPY docker/doom-ring.js /usr/share/novnc/doom-ring.js
 COPY docker/doom-audio.js /usr/share/novnc/doom-audio.js
-# Controller support, which is entirely client side: the engine is sent the same
-# keysyms and pointer reports either way. It sits beside noVNC's own modules
-# because it imports the keysym table from them rather than hardcoding numbers.
+# The controller's browser half: it reads the pad through the Gamepad API and
+# passes its state to the engine, which does everything else (i_pad.c).
 COPY docker/doom-gamepad.js /usr/share/novnc/doom-gamepad.js
 COPY docker/index.html /usr/share/novnc/index.html
-
-# The engine's key bindings, for the controller in the page. The entrypoint
-# writes them into the state directory, which it owns whatever PUID it runs as;
-# this symlink is how they reach the browser without the web root having to be
-# writable at runtime. websockify serves through it.
-RUN ln -sfn /doom/state/doom-keys.json /usr/share/novnc/doom-keys.json
 
 # Not sed: the stamp is whatever the build was told, and a branch name with a
 # slash in it ends the s/// early -- which is exactly how this broke first
