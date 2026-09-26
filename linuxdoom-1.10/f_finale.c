@@ -40,6 +40,7 @@ rcsid[] = "$Id: f_finale.c,v 1.5 1997/02/03 21:26:34 b1 Exp $";
 #include "sounds.h"
 
 #include "doomstat.h"
+#include "g_game.h"
 #include "r_state.h"
 
 // ?
@@ -89,6 +90,23 @@ void	F_StartCast (void);
 void	F_CastTicker (void);
 boolean F_CastResponder (event_t *ev);
 void	F_CastDrawer (void);
+
+// The end of No Rest for the Living, from the BFG Edition, which brought it.
+static char n1text[] =
+    "TROUBLE WAS BREWING AGAIN IN YOUR FAVORITE\n"
+    "VACATION SPOT... HELL. SOME CYBERDEMON\n"
+    "PUNK THOUGHT HE COULD TURN HELL INTO A\n"
+    "PERSONAL AMUSEMENT PARK, AND MAKE EARTH\nTHE TICKET BOOTH.\n\n"
+    "WELL THAT HALF-ROBOT FREAK SHOW DIDN'T\n"
+    "KNOW WHO WAS COMING TO THE FAIR. THERE'S\n"
+    "NOTHING LIKE A SHOOTING GALLERY FULL OF\n"
+    "HELLSPAWN TO GET THE BLOOD PUMPING...\n\n"
+    "NOW THE WALLS OF THE DEMON'S LABYRINTH\n"
+    "ECHO WITH THE SOUND OF HIS METALLIC LIMBS\n"
+    "HITTING THE FLOOR. HIS DEATH MOAN GURGLES\n"
+    "OUT THROUGH THE MESS YOU LEFT OF HIS FACE.\n\n"
+    "THIS RIDE IS CLOSED.";
+
 
 //
 // F_StartFinale
@@ -143,8 +161,12 @@ void F_StartFinale (void)
       {
 	  S_ChangeMusic(mus_read_m, true);
 
-	  switch (gamemap)
+	  switch (G_NerveMap () ? 0 : gamemap)
 	  {
+	    case 0:			// No Rest for the Living, after MAP08
+	      finaleflat = "SLIME16";
+	      finaletext = n1text;
+	      break;
 	    case 6:
 	      finaleflat = "SLIME16";
 	      finaletext = c1text;
@@ -219,7 +241,7 @@ void F_Ticker (void)
 				
       if (i < MAXPLAYERS)
       {	
-	if (gamemap == 30)
+	if (gamemap == 30 || (G_NerveMap () && gamemap == 8))
 	  F_StartCast ();
 	else
 	  gameaction = ga_worlddone;

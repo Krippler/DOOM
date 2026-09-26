@@ -796,6 +796,35 @@ running and the bindings it read, which by itself distinguishes "the controller
 does not work" from "the tab is running a client from two releases ago" — a
 distinction the container's log previously could not make at all.
 
+## The 2024 re-release's WADs
+
+The WADs the 2024 DOOM + DOOM II release ships -- and the Unity port's before
+it -- are the 1994 data with additions the 1997 engine never expected:
+
+- **Wide pictures.** The status bar (`STBAR`) is 576 pixels across in the
+  IWADs; `TITLEPIC`, `INTERPIC`, `CREDIT`, `HELP` and the finale backdrops are
+  560; No Rest for the Living, the Master Levels and Sigil carry 426-wide
+  title and intermission pictures. `V_DrawPatch`'s range check refused every
+  one of them with "Patch at 0,0 exceeds LFB", every frame: title screens drew
+  nothing over whatever was in the buffer, and the status bar lost its
+  background. A patch wider than the screen is now centred and its middle 320
+  columns drawn -- the picture as a 4:3 screen framed it, which is what the
+  wide versions were extended from.
+- **UMAPINFO**, in No Rest for the Living, TNT, Plutonia, the Master Levels
+  and Sigil: each map's name, sky, music, par time, next and secret maps,
+  and any closing text. The 1997 engine reads none of it. For No Rest for the
+  Living, which was built for the BFG Edition's hardcoded rules before
+  UMAPINFO existed, those rules are now in the engine (`G_NerveMap`): SKY3
+  from MAP04 to MAP08, the secret exit from MAP04 to MAP09 and back to MAP05,
+  the ending after MAP08 on SLIME16 followed by the cast, its par times,
+  names and music, and no DOOM II MAP07 boss special. Every value matches the
+  expansion's own UMAPINFO, and Crispy Doom's.
+
+Found from a report of the wrong sky in No Rest for the Living, and checked
+against the actual re-release WADs: `textures[skytexture]` read out of the
+running engine is SKY1 on MAP04, 05 and 08 before and SKY3 after, and the
+title screen goes from 249 refused pictures in seven seconds to none.
+
 ## Delete was Backspace
 
 `xlatekey` sent `XK_Delete` as `KEY_BACKSPACE`, so the two were one key: Delete

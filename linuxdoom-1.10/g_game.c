@@ -501,6 +501,12 @@ void G_DoLoadLevel (void)
 	else
 	    if (gamemap < 21)
 		skytexture = R_TextureNumForName ("SKY2");
+
+	// No Rest for the Living's MAP04 to MAP08 are in hell, and were made
+	// for DOOM II's hell sky. Choosing by map number alone gave them the
+	// city skyline of MAP01-11 instead.
+	if (G_NerveMap () && gamemap >= 4 && gamemap <= 8)
+	    skytexture = R_TextureNumForName ("SKY3");
     }
 
     levelstarttic = gametic;        // for time calculation
@@ -1029,6 +1035,27 @@ int pars[4][10] =
 }; 
 
 // DOOM II Par Times
+//
+// G_NerveMap
+//
+// Whether the map being played is one of No Rest for the Living's: nerve.wad
+// over DOOM II, MAP01 to MAP09. It is nine maps, not thirty-two, and the BFG
+// Edition that brought it plays them by rules of their own -- a hell sky from
+// MAP04 to MAP08, a secret exit from MAP04 to MAP09 and back to MAP05, its own
+// par times and level names, and an ending after MAP08. Without them the
+// expansion ran on from MAP08 into its secret map and then DOOM II's MAP10.
+// The rules and figures are the BFG Edition's, as Crispy Doom has them.
+//
+boolean G_NerveMap (void)
+{
+    return nervepack && gamemode == commercial && gamemap <= 9;
+}
+
+static const int npars[9] =
+{
+    75,105,120,105,210,105,165,105,135
+};
+
 int cpars[32] =
 {
     30,90,120,120,90,150,120,120,270,90,	//  1-10
@@ -1111,7 +1138,16 @@ void G_DoCompleted (void)
     wminfo.last = gamemap -1;
     
     // wminfo.next is 0 biased, unlike gamemap
-    if ( gamemode == commercial)
+    if ( G_NerveMap () )
+    {
+	if (secretexit && gamemap == 4)
+	    wminfo.next = 8;		// MAP09, the secret level
+	else if (gamemap == 9)
+	    wminfo.next = 4;		// and back to MAP05
+	else
+	    wminfo.next = gamemap;
+    }
+    else if ( gamemode == commercial)
     {
 	if (secretexit)
 	    switch(gamemap)
@@ -1158,7 +1194,9 @@ void G_DoCompleted (void)
     wminfo.maxitems = totalitems; 
     wminfo.maxsecret = totalsecret; 
     wminfo.maxfrags = 0; 
-    if ( gamemode == commercial )
+    if ( G_NerveMap () )
+	wminfo.partime = 35*npars[gamemap-1];
+    else if ( gamemode == commercial )
 	wminfo.partime = 35*cpars[gamemap-1]; 
     else
 	wminfo.partime = 35*pars[gameepisode][gamemap]; 
@@ -1196,7 +1234,14 @@ void G_WorldDone (void)
     if (secretexit) 
 	players[consoleplayer].didsecret = true; 
 
-    if ( gamemode == commercial )
+    if ( G_NerveMap () )
+    {
+	// The end of the expansion: its own text, then the cast of
+	// characters, as after MAP30.
+	if (gamemap == 8)
+	    F_StartFinale ();
+    }
+    else if ( gamemode == commercial )
     {
 	switch (gamemap)
 	{
@@ -1505,6 +1550,8 @@ G_InitNew
 	else
 	    if (gamemap < 21)
 		skytexture = R_TextureNumForName ("SKY2");
+	if (G_NerveMap () && gamemap >= 4 && gamemap <= 8)
+	    skytexture = R_TextureNumForName ("SKY3");
     }
     else
 	switch (episode) 

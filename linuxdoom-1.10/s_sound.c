@@ -42,6 +42,7 @@ rcsid[] = "$Id: s_sound.c,v 1.6 1997/02/03 22:45:12 b1 Exp $";
 #include "p_local.h"
 
 #include "doomstat.h"
+#include "g_game.h"
 
 
 // Purpose?
@@ -222,7 +223,18 @@ void S_Start(void)
   // start new music for the level
   mus_paused = 0;
   
-  if (gamemode == commercial)
+  if (gamemode == commercial && G_NerveMap ())
+  {
+    // No Rest for the Living has a track of its own for each map, from
+    // DOOM II's set, as its UMAPINFO lists them.
+    static const int nervemus[9] =
+    {
+      mus_messag, mus_ddtblu, mus_doom, mus_shawn, mus_in_cit,
+      mus_the_da, mus_in_cit, mus_shawn, mus_ddtblu
+    };
+    mnum = nervemus[gamemap - 1];
+  }
+  else if (gamemode == commercial)
     mnum = mus_runnin + gamemap - 1;
   else
   {

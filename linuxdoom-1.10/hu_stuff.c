@@ -38,6 +38,7 @@ rcsid[] = "$Id: hu_stuff.c,v 1.4 1997/02/03 16:47:52 b1 Exp $";
 #include "s_sound.h"
 
 #include "doomstat.h"
+#include "g_game.h"
 
 // Data.
 #include "dstrings.h"
@@ -47,7 +48,7 @@ rcsid[] = "$Id: hu_stuff.c,v 1.4 1997/02/03 16:47:52 b1 Exp $";
 // Locally used constants, shortcuts.
 //
 #define HU_TITLE	(mapnames[(gameepisode-1)*9+gamemap-1])
-#define HU_TITLE2	(mapnames2[gamemap-1])
+#define HU_TITLE2	(G_NerveMap () ? nervenames[gamemap-1] : mapnames2[gamemap-1])
 #define HU_TITLEP	(mapnamesp[gamemap-1])
 #define HU_TITLET	(mapnamest[gamemap-1])
 #define HU_TITLEHEIGHT	1
@@ -164,6 +165,20 @@ char*	mapnames[] =	// DOOM shareware/registered/retail (Ultimate) names.
     "NEWLEVEL",
     "NEWLEVEL",
     "NEWLEVEL"
+};
+
+// No Rest for the Living's, for its nine maps; G_NerveMap says when.
+char*	nervenames[] =
+{
+    "level 1: the earth base",
+    "level 2: the pain labs",
+    "level 3: canyon of the dead",
+    "level 4: hell mountain",
+    "level 5: vivisection",
+    "level 6: inferno of blood",
+    "level 7: baron's banquet",
+    "level 8: tomb of malevolence",
+    "level 9: march of the demons"
 };
 
 char*	mapnames2[] =	// DOOM 2 map names.

@@ -735,6 +735,16 @@ void D_AddFile (char *file)
 
     newfile = malloc (strlen(file)+1);
     strcpy (newfile, file);
+
+    // No Rest for the Living, known by its file name as every release of it
+    // has been: nothing inside it says what it is.
+    {
+	char*	base = strrchr (file, '/');
+
+	base = base ? base + 1 : file;
+	if (!strcasecmp (base, "nerve.wad"))
+	    nervepack = true;
+    }
 	
     wadfiles[numwadfiles] = newfile;
 }

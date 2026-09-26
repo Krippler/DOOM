@@ -215,12 +215,26 @@ V_DrawPatch
     byte*	dest;
     byte*	source; 
     int		w; 
+    int		first = 0;
 	 
     y -= SHORT(patch->topoffset); 
     x -= SHORT(patch->leftoffset); 
+
+    // Wider than the screen: the widescreen pictures the later releases put
+    // in their WADs -- TITLEPIC, INTERPIC and the like, 426 pixels across,
+    // in the Unity and 2024 DOOM II and in the nerve.wad that comes with
+    // them. The range check below refused them, every frame, and left the
+    // title screen and the intermission black. They are centred instead,
+    // and the middle 320 columns drawn, which is the picture as the
+    // original's 4:3 screen framed it.
+    if (SHORT(patch->width) > SCREENWIDTH)
+    {
+	x = 0;
+	first = (SHORT(patch->width) - SCREENWIDTH) / 2;
+    }
 #ifdef RANGECHECK 
     if (x<0
-	||x+SHORT(patch->width) >SCREENWIDTH
+	||x+SHORT(patch->width)-2*first >SCREENWIDTH
 	|| y<0
 	|| y+SHORT(patch->height)>SCREENHEIGHT 
 	|| (unsigned)scrn>4)
@@ -233,12 +247,12 @@ V_DrawPatch
 #endif 
  
     if (!scrn)
-	V_MarkRect (x, y, SHORT(patch->width), SHORT(patch->height)); 
+	V_MarkRect (x, y, SHORT(patch->width) - 2*first, SHORT(patch->height)); 
 
-    col = 0; 
+    col = first; 
     desttop = screens[scrn]+y*SCREENWIDTH+x; 
 	 
-    w = SHORT(patch->width); 
+    w = SHORT(patch->width) - first; 
 
     for ( ; col<w ; x++, col++, desttop++)
     { 

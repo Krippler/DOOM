@@ -1615,7 +1615,9 @@ void A_BossDeath (mobj_t* mo)
 		
     if ( gamemode == commercial)
     {
-	if (gamemap != 7)
+	// No Rest for the Living's MAP07 is not DOOM II's Dead Simple, and
+	// the floors that opened when the last Mancubus died are not there.
+	if (gamemap != 7 || G_NerveMap ())
 	    return;
 		
 	if ((mo->type != MT_FATSO)
