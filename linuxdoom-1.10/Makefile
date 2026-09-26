@@ -13,7 +13,9 @@ CFLAGS+=-Wall -DNORMALUNIX -DLINUX # -DUSEASM
 # bare addresses -- and unlike the ordinary symbol table it survives `strip`.
 LDFLAGS?=-rdynamic
 # -lnsl is gone on modern glibc: those symbols now live in libc itself.
-LIBS=-lXext -lX11 -lm
+# -ldl is for i_pad.c, which opens SDL2 with dlopen when there is one; on
+# glibc 2.34 and later that is in libc too, and the flag is harmless.
+LIBS=-lXext -lX11 -lm -ldl
 
 # Music: "fluidsynth" (default) or "none".
 #
@@ -44,6 +46,7 @@ OBJS=				\
 		$(O)/i_system.o		\
 		$(O)/i_sound.o		\
 		$(O)/i_video.o		\
+		$(O)/i_pad.o		\
 		$(O)/i_net.o			\
 		$(O)/tables.o			\
 		$(O)/f_finale.o		\

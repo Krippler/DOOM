@@ -78,6 +78,7 @@ static const char rcsid[] = "$Id: d_main.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 #include "r_local.h"
 
 
+#include "i_pad.h"
 #include "d_main.h"
 
 //
@@ -367,6 +368,14 @@ void D_Display (void)
 		I_Sleep (1);
 	} while (!tics);
 	wipestart = nowtime;
+
+	// Nothing reads input during the melt, which is fine for a keyboard:
+	// X keeps its keys until they are asked for. A controller reports
+	// what is held, not what was pressed, so a tap made and let go inside
+	// the second or so a melt takes was never seen at all. Its events go
+	// on the queue here and are handled after, like the keyboard's.
+	I_PadPoll ();
+
 	done = wipe_ScreenWipe(wipe_Melt
 			       , 0, 0, SCREENWIDTH, SCREENHEIGHT, tics);
 	I_UpdateNoBlit ();

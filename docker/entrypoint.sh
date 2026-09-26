@@ -17,6 +17,7 @@ SNDSERVER_BIN="${DOOM_SNDSERVER_BIN:-/usr/local/games/sndserver}"
 AUDIOSTREAM_BIN="${DOOM_AUDIOSTREAM_BIN:-/usr/local/games/audiostream}"
 WSPROXY_BIN="${DOOM_WSPROXY_BIN:-/usr/local/bin/doom-wsproxy}"
 AUDIO_PORT="${DOOM_AUDIO_PORT:-5901}"
+PAD_PORT="${DOOM_PAD_PORT:-5902}"
 AUDIO_RATE="${DOOM_AUDIO_RATE:-22050}"
 NOVNC_ROOT="${DOOM_NOVNC_ROOT:-/usr/share/novnc}"
 RESTART="${DOOM_RESTART:-1}"
@@ -356,10 +357,24 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# DOOM only supports an 8-bit PseudoColor visual, which is exactly what Xvfb
-# gives us here and what a modern desktop X server no longer offers.
-log "starting Xvfb on $DISP at ${WIDTH}x${HEIGHT}x8"
-Xvfb "$DISP" -screen 0 "${WIDTH}x${HEIGHT}x8" -nolisten tcp >"$STATE/xvfb.log" 2>&1 &
+# The engine draws in truecolour: it turns its 256-colour palette into pixels
+# itself, and the picture reaches x11vnc as the browser will show it.
+#
+# It used to need an 8-bit PseudoColor screen, where the palette lives in the
+# X server's colormap and x11vnc has to convert every frame to truecolour
+# (-8to24) for every client -- which its own manual says "does hog
+# resources". Measured with a client pulling frames at the game's 35 a
+# second, x11vnc went from 26% of a core to 13% and Xvfb from 17% to 11%,
+# the engine unchanged, and the picture pixel for pixel the same.
+#
+# DOOM_X_DEPTH=8 puts the old path back, colormap and all.
+X_DEPTH="${DOOM_X_DEPTH:-24}"
+case "$X_DEPTH" in
+    8|24) ;;
+    *) die "DOOM_X_DEPTH: '$X_DEPTH' is not 8 or 24" ;;
+esac
+log "starting Xvfb on $DISP at ${WIDTH}x${HEIGHT}x${X_DEPTH}"
+Xvfb "$DISP" -screen 0 "${WIDTH}x${HEIGHT}x${X_DEPTH}" -nolisten tcp >"$STATE/xvfb.log" 2>&1 &
 XVFB_PID=$!
 export DISPLAY="$DISP"
 
@@ -372,9 +387,7 @@ while [ ! -e "$sock" ]; do
     sleep 0.1
 done
 
-# -8to24 converts the colormapped display to true colour for the VNC client;
-# without it the palette comes out wrong in most viewers.
-vnc_auth=""
+vnc_auth=""""
 if [ -n "${DOOM_VNC_PASSWORD:-}" ]; then
     x11vnc -storepasswd "$DOOM_VNC_PASSWORD" "$STATE/.vncpasswd" >/dev/null 2>&1
     vnc_auth="-rfbauth $STATE/.vncpasswd"
@@ -442,15 +455,18 @@ done
 log "starting x11vnc on port $VNC_PORT"
 # shellcheck disable=SC2086
 #
-# -8to24 is how a depth 8 display is presented as truecolor, and it is the most
-# expensive thing x11vnc does here: its own manual says the mode walks the
-# window tree, polls it with XGetImage, transforms the whole screen, and "does
-# hog resources". Turning it off is a diagnostic, not a supported way to play
-# -- the picture goes to a colormapped depth 8 that not every client renders
-# properly -- so it is an environment variable rather than an option anyone is
-# steered towards.
+# -8to24 is how a depth 8 display is presented as truecolor, so it only means
+# anything at DOOM_X_DEPTH=8, and there it is the most expensive thing x11vnc
+# does: its own manual says the mode walks the window tree, polls it with
+# XGetImage, transforms the whole screen, and "does hog resources". Turning
+# it off at depth 8 is a diagnostic, not a supported way to play -- the
+# picture goes to a colormapped depth 8 that not every client renders
+# properly -- so it is an environment variable rather than an option anyone
+# is steered towards.
 #
-if [ "${DOOM_VNC_8TO24:-1}" = "0" ]; then
+if [ "$X_DEPTH" = "24" ]; then
+    vnc_8to24=""
+elif [ "${DOOM_VNC_8TO24:-1}" = "0" ]; then
     log "  -8to24 off by request: the picture will show 64 colours, not 256"
     log "  (noVNC cannot use a colour map, so at depth 8 it asks for two bits"
     log "  per channel). For counting stalls only -- set it back to play."
@@ -487,77 +503,22 @@ if [ "$AUDIO_TO_BROWSER" = "1" ]; then
     done
 fi
 
-# One WebSocket port, two streams behind it: the screen and, when the sound is
-# going to the browser, the sound. See docker/doom-wsproxy.py -- a connection
-# that asks for neither gets the screen, so stock /vnc.html still works.
+# One WebSocket port, three streams behind it: the screen, the sound when it
+# is going to the browser, and the controller. See docker/doom-wsproxy.py -- a
+# connection that asks for none of them gets the screen, so stock /vnc.html
+# still works.
+#
+# The controller is plugged into the machine running the browser, so the page
+# reads it and sends its state here, and the engine listens for it on
+# DOOM_PAD_PORT (linuxdoom-1.10/i_pad.c). Everything else about it -- what each
+# button does, the sticks, vibration -- is in the game, under Options -> Setup
+# -> Controller.
 {
     printf 'vnc: localhost:%s\n' "$VNC_PORT"
     [ "$AUDIO_TO_BROWSER" = "1" ] && printf 'audio: localhost:%s\n' "$AUDIO_PORT"
+    printf 'pad: localhost:%s\n' "$PAD_PORT"
 } > "$STATE/ws-targets"
-
-#
-# Hand the browser the engine's own key bindings.
-#
-# The controller in the page presses keys, so it has to press the keys *this*
-# engine listens for -- and those live in .doomrc, which only this side can see.
-# Without them a pad works perfectly in the menus, where the engine hardcodes
-# the arrows and Return, and does nothing at all in a level as soon as anybody
-# has been through Options -> Setup -> Controls.
-#
-# Read at startup, which is the right moment: the engine writes .doomrc when it
-# exits, so what is on disk now is what it is about to load.
-#
-write_key_map() {
-    rc="$STATE/.doomrc"
-    out="$STATE/doom-keys.json"
-
-    if [ ! -r "$rc" ]; then
-        # No config yet: a first run, so the engine will use its own defaults,
-        # which are the page's defaults too. An empty object says "nothing to
-        # override" rather than leaving a stale file from a previous container.
-        printf '{}\n' >"$out" 2>/dev/null || true
-        return
-    fi
-
-    # The key_* and mouseb_* integers. Anything else in there is none of the
-    # page's business, and a value that is not a plain number is skipped rather
-    # than guessed at.
-    #
-    # The mouse buttons matter because G_BuildTiccmd reads fire as
-    # "gamekeydown[key_fire] || mousebuttons[mousebfire]" -- so a player whose
-    # fire is a mouse button has no key for it at all, and a controller sending
-    # only keys can never fire.
-    if awk '
-        /^(key|mouseb)_[a-z_]+[ \t]+-?[0-9]+[ \t]*$/ {
-            keys[$1] = $2
-        }
-        END {
-            printf "{"
-            n = 0
-            for (k in keys) printf "%s\"%s\":%s", (n++ ? "," : ""), k, keys[k]
-            printf "}\n"
-        }' "$rc" >"$out.tmp" 2>/dev/null; then
-        mv -f "$out.tmp" "$out" 2>/dev/null || rm -f "$out.tmp"
-    else
-        rm -f "$out.tmp"
-        printf '{}\n' >"$out" 2>/dev/null || true
-    fi
-
-    #
-    # Logged in full, sorted, and not as JSON.
-    #
-    # The first version of this truncated at 120 characters and awk emits its
-    # keys in no particular order, so the two settings a controller report is
-    # most likely to be about -- key_fire and key_speed -- were the ones that
-    # fell off the end. A log line that hides the thing being asked about is
-    # worse than no log line.
-    #
-    log "controller keys: $(awk '
-        /^(key|mouseb)_[a-z_]+[ \t]+-?[0-9]+[ \t]*$/ { printf "%s=%s\n", $1, $2 }
-    ' "$rc" 2>/dev/null | sort | tr '\n' ' ')"
-}
-
-write_key_map
+export DOOM_PAD_PORT="$PAD_PORT"
 
 log "starting noVNC on port $WEB_PORT"
 #

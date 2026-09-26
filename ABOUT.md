@@ -30,8 +30,9 @@ once it did. Getting from there to a playable game took:
   `ScriptProcessorNode` where it does not. Nothing to mount, which matters
   when the container is on a server in another room.
 - **A display the engine will accept.** It only ever supported an 8-bit
-  PseudoColor X visual, which no current X server offers, so the container
-  brings its own Xvfb at depth 8 and exports it over noVNC.
+  PseudoColor X visual, which no current X server offers. It now draws in
+  truecolour, turning its palette into pixels itself, and the container brings
+  its own Xvfb and exports it over noVNC.
 - **A browser client that captures the mouse.** noVNC is a remote desktop
   client and reports where the pointer is; a game needs to know how far it
   moved. `play.html` locks the pointer instead, so turning never runs out of
@@ -44,15 +45,15 @@ once it did. Getting from there to a playable game took:
   300 ms at a time whenever you shot at anything. Both are off here: with the
   button held that is the difference between 257 KB/s at a 41 ms median and
   554 KB/s at 12 ms.
-- **A game controller, on a phone as well as a desktop.** An Xbox pad, a
-  Backbone One, anything the browser calls a standard gamepad: the page turns
-  its buttons into the keysyms the engine already reads and its right stick
-  into the same relative pointer motion a captured mouse produces, so the 1997
-  code needed no change at all. Every button is rebindable, in the browser
-  rather than in `.doomrc`, because the container never sees the controller.
-  When one misbehaves the page writes what it is doing into the container's
-  log — the pad it found, what each control is going to send, and what it
-  actually sent — so `docker logs` answers the question on its own.
+- **A game controller, on a phone as well as a desktop, and it vibrates.** An
+  Xbox pad, a Backbone One, anything the browser calls a standard gamepad. The
+  pad is plugged into the machine running the browser, so the page reads it
+  and passes its state to the engine over the same port as the picture; the
+  engine does the rest (`i_pad.c`), with its buttons set in the game's own
+  menus and its sticks as speeds rather than keys. The same code reads a pad
+  through SDL2 when the engine runs on a desktop. Vibration comes through
+  `I_Tactile`, a force-feedback hook id left in the 1997 code and never filled
+  in.
 
 [`PORTING-NOTES.md`](PORTING-NOTES.md) documents every change, with the
 original code and why it broke — including [what the stutter turned out to
@@ -62,25 +63,19 @@ because a confident answer turned out to be an artefact of how it was measured.
 
 ## What was added
 
-Three pages under **Options → Setup**, none of which the 1997 release had any
+Four pages under **Options → Setup**, none of which the 1997 release had any
 equivalent of:
 
 - **Controls** — rebind the eleven movement, action and menu keys. Saved to
   `.doomrc`.
 - **Mouse** — turn the mouse on and off, assign its buttons, and capture the
   pointer so it cannot slide out of the window while you turn.
+- **Controller** — what each button does, the turn speed, vibration, swapping
+  the sticks, and whether a full push runs. Saved to `.doomrc`.
 - **Load WAD** — list the `.wad` files you mounted, marked `GAME` or `MOD`,
   and load one. The engine builds its textures, sprites and sound cache once
   at startup, so choosing a file restarts it: a couple of seconds back to the
   title screen.
-
-And one page in the browser rather than the game, because the container has no
-way to know it is there:
-
-- **Controller** — appears under the start screen's buttons once a pad has been
-  seen. Rebind every action, set the sticks' deadzone, turn speed, inversion
-  and whether a full push runs. Saved per browser, so a phone and a desktop
-  keep their own layouts.
 
 How to use them is in [DOCKER.md](DOCKER.md); how they were built, in
 [PORTING-NOTES.md](PORTING-NOTES.md#added).

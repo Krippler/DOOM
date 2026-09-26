@@ -1,0 +1,73 @@
+name: Smoke test
+
+# Builds the engine and the mixer and plays a little of E1M1 on a throwaway
+# Xvfb, with a controller, checking what comes out -- see tools/smoke-test.sh.
+#
+# The game data is the shareware doom1.wad the repository carries, which id
+# distributes freely, so this reaches a real level: the renderer, the status
+# bar, movement and weapons, the sound as far as the stream a browser would
+# receive, the controller from the socket the page talks to, both the
+# truecolour and the 8-bit display paths, a clean quit and a crash report.
+#
+# Nothing here publishes anything; docker-publish.yml does that.
+
+on:
+  push:
+    branches: ["master", "claude/**", "fix/**", "feat/**"]
+  pull_request:
+    branches: ["master"]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # TimGM6mb rather than FluidR3: 6 MB instead of 142, and the music check
+      # only needs to hear that there is some.
+      - name: Install build and test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc libc6-dev make \
+            libx11-dev libxext-dev libpulse-dev libfluidsynth-dev \
+            xvfb xdotool timgm6mb-soundfont
+
+      - name: Build the engine
+        run: make -C linuxdoom-1.10 -j"$(nproc)"
+
+      - name: Build the mixer and the sound server
+        run: |
+          make -C audiostream -j"$(nproc)"
+          make -C sndserv -j"$(nproc)" SNDBACKEND=pulse
+
+      # MUSIC=none is the configuration nobody builds by hand, and so the one
+      # that would rot unnoticed. Built into a copy so the tree above keeps the
+      # default build for the test.
+      - name: Build without music
+        run: |
+          cp -r linuxdoom-1.10 "${RUNNER_TEMP}/nomusic"
+          make -C "${RUNNER_TEMP}/nomusic" clean >/dev/null
+          make -C "${RUNNER_TEMP}/nomusic" -j"$(nproc)" MUSIC=none
+
+      - name: Run the smoke test
+        run: tools/smoke-test.sh "${RUNNER_TEMP}/doom-smoke"
+
+      - name: Keep the screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke
+          path: |
+            ${{ runner.temp }}/doom-smoke/*.png
+            ${{ runner.temp }}/doom-smoke/*.log
+          if-no-files-found: ignore
+
+      - name: Check the scripts, the page's modules and the templates parse
+        run: |
+          sh -n docker/entrypoint.sh
+          sh -n tools/smoke-test.sh
+          python3 -c "import ast; ast.parse(open('docker/doom-wsproxy.py').read())"
+          python3 -c "import ast; ast.parse(open('tools/smoke-client.py').read())"
+          for f in docker/*.js; do node --check "$f"; done
+          python3 -c "import xml.dom.minidom as m; m.parse('templates/unraid.xml'); m.parse('ca_profile.xml')"

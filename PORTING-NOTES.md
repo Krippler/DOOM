@@ -796,6 +796,160 @@ running and the bindings it read, which by itself distinguishes "the controller
 does not work" from "the tab is running a client from two releases ago" — a
 distinction the container's log previously could not make at all.
 
+## Delete was Backspace
+
+`xlatekey` sent `XK_Delete` as `KEY_BACKSPACE`, so the two were one key: Delete
+went back a menu page, typed a backspace into a savegame name, and could not be
+bound to anything. Home, End, Page Up, Page Down and Insert fared worse -- no
+case for them at all, so their raw keysyms (0xff50 and up) came through and the
+Controls page refused them as out of range. They have codes now in the
+engine's own scheme, 0x80 plus the PC scancode as the F keys and arrows
+already were: `KEY_DEL` 0xd3, `KEY_INS` 0xd2, `KEY_HOME` 0xc7, `KEY_END` 0xcf,
+`KEY_PGUP` 0xc9, `KEY_PGDN` 0xd1. Delete still rubs out a letter in a savegame
+name, and on the Controls page it clears a binding to -1, which `keyheld`
+treats as no key and `M_KeyName` shows as `---`.
+
+## Playing on a desktop
+
+With truecolour the engine runs on any X display, which made a desktop build
+possible, and a desktop showed what the X driver had never had to do with
+nothing else on the screen:
+
+- **The pointer grab outlived the game.** `I_InitGraphics` called
+  `XGrabPointer` at startup when capture was on, and nothing ever let go: in
+  the menus, on the title screen, and in any other window you switched to, the
+  pointer stayed inside DOOM's. `I_UpdateGrab` now takes it only while a level
+  is being played, no menu is up and the window has the keyboard (FocusIn and
+  FocusOut are watched for that), and hands it back otherwise, with the
+  desktop's own cursor. The recentring warp follows the same rule. In the
+  container nothing else ever wants the pointer, so nothing changes there.
+- **No name, no class, a stretchable window.** The window is now called DOOM,
+  has the class `Doom` for a `.desktop` file's `StartupWMClass` to match, and
+  asks for a fixed size, because the picture does not scale with the window.
+- **The close button killed it.** Without `WM_DELETE_WINDOW` a window manager
+  closes a window by destroying the client's connection, and the engine died
+  in Xlib's I/O error handler with the config unsaved. It now asks for the
+  protocol and answers it with `I_Quit`.
+- **`-autoscale`** picks the largest multiple of 320x200, up to 4, that fits in
+  nine tenths of the screen, for the launcher to pass.
+
+The launcher itself (`desktop/doom`) is the container's entrypoint for one
+person: it finds the game, links it into `~/.local/share/doom/wads` under the
+name the engine and the sound server look for, runs the engine there with
+`-config` pointing at its own settings file, and lets the engine's own
+`DOOMWADDIR` and `DOOM_WADPATH` do the rest.
+
+## The controller moved into the engine
+
+A controller used to be entirely the page's business. The 1997 engine had never
+heard of one, so `doom-gamepad.js` turned buttons into X key presses and the
+right stick into pointer motion, and the engine could not tell the difference.
+That was 1,120 lines of JavaScript and most of the bug reports in this file:
+keys the engine eats before the game sees them ([above](#some-keys-never-reach-the-game-at-all)),
+bindings the page had to be told about separately every time one was changed
+in the game, a trigger that fired through the mouse because the fire key was
+unusable, and a page that could not tell a menu from a level.
+
+`i_pad.c` reads the pad itself now, the way the Quake port next door does.
+Where the state comes from is the only thing that differs:
+
+- **In the container** the pad is plugged into the machine running the
+  browser. The page reads it through the Gamepad API and sends its state
+  across on a third WebSocket (`token=pad`), which websockify hands to a TCP
+  port on localhost that the engine listens on (`DOOM_PAD_PORT`). Sixteen bytes
+  a message: connected, a button mask, four stick axes, two triggers. The page
+  is 223 lines and has nothing to configure.
+- **On a desktop** SDL2's game controller API, opened with `dlopen` when the
+  engine starts, so a machine without SDL still runs the game and building it
+  needs nothing installed.
+
+Each button is set to one of the game's *actions* on a new **Options → Setup →
+Controller** page, saved in `.doomrc` as `pad_a`, `pad_rt` and so on. Pressing
+it posts the key that action is bound to at that moment straight into
+`D_PostEvent`, so it never goes near X, and a key rebound on the Controls page
+is followed with nothing else to change. In a menu the buttons are menu keys
+instead (`M_PadKey`, which knows whether a question is waiting for yes or no,
+a savegame is being named, or the Controls page wants a key). The key a
+button went down as is the key it comes up as, so a trigger held to fire and
+let go after the menu opened does not leave the player firing.
+
+The sticks go into `G_BuildTiccmd` as speeds: forward and side in proportion
+to how far the left one is pushed, running when it is pushed all the way, and
+the right one as a turn rate on a curve, 90 to 360 degrees a second. A
+keyboard cannot do any of that.
+
+**Vibration** is sent back the other way, seven bytes, and the page plays it
+through `vibrationActuator`. Firing is hooked in `P_FireWeapon`, with a kick for
+each weapon, and the BFG in `A_FireBFG` when it actually goes off. Being hurt
+needed no hook at all: `P_DamageMobj` has always called
+
+```c
+if (player == &players[consoleplayer])
+    I_Tactile (40,10,40+temp*2);
+```
+
+and `I_Tactile` was an empty function marked `// UNUSED.` id wrote the call
+for force feedback in 1993 and nothing ever answered it. It answers now.
+
+One thing the move turned up. Nothing reads input while the screen melts
+between states, which is fine for a keyboard: X keeps the keys until they are
+asked for. A pad reports what is held, not what was pressed, so a tap made and
+let go inside the second a melt takes was never seen. `D_Display` polls the pad
+inside the melt loop too; the events queue like the keyboard's.
+
+## Drawing in truecolour
+
+The X driver only ever accepted one kind of display:
+
+```c
+if (!XMatchVisualInfo(X_display, X_screen, 8, PseudoColor, &X_visualinfo))
+    I_Error("xdoom currently only supports 256-color PseudoColor screens");
+```
+
+On an 8-bit PseudoColor visual the frame is palette indices and the X server's
+colormap turns them into colours, so `I_SetPalette` is `XStoreColors` and a
+damage flash costs nothing. No current X server offers that visual, so the
+container ran Xvfb at depth 8 and x11vnc presented it to browsers as truecolour
+with `-8to24` -- which walks the window tree, reads the screen back and
+transforms all of it, and which x11vnc's own manual says "does hog resources".
+
+It also got colours wrong. A palette change alters what every pixel means
+without changing any pixel, so the X server reports no damage and x11vnc sends
+nothing: the parts of the screen that were not redrawn afterwards stay in the
+old colours in the browser. Sampled through noVNC once every half second for a
+minute, a pixel of the view border read 100,50,32 in all 120 samples -- still
+tinted from a damage flash -- where the right colour is 56,64,40.
+
+`i_video.c` now takes whatever the display is. On an 8-bit one it runs as
+before. On TrueColor at depth 15, 16, 24 or 30, the palette is turned into a table
+of 256 pixel values, built from the visual's masks and redone on every
+`I_SetPalette` (gamma included), and `I_FinishUpdate` sends the frame through
+it into the image: one row translated and scaled, then copied for the rows
+under it, which is 64,000 lookups at any scale. Byte order follows the image's,
+so a remote display on a machine of the other endianness gets the right bytes.
+Scale 4, which the 8-bit path marked "Broken" and does its own way, is the same
+loop.
+
+Measured in the container with a client pulling frames at the game's 35 a
+second, 20 seconds each and twice over:
+
+| | engine | x11vnc | Xvfb |
+| --- | --- | --- | --- |
+| depth 8, `-8to24` | 8-10% | 26% | 16-17% |
+| depth 24 | 8-13% | 13% | 11% |
+
+of one core, with the same 35 updates a second either way. The picture is the
+same pixel for pixel: the status bar compared across both came out 33,600
+pixels identical and none different.
+
+Two smaller things went with it. `grabsharedmemory` reused another user's
+stale shared memory segment when it was *smaller* than the one needed, the
+comparison the wrong way round, and a truecolour image is four times the
+size. And the image without MIT-SHM is sized from the stride X computes rather
+than assuming one byte per pixel.
+
+`DOOM_X_DEPTH=8` runs the container the old way.
+
 ## Added
 
 Three things the 1997 release had no way to do, all reachable from
@@ -880,12 +1034,30 @@ the lump's -5 offset.
 ## Verifying
 
 ```
-make -C linuxdoom-1.10
-make -C sndserv
-Xvfb :99 -screen 0 640x400x8 &
+make -C linuxdoom-1.10 && make -C audiostream
+tools/smoke-test.sh
+```
+
+That starts the engine on Xvfb against the shareware `doom1.wad` in this
+repository and plays a little of E1M1 with a simulated controller, reading the
+picture straight out of Xvfb's framebuffer file: the level has to appear, the
+sticks have to walk and turn, RT has to fire, be heard in the mixer's stream
+and ask the pad to vibrate, Start has to open the menu, SIGINT has to save
+`.doomrc` and exit 0, the title music has to be audible (when a soundfont is
+installed), the 8-bit display path has to draw the status bar exactly as the
+truecolour one does, and a segfault has to leave a backtrace with names in it.
+About half a minute; CI runs it on every push (`.github/workflows/smoke.yml`),
+and keeps the screenshots.
+
+By hand:
+
+```
+Xvfb :99 -screen 0 640x400x24 &
 DISPLAY=:99 DOOMWADDIR=/path/to/wads HOME=/tmp linuxdoom-1.10/linux/linuxxdoom -2 -warp 1 1
 ```
 
-The display has to be 8-bit PseudoColor; see `DOCKER.md` for why. Sound needs
-a reachable PulseAudio server, the sound server on `$DOOMWADDIR/sndserver`,
-and for music a General MIDI soundfont (`-soundfont` or `DOOM_SOUNDFONT`).
+Any TrueColor display at depth 15, 16, 24 or 30 works, and so does the 8-bit
+PseudoColor one the engine was written for. Sound needs either the mixer
+(`audiostream`, as the container runs it) or a reachable PulseAudio server and
+the sound server on `$DOOMWADDIR/sndserver`; music needs a General MIDI
+soundfont (`-soundfont` or `DOOM_SOUNDFONT`).

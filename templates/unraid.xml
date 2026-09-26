@@ -15,7 +15,7 @@
   <Overview>
     The original 1997 linuxdoom-1.10 sources, built from source and playable in a browser.&#13;
     &#13;
-    The engine only ever supported an 8-bit PseudoColor X visual, which no current X server offers, so the container runs its own Xvfb at depth 8 and exports it over noVNC. Nothing needs to be installed on the host.&#13;
+    The container runs its own X server (Xvfb) and exports it over noVNC, so nothing needs to be installed on the host.&#13;
     &#13;
     Sound comes out of the browser, with nothing to set up. Effects and music - the music converted from the WAD's MUS lumps to MIDI and rendered by FluidSynth - are mixed inside the container and sent to the same page as the picture, over the WebUI port you already mapped. Click to start playing and the sound starts with it, because browsers will not play audio without a click.&#13;
     &#13;
@@ -23,9 +23,9 @@
     &#13;
     The WebUI opens a client that captures the mouse, so turning does not run out of screen and the cursor stays in the game. Escape hands the cursor back, and the ` key opens the game menu whatever the mouse is doing. Plain noVNC is still there at /vnc.html if you would rather it did not grab the pointer, though it carries no sound.&#13;
     &#13;
-    A game controller works too, on a phone as well as a desktop - an Xbox pad, a Backbone One, anything the browser reports as a standard gamepad. Every button is rebindable from the start screen, and the layout is saved per browser, so a phone and a desktop keep their own. On a phone the controller is the whole of the input, and the sound comes out of the phone's own speaker.&#13;
+    A game controller works too, on a phone as well as a desktop - an Xbox pad, a Backbone One, anything the browser reports as a standard gamepad - and it vibrates when you fire or are hurt, where the browser can drive the pad's motors. It is set up in the game, under Options - Setup - Controller. On a phone the controller is the whole of the input, and the sound comes out of the phone's own speaker.&#13;
     &#13;
-    Keys and the mouse are set from inside the game, under Options - Setup. The same menu lists the WAD files in the folder below and loads the one you pick, so mods can be dropped in and switched to without touching the container settings.
+    Keys, the mouse and the controller are set from inside the game, under Options - Setup. The same menu lists the WAD files in the folder below and loads the one you pick, so mods can be dropped in and switched to without touching the container settings.
   </Overview>
   <Category>GameServers: Other:</Category>
   <WebUI>http://[IP]:[PORT:6080]/</WebUI>
@@ -39,6 +39,20 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.10.75
+- The game reads the controller itself now, and it vibrates when you fire or
+  are hurt. Set it up in the game under Options - Setup - Controller: what
+  each button does, turn speed, vibration, swapping the sticks. The sticks
+  walk and turn as far as they are pushed. Button layouts saved in the browser
+  by earlier versions are not used any more; the default layout is the same.
+- Lighter on the server: the game draws in full colour itself, which halves
+  what the VNC server spends on every frame. It also fixes the view border and
+  status bar staying tinted after a damage or pickup flash.
+- Delete clears a key binding, sliders show their values, and Delete, Home,
+  End, Page Up, Page Down and Insert can be bound.
+- A Linux desktop build, for playing without Docker, is attached to each
+  release on GitHub.
+
 ### 1.10.70 - 1.10.73
 - Fixes a crash that could end the game at a level change. The music is
   rendered on a thread of its own while the game replaces the player on every

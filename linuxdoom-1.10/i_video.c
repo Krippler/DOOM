@@ -25,6 +25,7 @@ static const char
 rcsid[] = "$Id: i_x.c,v 1.6 1997/02/03 22:45:10 b1 Exp $";
 
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
@@ -55,6 +56,7 @@ int XShmGetEventBase( Display* dpy ); // problems with g++?
 #include "v_video.h"
 #include "m_argv.h"
 #include "d_main.h"
+#include "i_pad.h"
 
 #include "doomdef.h"
 
@@ -94,6 +96,35 @@ int		doPointerWarp = POINTER_WARP_COUNTDOWN;
 // to use ....
 static int	multiply=1;
 
+// Truecolour.
+//
+// The original drew into an 8-bit PseudoColor visual: each frame is palette
+// indices, and the X server's colormap turns them into colours. Xvfb offers
+// that, but x11vnc then has to present it to a browser as truecolour
+// (-8to24), which walks the window tree, reads the screen back and
+// transforms all of it -- the most expensive thing it does here -- and
+// no desktop X server has offered an 8-bit visual in a long time.
+//
+// On a TrueColor visual the engine does the lookup itself instead: the
+// palette becomes a table of 256 pixel values, and each frame goes through
+// it on the way into the image. That is 64,000 lookups at any scale, since
+// a row is translated once and then copied for the scaled rows under it.
+//
+// The 8-bit path is still here, and is what runs on an 8-bit display
+// (DOOM_X_DEPTH=8 in the container).
+//
+// Whether the pointer is held by this window right now, and whether the
+// window has the keyboard. See I_UpdateGrab.
+static boolean		X_grabbed;
+static boolean		X_focused = true;
+static Cursor		X_nullcursor;
+static Atom		X_wmdelete;
+
+static boolean		X_truecolor;
+static unsigned int	X_pixels[256];	// palette index -> pixel value
+static byte		X_palette[768];	// the last palette set, to rebuild from
+static boolean		X_havepalette;
+
 
 //
 //  Translates the key currently in X_event
@@ -126,8 +157,13 @@ int xlatekey(void)
       case XK_F11:	rc = KEY_F11;		break;
       case XK_F12:	rc = KEY_F12;		break;
 	
-      case XK_BackSpace:
-      case XK_Delete:	rc = KEY_BACKSPACE;	break;
+      case XK_BackSpace:	rc = KEY_BACKSPACE;	break;
+      case XK_Delete:	rc = KEY_DEL;		break;
+      case XK_Insert:	rc = KEY_INS;		break;
+      case XK_Home:	rc = KEY_HOME;		break;
+      case XK_End:	rc = KEY_END;		break;
+      case XK_Prior:	rc = KEY_PGUP;		break;
+      case XK_Next:	rc = KEY_PGDN;		break;
 
       case XK_Pause:	rc = KEY_PAUSE;		break;
 
@@ -201,6 +237,45 @@ void I_StartFrame (void)
 {
     // er?
 
+}
+
+//
+// Whether the pointer should be the game's: the capture setting is on, a
+// level is being played, no menu is up, and the window has the keyboard.
+//
+// Anything less and the pointer goes back to whoever wants it. That matters
+// on a desktop, where a grab that outlived the level -- the original took it
+// at startup and kept it -- left the pointer stuck inside the window in the
+// menus, and in any other window you switched to. In the container nothing
+// else wants it, and the answer is the same as it always was while playing.
+//
+static boolean I_WantGrab (void)
+{
+    return grabMouse && usemouse && X_focused
+	&& !menuactive && gamestate == GS_LEVEL;
+}
+
+static void I_UpdateGrab (void)
+{
+    boolean	want = I_WantGrab ();
+
+    if (want == X_grabbed || !X_display)
+	return;
+    X_grabbed = want;
+
+    if (want)
+    {
+	XDefineCursor (X_display, X_mainWindow, X_nullcursor);
+	XGrabPointer (X_display, X_mainWindow, True,
+		      ButtonPressMask|ButtonReleaseMask|PointerMotionMask,
+		      GrabModeAsync, GrabModeAsync,
+		      X_mainWindow, None, CurrentTime);
+    }
+    else
+    {
+	XUngrabPointer (X_display, CurrentTime);
+	XUndefineCursor (X_display, X_mainWindow);
+    }
 }
 
 static int	lastmousex = 0;
@@ -303,7 +378,7 @@ void I_GetEvent(void)
 		// motion is measured from the middle however many arrive in
 		// between. The warp lands exactly on the centre, which the
 		// test above ignores, so this does not feed itself.
-		if (grabMouse && !menuactive && gamestate == GS_LEVEL)
+		if (I_WantGrab ())
 		{
 		    XWarpPointer( X_display,
 				  None,
@@ -332,6 +407,25 @@ void I_GetEvent(void)
 	}
 	break;
 	
+      case FocusIn:
+	X_focused = true;
+	break;
+      case FocusOut:
+	// A grab of our own reports a focus change too; only a real one, to
+	// another window, lets go of the pointer.
+	if (X_event.xfocus.mode == NotifyNormal
+	    || X_event.xfocus.mode == NotifyWhileGrabbed)
+	    X_focused = false;
+	break;
+
+      // The window manager's close button, as Quit Game with no question:
+      // the config is saved on the way out, which it was not when the window
+      // simply vanished and took the X connection with it.
+      case ClientMessage:
+	if ((Atom) X_event.xclient.data.l[0] == X_wmdelete)
+	    I_Quit ();
+	break;
+
       case Expose:
       case ConfigureNotify:
 	break;
@@ -380,6 +474,9 @@ void I_StartTic (void)
     while (XPending(X_display))
 	I_GetEvent();
 
+    // The controller's buttons arrive as key events too, posted from here.
+    I_PadPoll ();
+
     // Put the pointer back in the middle of the window, so there is always
     // room to move in every direction and the next motion is measured from a
     // known point.
@@ -397,7 +494,9 @@ void I_StartTic (void)
     //
     // Only while actually playing: in the menus the pointer stands in for a
     // cursor, and at the title screen there is nothing to aim.
-    if (grabMouse && !menuactive && gamestate == GS_LEVEL)
+    I_UpdateGrab ();
+
+    if (I_WantGrab ())
     {
 	XWarpPointer( X_display,
 		      None,
@@ -441,6 +540,105 @@ I_FrameNow (void)
     return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
 }
 
+// One channel of a palette colour, 0-255, placed where the visual keeps it.
+static unsigned int
+I_MaskPixel
+( unsigned long	mask,
+  int		c )
+{
+    int		shift = 0;
+    int		bits = 0;
+
+    if (!mask)
+	return 0;
+    while (!(mask & 1)) { mask >>= 1; shift++; }
+    while (mask & 1) { mask >>= 1; bits++; }
+
+    if (bits < 8)
+	c >>= 8 - bits;
+    else
+	c <<= bits - 8;
+    return (unsigned int) c << shift;
+}
+
+static void I_BuildPixels (void)
+{
+    static const unsigned short	one = 1;
+    boolean	hostlsb = *(const unsigned char *) &one == 1;
+    boolean	swap;
+    byte*	p = X_palette;
+    unsigned int v;
+    int		i;
+
+    if (!image || !X_havepalette)
+	return;
+
+    // The image is in the server's byte order. That is this machine's own
+    // for a local display, which is the only kind MIT-SHM is used with, but
+    // not necessarily for a remote one.
+    swap = (image->byte_order == LSBFirst) != hostlsb;
+
+    for (i=0 ; i<256 ; i++)
+    {
+	v = I_MaskPixel (X_visualinfo.red_mask, gammatable[usegamma][*p++]);
+	v |= I_MaskPixel (X_visualinfo.green_mask, gammatable[usegamma][*p++]);
+	v |= I_MaskPixel (X_visualinfo.blue_mask, gammatable[usegamma][*p++]);
+
+	if (swap && image->bits_per_pixel == 32)
+	    v = (v >> 24) | ((v >> 8) & 0xff00) | ((v << 8) & 0xff0000) | (v << 24);
+	else if (swap)
+	    v = ((v >> 8) & 0xff) | ((v << 8) & 0xff00);
+	X_pixels[i] = v;
+    }
+}
+
+//
+// The frame, through the palette table and scaled, into the image.
+//
+static void I_TrueColorBlit (void)
+{
+    byte*	src = screens[0];
+    char*	row = image->data;
+    int		pitch = image->bytes_per_line;
+    int		rowbytes = X_width * (image->bits_per_pixel / 8);
+    int		x, y, k;
+
+    for (y=0 ; y<SCREENHEIGHT ; y++, src += SCREENWIDTH)
+    {
+	if (image->bits_per_pixel == 32)
+	{
+	    unsigned int*	out = (unsigned int *) row;
+
+	    if (multiply == 1)
+		for (x=0 ; x<SCREENWIDTH ; x++)
+		    out[x] = X_pixels[src[x]];
+	    else
+		for (x=0 ; x<SCREENWIDTH ; x++)
+		{
+		    unsigned int v = X_pixels[src[x]];
+		    for (k=0 ; k<multiply ; k++)
+			*out++ = v;
+		}
+	}
+	else
+	{
+	    unsigned short*	out = (unsigned short *) row;
+
+	    for (x=0 ; x<SCREENWIDTH ; x++)
+	    {
+		unsigned short v = (unsigned short) X_pixels[src[x]];
+		for (k=0 ; k<multiply ; k++)
+		    *out++ = v;
+	    }
+	}
+
+	// and the same row again for the rest of this one's height
+	for (k=1 ; k<multiply ; k++)
+	    memcpy (row + k*pitch, row, rowbytes);
+	row += multiply * pitch;
+    }
+}
+
 void I_FinishUpdate (void)
 {
     double	finish_t0 = I_FrameNow ();
@@ -467,7 +665,9 @@ void I_FinishUpdate (void)
     }
 
     // scales the screen size before blitting it
-    if (multiply == 2)
+    if (X_truecolor)
+	I_TrueColorBlit ();
+    else if (multiply == 2)
     {
 	unsigned int *olineptrs[2];
 	unsigned int *ilineptr;
@@ -647,6 +847,17 @@ void UploadNewPalette(Colormap cmap, byte *palette)
     register int	c;
     static boolean	firstcall = true;
 
+    // Kept, so the table can be built once the display is open if a palette
+    // arrives first, and rebuilt as it is.
+    memcpy (X_palette, palette, sizeof(X_palette));
+    X_havepalette = true;
+
+    if (X_truecolor)
+    {
+	I_BuildPixels ();
+	return;
+    }
+
 #ifdef __cplusplus
     if (X_visualinfo.c_class == PseudoColor && X_visualinfo.depth == 8)
 #else
@@ -743,7 +954,10 @@ void grabsharedmemory(int size)
 	    break;
 	    
 	  }
-	  if (size >= shminfo.shm_segsz)
+	  // Somebody else's segment is only any use if it is big enough.
+	  // The original had this the wrong way round, which took a smaller
+	  // one; a truecolour image is four times the size of an 8-bit one.
+	  if (size <= shminfo.shm_segsz)
 	  {
 	    fprintf(stderr,
 		    "will use %d's stale shared memory\n",
@@ -802,16 +1016,8 @@ void grabsharedmemory(int size)
 //
 void I_SetMouseGrab (boolean grab)
 {
-    if (!X_display)
-	return;
-
-    if (grab)
-	XGrabPointer (X_display, X_mainWindow, True,
-		      ButtonPressMask|ButtonReleaseMask|PointerMotionMask,
-		      GrabModeAsync, GrabModeAsync,
-		      X_mainWindow, None, CurrentTime);
-    else
-	XUngrabPointer (X_display, CurrentTime);
+    grab = 0;			// grabMouse has already been set
+    I_UpdateGrab ();
 }
 
 
@@ -834,6 +1040,7 @@ void I_InitGraphics(void)
     XSetWindowAttributes attribs;
     XGCValues		xgcvalues;
     int			valuemask;
+    int			depth;
     static int		firsttime=1;
 
     if (!firsttime)
@@ -895,11 +1102,43 @@ void I_InitGraphics(void)
 	    I_Error("Could not open display (DISPLAY=[%s])", getenv("DISPLAY"));
     }
 
-    // use the default visual 
+    // -autoscale: the largest multiple of 320x200, up to 4, that fits in the
+    // screen with room left for a window's frame and a desktop's panels. The
+    // desktop launcher asks for it; the container sizes its own screen.
+    if (M_CheckParm ("-autoscale"))
+    {
+	int	sw = DisplayWidth (X_display, DefaultScreen (X_display));
+	int	sh = DisplayHeight (X_display, DefaultScreen (X_display));
+
+	for (multiply = 4; multiply > 1; multiply--)
+	    if (SCREENWIDTH * multiply <= sw * 9 / 10
+		&& SCREENHEIGHT * multiply <= sh * 9 / 10)
+		break;
+	X_width = SCREENWIDTH * multiply;
+	X_height = SCREENHEIGHT * multiply;
+    }
+
+    // The display's own kind of visual: 8-bit PseudoColor on an 8-bit
+    // display, as the original required, and TrueColor on anything else.
     X_screen = DefaultScreen(X_display);
-    if (!XMatchVisualInfo(X_display, X_screen, 8, PseudoColor, &X_visualinfo))
-	I_Error("xdoom currently only supports 256-color PseudoColor screens");
+    depth = DefaultDepth(X_display, X_screen);
+    if (depth == 8
+	&& XMatchVisualInfo(X_display, X_screen, 8, PseudoColor, &X_visualinfo))
+	X_truecolor = false;
+    else if ((depth == 15 || depth == 16 || depth == 24 || depth == 30)
+	     && XMatchVisualInfo(X_display, X_screen, depth, TrueColor,
+				 &X_visualinfo))
+	X_truecolor = true;
+    else if (XMatchVisualInfo(X_display, X_screen, 8, PseudoColor,
+			      &X_visualinfo))
+	X_truecolor = false;
+    else
+	I_Error("DOOM needs a TrueColor display at depth 15, 16, 24 or 30, or a "
+		"256-colour PseudoColor one (this one is depth %d)", depth);
     X_visual = X_visualinfo.visual;
+    fprintf(stderr, "I_InitGraphics: %s, depth %d\n",
+	    X_truecolor ? "truecolour" : "8-bit PseudoColor",
+	    X_visualinfo.depth);
 
     // check for the MITSHM extension
     doShm = XShmQueryExtension(X_display);
@@ -929,9 +1168,11 @@ void I_InitGraphics(void)
 
     fprintf(stderr, "Using MITSHM extension\n");
 
-    // create the colormap
+    // create the colormap -- all 256 entries ours on an 8-bit display, and
+    // nothing to allocate on a TrueColor one, whose colours are fixed.
     X_cmap = XCreateColormap(X_display, RootWindow(X_display,
-						   X_screen), X_visual, AllocAll);
+						   X_screen), X_visual,
+			     X_truecolor ? AllocNone : AllocAll);
 
     // setup attributes for main window
     attribmask = CWEventMask | CWColormap | CWBorderPixel;
@@ -939,7 +1180,7 @@ void I_InitGraphics(void)
 	KeyPressMask
 	| KeyReleaseMask
 	| PointerMotionMask | ButtonPressMask | ButtonReleaseMask
-	| ExposureMask;
+	| ExposureMask | FocusChangeMask;
 
     attribs.colormap = X_cmap;
     attribs.border_pixel = 0;
@@ -950,14 +1191,42 @@ void I_InitGraphics(void)
 					x, y,
 					X_width, X_height,
 					0, // borderwidth
-					8, // depth
+					X_visualinfo.depth,
 					InputOutput,
 					X_visual,
 					attribmask,
 					&attribs );
 
-    XDefineCursor(X_display, X_mainWindow,
-		  createnullcursor( X_display, X_mainWindow ) );
+    // Invisible while the game has the pointer, the desktop's own otherwise:
+    // I_UpdateGrab switches between them.
+    X_nullcursor = createnullcursor (X_display, X_mainWindow);
+    XDefineCursor (X_display, X_mainWindow, X_nullcursor);
+
+    // What a window manager needs to know: a name for the title bar and the
+    // task list, a class for the desktop file to match (StartupWMClass=Doom),
+    // a size it should not change -- the picture does not scale with the
+    // window -- and that the close button should ask rather than kill.
+    {
+	XClassHint	class_hint;
+	XSizeHints*	size = XAllocSizeHints ();
+
+	XStoreName (X_display, X_mainWindow, "DOOM");
+	class_hint.res_name = "doom";
+	class_hint.res_class = "Doom";
+	XSetClassHint (X_display, X_mainWindow, &class_hint);
+
+	if (size)
+	{
+	    size->flags = PMinSize | PMaxSize;
+	    size->min_width = size->max_width = X_width;
+	    size->min_height = size->max_height = X_height;
+	    XSetWMNormalHints (X_display, X_mainWindow, size);
+	    XFree (size);
+	}
+
+	X_wmdelete = XInternAtom (X_display, "WM_DELETE_WINDOW", False);
+	XSetWMProtocols (X_display, X_mainWindow, &X_wmdelete, 1);
+    }
 
     // create the GC
     valuemask = GCGraphicsExposures;
@@ -989,12 +1258,7 @@ void I_InitGraphics(void)
     // and the game's keyboard depended on where the pointer had drifted to.
     XSetInputFocus (X_display, X_mainWindow, RevertToPointerRoot, CurrentTime);
 
-    // grabs the pointer so it is restricted to this window
-    if (grabMouse)
-	XGrabPointer(X_display, X_mainWindow, True,
-		     ButtonPressMask|ButtonReleaseMask|PointerMotionMask,
-		     GrabModeAsync, GrabModeAsync,
-		     X_mainWindow, None, CurrentTime);
+    // The pointer is taken when a level starts, not here: I_UpdateGrab.
 
     if (doShm)
     {
@@ -1004,7 +1268,7 @@ void I_InitGraphics(void)
 	// create the image
 	image = XShmCreateImage(	X_display,
 					X_visual,
-					8,
+					X_visualinfo.depth,
 					ZPixmap,
 					0,
 					&X_shminfo,
@@ -1043,20 +1307,33 @@ void I_InitGraphics(void)
     {
 	image = XCreateImage(	X_display,
     				X_visual,
-    				8,
+    				X_visualinfo.depth,
     				ZPixmap,
     				0,
-    				(char*)malloc(X_width * X_height),
+    				NULL,
     				X_width, X_height,
-    				8,
-    				X_width );
+    				X_truecolor ? 32 : 8,
+    				0 );
+	image->data = (char *) malloc (image->bytes_per_line * X_height);
 
     }
 
-    if (multiply == 1)
+    // 24-bit pixels packed three bytes apiece are allowed by X and used by
+    // almost nothing; every server this runs on keeps them in 32 bits.
+    if (X_truecolor && image->bits_per_pixel != 16
+	&& image->bits_per_pixel != 32)
+	I_Error("This display keeps %d bits per pixel; DOOM can draw into 8, "
+		"16 or 32", image->bits_per_pixel);
+
+    // At 8 bits and no scaling the engine can draw straight into the image.
+    // Otherwise it draws a frame of its own that I_FinishUpdate turns into
+    // the image.
+    if (multiply == 1 && !X_truecolor)
 	screens[0] = (unsigned char *) (image->data);
     else
 	screens[0] = (unsigned char *) malloc (SCREENWIDTH * SCREENHEIGHT);
+
+    I_BuildPixels ();
 
 }
 

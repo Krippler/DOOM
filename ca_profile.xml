@@ -5,18 +5,15 @@
 <CommunityApplications>
   <Profile>
     DOOM, from the sources id Software released in 1997, built and run inside
-    the container and played in a browser. The engine only ever supported an
-    8-bit PseudoColor X visual, which no current X server offers, so the
-    container brings its own and exports it over noVNC - nothing is needed on
-    the host.
+    the container and played in a browser. The container brings its own X
+    server and exports it over noVNC - nothing is needed on the host.
 
-    Sound effects and music both work where a PulseAudio server is reachable,
-    and the game runs silently where one is not, which is the usual case on a
-    server. The shareware game data is included, so it plays as soon as it
+    Sound effects and music come out of the browser, over the same port as
+    the picture, with nothing to set up. The shareware game data is included, so it plays as soon as it
     starts; your own IWAD takes precedence when you add one. Commercial game
     data is not included and comes from your own copy of the game.
 
-    Keys and the mouse are configured from inside the game, under Options -
+    Keys, the mouse and a controller are configured from inside the game, under Options -
     Setup, which also lists the WAD files in the mounted folder and loads the
     one you pick, so mods can be added without changing the container.
 

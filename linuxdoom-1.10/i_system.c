@@ -37,6 +37,7 @@ rcsid[] = "$Id: m_bbox.c,v 1.1 1997/02/03 22:45:10 b1 Exp $";
 #include "m_misc.h"
 #include "i_video.h"
 #include "i_sound.h"
+#include "i_pad.h"
 
 #include "d_net.h"
 #include "g_game.h"
@@ -78,8 +79,15 @@ I_Tactile
   int	off,
   int	total )
 {
-  // UNUSED.
-  on = off = total = 0;
+    // id's hook for force feedback, called when the player is hurt, and
+    // left empty. P_DamageMobj asks for 40 ms plus 2 a point of damage, up
+    // to 100 points; a controller gets that, harder for more damage, and a
+    // little longer, because a pulse under a tenth of a second is barely
+    // felt through a pad.
+    int		damage = (total - 40) / 2;
+
+    on = off = 0;
+    I_PadRumble (damage / 40.0, damage / 60.0, total + 80);
 }
 
 ticcmd_t	emptycmd;
@@ -279,6 +287,7 @@ int  I_GetTime (void)
 void I_Init (void)
 {
     I_InitSound();
+    I_PadInit();
     //  I_InitGraphics();
 }
 
@@ -291,6 +300,7 @@ void I_Quit (void)
     I_ShutdownSound();
     I_ShutdownMusic();
     M_SaveDefaults ();
+    I_PadShutdown();
     I_ShutdownGraphics();
     exit(0);
 }

@@ -6,6 +6,77 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.75] — 2026-09-26
+
+### Changed
+- **The engine draws in truecolour, and the container's display is depth 24.**
+  The 1997 X driver only accepted an 8-bit colour-mapped display, which is why
+  the container ran one and x11vnc converted every frame to truecolour for the
+  browser (`-8to24`) — the most expensive thing it did. The engine now turns its
+  palette into pixels itself. With a client pulling frames at the game's 35 a
+  second, x11vnc dropped from 26% of a core to 13% and Xvfb from 17% to 11%, the
+  engine the same and the picture identical pixel for pixel. `DOOM_X_DEPTH=8`
+  puts the old way back.
+- **The engine reads the controller itself, and it vibrates.** A pad used to be
+  the page's business: it turned buttons into X key presses and needed its own
+  panel of bindings in the browser, told separately about every key rebound in
+  the game, and some keys — Enter, Tab, the F keys — never reached the game at
+  all. The page now only passes the pad's state across, and the engine does the
+  rest (`i_pad.c`), the way the Quake port does. It is set up in the game, on a
+  new **Options → Setup → Controller** page: what each button does, turn speed,
+  vibration, swapping the sticks, and whether a full push runs — saved in
+  `.doomrc`. The sticks walk and turn in proportion to how far they are pushed.
+  In menus A chooses, B goes back, and on a question they are yes and no.
+  Bindings saved in a browser by earlier versions are not read any more; the
+  default layout is the same one.
+- **Vibration**, on firing — each weapon its own kick — and on being hurt,
+  harder for more damage, through the force-feedback hook id left in the 1997
+  code and never filled in. It needs a browser that can drive the pad's
+  motors, and the container log says whether this one can.
+
+### Added
+- **A Linux desktop build, without Docker or VNC.** Every release now carries
+  `doom-linux-x86_64-VERSION.tar.gz`: the engine, the sound server, the
+  shareware episode, a `doom` launcher and a menu entry, with `./install.sh`.
+  The launcher finds a Steam or GOG copy of the game by itself, or takes
+  `--data /path/to/DOOM.WAD` once and remembers it, keeps settings and saves in
+  `~/.local/share/doom`, and opens the largest window that fits the screen.
+  Sound goes through PulseAudio or PipeWire, and a controller through SDL2.
+  Built on Ubuntu 22.04 so it runs on distributions that old.
+- **The engine behaves on a desktop.** It holds the pointer only while a level
+  is being played and its window has the keyboard, and lets go in the menus —
+  it used to take it at startup and keep it. The window has a title and a class
+  for the desktop to match, a size the window manager will not stretch, and its
+  close button quits the way Quit Game does, saving the config.
+- **A smoke test, run on every push.** `tools/smoke-test.sh` starts the engine
+  on Xvfb against the shareware WAD and plays a little of E1M1 with a simulated
+  controller: the level has to appear, the sticks walk and turn, a shot is
+  heard and felt, Start opens the menu, quitting saves the config, the title
+  music plays, the 8-bit display draws exactly what the truecolour one does,
+  the pointer is held in a level and let go in the menu, and a crash leaves a
+  readable backtrace. Half a minute, and CI keeps the
+  screenshots. Until now every release was checked by hand, on a phone.
+
+- **Delete clears a binding.** On Options → Setup → Controls, Delete leaves the
+  highlighted control with no key, shown as `---`; on the controller's Buttons
+  page it sets a button to do nothing. On a controller Y does the same.
+  Backspace still goes back a page.
+- **Sliders say what they are set to.** Screen size, mouse sensitivity and the
+  two volumes print their value beside the slider, rather than leaving it to
+  be counted in notches.
+
+### Fixed
+- **Delete, Insert, Home, End, Page Up and Page Down can be bound.** The X
+  driver sent Delete as Backspace and the others as raw X keysyms, far out of
+  the range a binding can hold, so the Controls page refused them. They have
+  key codes of their own now, in the engine's scheme.
+- **The view border and status bar could stay tinted after a damage or pickup
+  flash.** A palette change recolours the screen without touching a pixel, so
+  x11vnc never saw anything to send, and whatever was not redrawn afterwards
+  stayed in the flash's colours in the browser — sampled for a minute, a border
+  pixel was still red in every sample. In truecolour a palette change is a new
+  frame like any other.
+
 ## [1.10.74] — 2026-09-17
 
 Documentation and the Unraid template. Nothing in the image changed.
