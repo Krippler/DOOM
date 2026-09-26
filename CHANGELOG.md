@@ -57,7 +57,19 @@ The version follows the engine this is built from, linuxdoom-1.10.
   readable backtrace. Half a minute, and CI keeps the
   screenshots. Until now every release was checked by hand, on a phone.
 
+- **Delete clears a binding.** On Options → Setup → Controls, Delete leaves the
+  highlighted control with no key, shown as `---`; on the controller's Buttons
+  page it sets a button to do nothing. On a controller Y does the same.
+  Backspace still goes back a page.
+- **Sliders say what they are set to.** Screen size, mouse sensitivity and the
+  two volumes print their value beside the slider, rather than leaving it to
+  be counted in notches.
+
 ### Fixed
+- **Delete, Insert, Home, End, Page Up and Page Down can be bound.** The X
+  driver sent Delete as Backspace and the others as raw X keysyms, far out of
+  the range a binding can hold, so the Controls page refused them. They have
+  key codes of their own now, in the engine's scheme.
 - **The view border and status bar could stay tinted after a damage or pickup
   flash.** A palette change recolours the screen without touching a pixel, so
   x11vnc never saw anything to send, and whatever was not redrawn afterwards

@@ -268,6 +268,18 @@ typedef enum
 #define KEY_F12		(0x80+0x58)
 
 #define KEY_BACKSPACE	127
+
+// Delete had no key of its own: the X driver sent it as Backspace, so it went
+// back a menu page and could not be bound. These follow the scheme above, 0x80
+// plus the PC scancode, and are what xlatekey sends for them now. Before, the
+// rest arrived as their raw X keysyms -- far out of range, and refused by the
+// Controls page.
+#define KEY_DEL		(0x80+0x53)
+#define KEY_INS		(0x80+0x52)
+#define KEY_HOME	(0x80+0x47)
+#define KEY_END		(0x80+0x4f)
+#define KEY_PGUP	(0x80+0x49)
+#define KEY_PGDN	(0x80+0x51)
 #define KEY_PAUSE	0xff
 
 #define KEY_EQUALS	0x3d

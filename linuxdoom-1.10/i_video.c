@@ -157,8 +157,13 @@ int xlatekey(void)
       case XK_F11:	rc = KEY_F11;		break;
       case XK_F12:	rc = KEY_F12;		break;
 	
-      case XK_BackSpace:
-      case XK_Delete:	rc = KEY_BACKSPACE;	break;
+      case XK_BackSpace:	rc = KEY_BACKSPACE;	break;
+      case XK_Delete:	rc = KEY_DEL;		break;
+      case XK_Insert:	rc = KEY_INS;		break;
+      case XK_Home:	rc = KEY_HOME;		break;
+      case XK_End:	rc = KEY_END;		break;
+      case XK_Prior:	rc = KEY_PGUP;		break;
+      case XK_Next:	rc = KEY_PGDN;		break;
 
       case XK_Pause:	rc = KEY_PAUSE;		break;
 

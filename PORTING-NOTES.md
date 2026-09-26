@@ -796,6 +796,19 @@ running and the bindings it read, which by itself distinguishes "the controller
 does not work" from "the tab is running a client from two releases ago" — a
 distinction the container's log previously could not make at all.
 
+## Delete was Backspace
+
+`xlatekey` sent `XK_Delete` as `KEY_BACKSPACE`, so the two were one key: Delete
+went back a menu page, typed a backspace into a savegame name, and could not be
+bound to anything. Home, End, Page Up, Page Down and Insert fared worse -- no
+case for them at all, so their raw keysyms (0xff50 and up) came through and the
+Controls page refused them as out of range. They have codes now in the
+engine's own scheme, 0x80 plus the PC scancode as the F keys and arrows
+already were: `KEY_DEL` 0xd3, `KEY_INS` 0xd2, `KEY_HOME` 0xc7, `KEY_END` 0xcf,
+`KEY_PGUP` 0xc9, `KEY_PGDN` 0xd1. Delete still rubs out a letter in a savegame
+name, and on the Controls page it clears a binding to -1, which `keyheld`
+treats as no key and `M_KeyName` shows as `---`.
+
 ## Playing on a desktop
 
 With truecolour the engine runs on any X display, which made a desktop build

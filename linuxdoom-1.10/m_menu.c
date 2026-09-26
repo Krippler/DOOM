@@ -1067,6 +1067,12 @@ static keyname_t keynames[] =
     {KEY_ENTER,		"ENTER"},
     {KEY_TAB,		"TAB"},
     {KEY_BACKSPACE,	"BACKSP"},
+    {KEY_DEL,		"DEL"},
+    {KEY_INS,		"INS"},
+    {KEY_HOME,		"HOME"},
+    {KEY_END,		"END"},
+    {KEY_PGUP,		"PGUP"},
+    {KEY_PGDN,		"PGDN"},
     {KEY_PAUSE,		"PAUSE"},
     {KEY_ESCAPE,	"ESC"},
     {KEY_EQUALS,	"="},
@@ -1089,8 +1095,13 @@ static keyname_t keynames[] =
 
 static char* M_KeyName (int key)
 {
-    static char	buf[10];
+    static char	buf[16];
     unsigned	i;
+
+    // Cleared with Delete on the Controls page. 0 is not a key anything
+    // sends either, so an old config holding it reads the same way.
+    if (key <= 0)
+	return "---";
 
     for (i = 0; i < sizeof(keynames)/sizeof(keynames[0]); i++)
 	if (keynames[i].key == key)
@@ -2097,6 +2108,15 @@ M_DrawThermo
 
     V_DrawPatchDirect ((x+8) + thermDot*8,y,
 		       0,W_CacheLumpName("M_THERMO",PU_CACHE));
+
+    // And the value, after it. Counting the notches was the only way to know
+    // what a volume was set to -- or, with sixteen of them, to be sure.
+    {
+	char	num[8];
+
+	snprintf (num, sizeof(num), "%d", thermDot);
+	M_WriteText (xx + 12, y + 3, num);
+    }
 }
 
 
@@ -2272,6 +2292,7 @@ int M_PadKey (int b)
     {
       case PB_A:	return KEY_ENTER;
       case PB_B:	return currentMenu->prevMenu ? KEY_BACKSPACE : KEY_ESCAPE;
+      case PB_Y:	return KEY_DEL;
       case PB_UP:	return KEY_UPARROW;
       case PB_DOWN:	return KEY_DOWNARROW;
       case PB_LEFT:	return KEY_LEFTARROW;
@@ -2427,6 +2448,7 @@ boolean M_Responder (event_t* ev)
     {
 	switch(ch)
 	{
+	  case KEY_DEL:			// what it always did here, as Backspace
 	  case KEY_BACKSPACE:
 	    if (saveCharIndex > 0)
 	    {
@@ -2481,6 +2503,28 @@ boolean M_Responder (event_t* ev)
 	return true;
     }
 	
+    // Delete clears the highlighted binding, on the Controls page and on the
+    // controller's Buttons page: a control can be left with no key, and a
+    // button with nothing to do, without binding something else to it first.
+    // (On a controller Y is Delete, in the menus.)
+    if (ch == KEY_DEL && menuactive)
+    {
+	if (currentMenu == &ControlsDef
+	    && itemOn >= 0 && itemOn < (short)NUM_BINDINGS)
+	{
+	    *bindings[itemOn].key = -1;
+	    S_StartSound (NULL, sfx_pistol);
+	    return true;
+	}
+	if (currentMenu == &PadButtonsDef
+	    && itemOn >= 0 && itemOn < (short)NUM_PADROWS)
+	{
+	    padbind[padrows[itemOn].button] = PA_NONE;
+	    S_StartSound (NULL, sfx_pistol);
+	    return true;
+	}
+    }
+
     // A second key for the menu, treated as Escape from here down so every
     // place that tests for Escape keeps working unchanged.
     //

@@ -193,9 +193,10 @@ Click into the canvas first — the browser only sends keys to a focused canvas.
 | Menu | `` ` ``, or Esc when the browser lets it through |
 
 All of these can be changed from the game: **` → Options → Setup →
-Controls**, the menu key included. Pick a line, press Return, then press the key you want. The
-choice is written to `.doomrc` in the state directory, so it survives a
-restart.
+Controls**, the menu key included. Pick a line, press Return, then press the key you want;
+**Delete** on a line clears it, leaving that control with no key. Backspace goes
+back a page, in every menu. The choice is written to `.doomrc` in the state
+directory, so it survives a restart.
 
 A game controller works too, and is set up in the same place — see below.
 
@@ -247,7 +248,8 @@ The layout out of the box:
 | Menu (Start) | the game menu, always, as Escape is |
 
 In menus the d-pad and left stick move the cursor, LB and RB change a setting,
-A chooses and B goes back. A button is set to an *action*, not a key, so
+A chooses and B goes back. Y is Delete: on **Buttons…** it sets the highlighted
+button to do nothing, and on **Controls** it clears a key. A button is set to an *action*, not a key, so
 rebinding a key under **Controls** needs nothing changing here: a button set to
 *Fire* presses whatever fire is bound to.
 
