@@ -991,12 +991,30 @@ the lump's -5 offset.
 ## Verifying
 
 ```
-make -C linuxdoom-1.10
-make -C sndserv
-Xvfb :99 -screen 0 640x400x8 &
+make -C linuxdoom-1.10 && make -C audiostream
+tools/smoke-test.sh
+```
+
+That starts the engine on Xvfb against the shareware `doom1.wad` in this
+repository and plays a little of E1M1 with a simulated controller, reading the
+picture straight out of Xvfb's framebuffer file: the level has to appear, the
+sticks have to walk and turn, RT has to fire, be heard in the mixer's stream
+and ask the pad to vibrate, Start has to open the menu, SIGINT has to save
+`.doomrc` and exit 0, the title music has to be audible (when a soundfont is
+installed), the 8-bit display path has to draw the status bar exactly as the
+truecolour one does, and a segfault has to leave a backtrace with names in it.
+About half a minute; CI runs it on every push (`.github/workflows/smoke.yml`),
+and keeps the screenshots.
+
+By hand:
+
+```
+Xvfb :99 -screen 0 640x400x24 &
 DISPLAY=:99 DOOMWADDIR=/path/to/wads HOME=/tmp linuxdoom-1.10/linux/linuxxdoom -2 -warp 1 1
 ```
 
-The display has to be 8-bit PseudoColor; see `DOCKER.md` for why. Sound needs
-a reachable PulseAudio server, the sound server on `$DOOMWADDIR/sndserver`,
-and for music a General MIDI soundfont (`-soundfont` or `DOOM_SOUNDFONT`).
+Any TrueColor display at depth 15, 16, 24 or 30 works, and so does the 8-bit
+PseudoColor one the engine was written for. Sound needs either the mixer
+(`audiostream`, as the container runs it) or a reachable PulseAudio server and
+the sound server on `$DOOMWADDIR/sndserver`; music needs a General MIDI
+soundfont (`-soundfont` or `DOOM_SOUNDFONT`).

@@ -65,12 +65,15 @@ Unraid users: the Community Applications template is
 docker build -t doom .
 ```
 
-Or without a container, if you have an 8-bit X display to point it at:
+Or without a container, on any Linux X display:
 
 ```
 make -C linuxdoom-1.10
 make -C sndserv
 ```
+
+`tools/smoke-test.sh` checks a build: it plays a little of E1M1 on Xvfb and
+says what worked. See [PORTING-NOTES.md](PORTING-NOTES.md#verifying).
 
 ## Documentation
 

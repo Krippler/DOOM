@@ -34,6 +34,15 @@ The version follows the engine this is built from, linuxdoom-1.10.
   code and never filled in. It needs a browser that can drive the pad's
   motors, and the container log says whether this one can.
 
+### Added
+- **A smoke test, run on every push.** `tools/smoke-test.sh` starts the engine
+  on Xvfb against the shareware WAD and plays a little of E1M1 with a simulated
+  controller: the level has to appear, the sticks walk and turn, a shot is
+  heard and felt, Start opens the menu, quitting saves the config, the title
+  music plays, the 8-bit display draws exactly what the truecolour one does,
+  and a crash leaves a readable backtrace. Half a minute, and CI keeps the
+  screenshots. Until now every release was checked by hand, on a phone.
+
 ### Fixed
 - **The view border and status bar could stay tinted after a damage or pickup
   flash.** A palette change recolours the screen without touching a pixel, so
