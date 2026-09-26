@@ -39,6 +39,20 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.10.75
+- The game reads the controller itself now, and it vibrates when you fire or
+  are hurt. Set it up in the game under Options - Setup - Controller: what
+  each button does, turn speed, vibration, swapping the sticks. The sticks
+  walk and turn as far as they are pushed. Button layouts saved in the browser
+  by earlier versions are not used any more; the default layout is the same.
+- Lighter on the server: the game draws in full colour itself, which halves
+  what the VNC server spends on every frame. It also fixes the view border and
+  status bar staying tinted after a damage or pickup flash.
+- Delete clears a key binding, sliders show their values, and Delete, Home,
+  End, Page Up, Page Down and Insert can be bound.
+- A Linux desktop build, for playing without Docker, is attached to each
+  release on GitHub.
+
 ### 1.10.70 - 1.10.73
 - Fixes a crash that could end the game at a level change. The music is
   rendered on a thread of its own while the game replaces the player on every
