@@ -65,6 +65,9 @@ void G_SecretExitLevel (void);
 
 void G_WorldDone (void);
 
+// A No Rest for the Living map being played: see g_game.c.
+boolean G_NerveMap (void);
+
 void G_Ticker (void);
 boolean G_Responder (event_t*	ev);
 

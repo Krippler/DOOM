@@ -6,6 +6,27 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Fixed
+- **No Rest for the Living plays as it should.** Loaded over DOOM II, its hell
+  levels, MAP04 to MAP08, got DOOM II's city skyline, because the 1997 engine
+  picks the sky by map number; they get the hell sky they were made for now.
+  The expansion also runs by its own rules as the BFG Edition and the 2024
+  release play it, all taken from its own UMAPINFO: MAP04's secret exit leads
+  to MAP09 and back to MAP05, it ends after MAP08 with its own text and the
+  cast of characters rather than running on into DOOM II's MAP10, each map has
+  its own music, par time and automap name, and MAP07 no longer opens floors
+  when the last Mancubus dies, which is DOOM II's MAP07 and not this one.
+- **The 2024 re-release's WADs lost their title screens and status bar.** Its
+  DOOM, DOOM II, TNT and Plutonia draw the status bar 576 pixels wide and the
+  title, intermission and help screens 560, and No Rest for the Living, the
+  Master Levels and Sigil bring 426-wide ones. The 1997 engine refuses
+  anything wider than its 320-pixel screen, and printed "Patch at 0,0 exceeds
+  LFB" for each of them, every frame: the title screen showed whatever was
+  left in memory, and the status bar had no background. They are centred now
+  and the middle 320 columns drawn.
+
 ## [1.10.75] — 2026-09-26
 
 ### Changed

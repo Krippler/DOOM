@@ -63,6 +63,11 @@ extern GameMission_t	gamemission;
 // Set if homebrew PWAD stuff has been added.
 extern  boolean	modifiedgame;
 
+// No Rest for the Living (nerve.wad) is loaded over DOOM II. Its nine maps
+// follow the expansion's own rules, as the BFG Edition plays them: see
+// G_NerveMap.
+extern  boolean	nervepack;
+
 
 // -------------------------------------------
 // Language.
