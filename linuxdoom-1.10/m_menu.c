@@ -67,6 +67,7 @@ rcsid[] = "$Id: m_menu.c,v 1.7 1997/02/03 22:45:10 b1 Exp $";
 #include "m_misc.h"
 #include "i_sound.h"
 #include "i_pad.h"
+#include "u_mapinfo.h"
 
 
 
@@ -323,13 +324,18 @@ enum
     ep_end
 } episodes_e;
 
-menuitem_t EpisodeMenu[]=
+// The game's own four, then any UMAPINFO adds; see M_InitEpisodes.
+menuitem_t EpisodeMenu[UM_MAXEPISODES]=
 {
     {1,"", M_Episode,'k',"KNEE-DEEP IN THE DEAD"},
     {1,"", M_Episode,'t',"THE SHORES OF HELL"},
     {1,"", M_Episode,'i',"INFERNO"},
     {1,"", M_Episode,'t',"THY FLESH CONSUMED"}
 };
+
+// where each starts
+static int	epiepisode[UM_MAXEPISODES] = { 1, 2, 3, 4 };
+static int	epimap[UM_MAXEPISODES] = { 1, 1, 1, 1 };
 
 menu_t  EpiDef =
 {
@@ -912,6 +918,8 @@ void M_DrawMainMenu(void)
 //
 // M_NewGame
 //
+int     epi;
+
 void M_DrawNewGame(void)
 {
     V_DrawPatchDirect (96,14,0,W_CacheLumpName("M_NEWG",PU_CACHE));
@@ -926,8 +934,12 @@ void M_NewGame(int choice)
 	return;
     }
 	
-    if ( gamemode == commercial )
+    // No choice to make with one episode, or with DOOM II's none.
+    if ( EpiDef.numitems <= 1 )
+    {
+	epi = 0;
 	M_SetupNextMenu(&NewDef);
+    }
     else
 	M_SetupNextMenu(&EpiDef);
 }
@@ -936,11 +948,19 @@ void M_NewGame(int choice)
 //
 //      M_Episode
 //
-int     epi;
 
 void M_DrawEpisode(void)
 {
     V_DrawPatchDirect (54,38,0,W_CacheLumpName("M_EPISOD",PU_CACHE));
+}
+
+// The chosen episode, or DOOM II's MAP01 when there is none to choose.
+static void M_StartEpisode (int skill)
+{
+    if (epi < EpiDef.numitems)
+	G_DeferedInitNew (skill, epiepisode[epi], epimap[epi]);
+    else
+	G_DeferedInitNew (skill, 1, 1);
 }
 
 void M_VerifyNightmare(int ch)
@@ -948,7 +968,7 @@ void M_VerifyNightmare(int ch)
     if (ch != 'y')
 	return;
 		
-    G_DeferedInitNew(nightmare,epi+1,1);
+    M_StartEpisode (nightmare);
     M_ClearMenus ();
 }
 
@@ -960,29 +980,22 @@ void M_ChooseSkill(int choice)
 	return;
     }
 	
-    G_DeferedInitNew(choice,epi+1,1);
+    M_StartEpisode (choice);
     M_ClearMenus ();
 }
 
 void M_Episode(int choice)
 {
     if ( (gamemode == shareware)
-	 && choice)
+	 && epiepisode[choice] > 1)
     {
 	M_StartMessage(SWSTRING,NULL,false);
 	M_SetupNextMenu(&ReadDef1);
 	return;
     }
 
-    // Yet another hack...
-    if ( (gamemode == registered)
-	 && (choice > 2))
-    {
-      fprintf( stderr,
-	       "M_Episode: 4th episode requires UltimateDOOM\n");
-      choice = 0;
-    }
-	 
+    // The original also turned a registered game's choice of a fourth
+    // episode into the first, here; M_Init leaves it out of the list.
     epi = choice;
     M_SetupNextMenu(&NewDef);
 }
@@ -2909,6 +2922,38 @@ void M_Ticker (void)
 
 
 //
+// M_InitEpisodes
+// The new game menu's episodes: the game's own -- none in DOOM II -- then
+// any UMAPINFO adds, or those alone once it has said episode = clear, which
+// the 2024 re-release's add-ons all do. SIGIL loaded over The Ultimate DOOM
+// has the one episode, then, and New Game goes straight to it.
+//
+static void M_InitEpisodes (void)
+{
+    int		n;
+    int		i;
+
+    n = gamemode == commercial || um_episodesclear ? 0 : EpiDef.numitems;
+
+    for (i = 0; i < um_numepisodes && n < UM_MAXEPISODES; i++, n++)
+    {
+	EpisodeMenu[n].status = 1;
+	EpisodeMenu[n].name[0] = 0;
+	EpisodeMenu[n].routine = M_Episode;
+	EpisodeMenu[n].alphaKey = um_episodes[i].key;
+	EpisodeMenu[n].text = um_episodes[i].name;
+	epiepisode[n] = um_episodes[i].episode;
+	epimap[n] = um_episodes[i].map;
+    }
+
+    EpiDef.numitems = n;
+    if (EpiDef.lastOn >= n)
+	EpiDef.lastOn = 0;
+    NewDef.prevMenu = n > 1 ? &EpiDef : &MainDef;
+}
+
+
+//
 // M_Init
 //
 void M_Init (void)
@@ -2972,6 +3017,8 @@ void M_Init (void)
       default:
 	break;
     }
+
+    M_InitEpisodes ();
     
 }
 

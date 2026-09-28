@@ -23,6 +23,8 @@
 #ifndef __S_SOUND__
 #define __S_SOUND__
 
+#include "doomtype.h"
+
 
 #ifdef __GNUG__
 #pragma interface
@@ -83,6 +85,10 @@ void
 S_ChangeMusic
 ( int		music_id,
   int		looping );
+
+// Start music by its lump name, as UMAPINFO gives it ("D_E5M1"), and set
+// whether looping. False, and nothing changed, when there is no such lump.
+boolean S_ChangeMusicName (const char* lump, int looping);
 
 // Stops the music fer sure.
 void S_StopMusic(void);

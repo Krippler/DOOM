@@ -27,6 +27,8 @@ docker run --rm -p 6080:6080 -v "$PWD/wads:/wads:ro" ghcr.io/krippler/doom
 `DOOM.WAD`, `DOOM2.WAD`, `TNT.WAD` and `PLUTONIA.WAD` are recognised, as are
 `DOOMU.WAD` and `DOOM2F.WAD`, case-insensitively. Mods go in the same
 directory and are loaded from the game's own **Options → Setup → Load WAD**.
+Add-ons that describe their levels with a UMAPINFO lump play by it — the 2024
+re-release's No Rest for the Living, Master Levels and SIGIL among them.
 
 ## Keeping savegames and settings
 

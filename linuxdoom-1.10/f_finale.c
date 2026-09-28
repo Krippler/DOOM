@@ -26,6 +26,7 @@ static const char
 rcsid[] = "$Id: f_finale.c,v 1.5 1997/02/03 21:26:34 b1 Exp $";
 
 #include <ctype.h>
+#include <string.h>
 
 // Functions.
 #include "i_system.h"
@@ -42,6 +43,7 @@ rcsid[] = "$Id: f_finale.c,v 1.5 1997/02/03 21:26:34 b1 Exp $";
 #include "doomstat.h"
 #include "g_game.h"
 #include "r_state.h"
+#include "u_mapinfo.h"
 
 // ?
 //#include "doomstat.h"
@@ -91,125 +93,184 @@ void	F_CastTicker (void);
 boolean F_CastResponder (event_t *ev);
 void	F_CastDrawer (void);
 
-// The end of No Rest for the Living, from the BFG Edition, which brought it.
-static char n1text[] =
-    "TROUBLE WAS BREWING AGAIN IN YOUR FAVORITE\n"
-    "VACATION SPOT... HELL. SOME CYBERDEMON\n"
-    "PUNK THOUGHT HE COULD TURN HELL INTO A\n"
-    "PERSONAL AMUSEMENT PARK, AND MAKE EARTH\nTHE TICKET BOOTH.\n\n"
-    "WELL THAT HALF-ROBOT FREAK SHOW DIDN'T\n"
-    "KNOW WHO WAS COMING TO THE FAIR. THERE'S\n"
-    "NOTHING LIKE A SHOOTING GALLERY FULL OF\n"
-    "HELLSPAWN TO GET THE BLOOD PUMPING...\n\n"
-    "NOW THE WALLS OF THE DEMON'S LABYRINTH\n"
-    "ECHO WITH THE SOUND OF HIS METALLIC LIMBS\n"
-    "HITTING THE FLOOR. HIS DEATH MOAN GURGLES\n"
-    "OUT THROUGH THE MESS YOU LEFT OF HIS FACE.\n\n"
-    "THIS RIDE IS CLOSED.";
+// What comes after the text, or in its place: UM_END_NONE, the next map;
+// UM_END_PIC, finalepic; UM_END_BUNNY; UM_END_CAST.
+static umending_t	finaleending;
+static char		finalepic[9];
+
+
+//
+// F_InterText
+// The text for the exit just taken: the one the map's UMAPINFO gives, or
+// none if it cleared it, or the game's own. DOOM II has one after MAP06,
+// MAP11, MAP20 and MAP30 and on the way into its two secret maps; DOOM one
+// at the end of each episode.
+//
+char* F_InterText (void)
+{
+    umapentry_t*	map = U_ThisMap ();
+    char*		text = NULL;
+
+    if (map)
+	text = secretexit ? map->intertextsecret : map->intertext;
+    if (text)
+	return *text ? text : NULL;
+
+    if (gamemode == commercial)
+    {
+	if (secretexit)
+	    return gamemap == 15 ? c5text : gamemap == 31 ? c6text : NULL;
+	switch (gamemap)
+	{
+	  case 6:	return c1text;
+	  case 11:	return c2text;
+	  case 20:	return c3text;
+	  case 30:	return c4text;
+	}
+	return NULL;
+    }
+
+    if (gamemap == 8)
+	switch (gameepisode)
+	{
+	  case 1:	return e1text;
+	  case 2:	return e2text;
+	  case 3:	return e3text;
+	  case 4:	return e4text;
+	}
+    return NULL;
+}
+
+
+//
+// F_Backdrop
+// What the text is written on when UMAPINFO does not say.
+//
+static char* F_Backdrop (void)
+{
+    if (gamemode == commercial)
+	switch (gamemap)
+	{
+	  case 6:	return "SLIME16";
+	  case 11:	return "RROCK14";
+	  case 20:	return "RROCK07";
+	  case 30:	return "RROCK17";
+	  case 15:	return "RROCK13";
+	  case 31:	return "RROCK19";
+	}
+    else
+	switch (gameepisode)
+	{
+	  case 2:	return "SFLR6_1";
+	  case 3:	return "MFLR8_4";
+	  case 4:	return "MFLR8_3";
+	}
+    return "FLOOR4_8";
+}
+
+
+//
+// F_SetEnding
+// The ending, made concrete: an endgame = true, or no word at all on an
+// ExM8 or a MAP30, is the game's own, which is DOOM II's cast of characters
+// and for DOOM a picture for each episode -- the bunny for the third.
+//
+static void F_SetEnding (void)
+{
+    umapentry_t*	map = U_ThisMap ();
+
+    finaleending = G_Ending ();
+
+    if (finaleending == UM_END_PIC)
+    {
+	strcpy (finalepic, map->endpic);
+	if (W_CheckNumForName (finalepic) < 0)
+	    finaleending = UM_END_DEFAULT;
+    }
+
+    if (finaleending == UM_END_DEFAULT)
+    {
+	finaleending = UM_END_PIC;
+	if (gamemode == commercial)
+	    finaleending = UM_END_CAST;
+	else if (gameepisode == 1)
+	    strcpy (finalepic, gamemode == retail ? "CREDIT" : "HELP2");
+	else if (gameepisode == 2)
+	    strcpy (finalepic, "VICTORY2");
+	else if (gameepisode == 3)
+	    finaleending = UM_END_BUNNY;
+	else if (gameepisode == 4)
+	    strcpy (finalepic, "ENDPIC");
+	else
+	    strcpy (finalepic, "CREDIT");
+    }
+
+    // What this game's data cannot show: the cast is DOOM II's monsters,
+    // the scroller is DOOM's pictures.
+    if ((finaleending == UM_END_CAST && gamemode != commercial)
+	|| (finaleending == UM_END_BUNNY && W_CheckNumForName ("PFUB1") < 0))
+    {
+	finaleending = UM_END_PIC;
+	strcpy (finalepic, "CREDIT");
+    }
+}
+
+
+//
+// F_TextDone
+// On from the text, or from where it would have been.
+//
+static void F_TextDone (void)
+{
+    switch (finaleending)
+    {
+      case UM_END_NONE:
+	gameaction = ga_worlddone;	// on to the next map
+	break;
+
+      case UM_END_CAST:
+	F_StartCast ();
+	break;
+
+      default:
+	finalecount = 0;
+	finalestage = 1;
+	wipegamestate = -1;		// force a wipe
+	if (finaleending == UM_END_BUNNY)
+	    S_StartMusic (mus_bunny);
+	break;
+    }
+}
 
 
 //
 // F_StartFinale
+// After a map with text to show, or one that ends the game.
 //
 void F_StartFinale (void)
 {
+    umapentry_t*	map = U_ThisMap ();
+
     gameaction = ga_nothing;
     gamestate = GS_FINALE;
     viewactive = false;
     automapactive = false;
 
-    // Okay - IWAD dependend stuff.
-    // This has been changed severly, and
-    //  some stuff might have changed in the process.
-    switch ( gamemode )
-    {
+    finaletext = F_InterText ();
+    finaleflat = map && map->interbackdrop[0] ? map->interbackdrop
+					      : F_Backdrop ();
 
-      // DOOM 1 - E1, E3 or E4, but each nine missions
-      case shareware:
-      case registered:
-      case retail:
-      {
-	S_ChangeMusic(mus_victor, true);
-	
-	switch (gameepisode)
-	{
-	  case 1:
-	    finaleflat = "FLOOR4_8";
-	    finaletext = e1text;
-	    break;
-	  case 2:
-	    finaleflat = "SFLR6_1";
-	    finaletext = e2text;
-	    break;
-	  case 3:
-	    finaleflat = "MFLR8_4";
-	    finaletext = e3text;
-	    break;
-	  case 4:
-	    finaleflat = "MFLR8_3";
-	    finaletext = e4text;
-	    break;
-	  default:
-	    // Ouch.
-	    break;
-	}
-	break;
-      }
-      
-      // DOOM II and missions packs with E1, M34
-      case commercial:
-      {
-	  S_ChangeMusic(mus_read_m, true);
+    if (!map || !map->intermusic[0]
+	|| !S_ChangeMusicName (map->intermusic, true))
+	S_ChangeMusic (gamemode == commercial ? mus_read_m : mus_victor, true);
 
-	  switch (G_NerveMap () ? 0 : gamemap)
-	  {
-	    case 0:			// No Rest for the Living, after MAP08
-	      finaleflat = "SLIME16";
-	      finaletext = n1text;
-	      break;
-	    case 6:
-	      finaleflat = "SLIME16";
-	      finaletext = c1text;
-	      break;
-	    case 11:
-	      finaleflat = "RROCK14";
-	      finaletext = c2text;
-	      break;
-	    case 20:
-	      finaleflat = "RROCK07";
-	      finaletext = c3text;
-	      break;
-	    case 30:
-	      finaleflat = "RROCK17";
-	      finaletext = c4text;
-	      break;
-	    case 15:
-	      finaleflat = "RROCK13";
-	      finaletext = c5text;
-	      break;
-	    case 31:
-	      finaleflat = "RROCK19";
-	      finaletext = c6text;
-	      break;
-	    default:
-	      // Ouch.
-	      break;
-	  }
-	  break;
-      }	
+    F_SetEnding ();
 
-   
-      // Indeterminate.
-      default:
-	S_ChangeMusic(mus_read_m, true);
-	finaleflat = "F_SKY1"; // Not used anywhere else.
-	finaletext = c1text;  // FIXME - other text, music?
-	break;
-    }
-    
     finalestage = 0;
     finalecount = 0;
-	
+
+    if (!finaletext)
+	F_TextDone ();
 }
 
 
@@ -230,8 +291,9 @@ void F_Ticker (void)
 {
     int		i;
     
-    // check for skipping
+    // check for skipping: DOOM II's text goes when a button is pressed
     if ( (gamemode == commercial)
+      && !finalestage
       && ( finalecount > 50) )
     {
       // go on to the next level
@@ -240,12 +302,7 @@ void F_Ticker (void)
 	  break;
 				
       if (i < MAXPLAYERS)
-      {	
-	if (gamemap == 30 || (G_NerveMap () && gamemap == 8))
-	  F_StartCast ();
-	else
-	  gameaction = ga_worlddone;
-      }
+	F_TextDone ();
     }
     
     // advance animation
@@ -260,14 +317,10 @@ void F_Ticker (void)
     if ( gamemode == commercial)
 	return;
 		
-    if (!finalestage && finalecount>strlen (finaletext)*TEXTSPEED + TEXTWAIT)
-    {
-	finalecount = 0;
-	finalestage = 1;
-	wipegamestate = -1;		// force a wipe
-	if (gameepisode == 3)
-	    S_StartMusic (mus_bunny);
-    }
+    // DOOM's, when it has had time to be read
+    if (!finalestage && finaletext
+	&& finalecount>strlen (finaletext)*TEXTSPEED + TEXTWAIT)
+	F_TextDone ();
 }
 
 
@@ -292,11 +345,24 @@ void F_TextWrite (void)
     int		cx;
     int		cy;
     
-    // erase the entire screen to a tiled background
-    src = W_CacheLumpName ( finaleflat , PU_CACHE);
+    // erase the entire screen to a tiled background: a flat, or a picture
+    // when UMAPINFO names something that is not one
+    x = W_CheckNumForName (finaleflat);
+    if (x >= 0 && (x < firstflat || x > lastflat))
+    {
+	memset (screens[0], 0, SCREENWIDTH*SCREENHEIGHT);
+	V_DrawPatch (0, 0, 0, W_CacheLumpNum (x, PU_CACHE));
+	y = SCREENHEIGHT;
+    }
+    else
+    {
+	src = W_CacheLumpNum (x >= 0 ? x : W_GetNumForName ("FLOOR4_8"),
+			      PU_CACHE);
+	y = 0;
+    }
     dest = screens[0];
 	
-    for (y=0 ; y<SCREENHEIGHT ; y++)
+    for ( ; y<SCREENHEIGHT ; y++)
     {
 	for (x=0 ; x<SCREENWIDTH/64 ; x++)
 	{
@@ -729,30 +795,14 @@ void F_Drawer (void)
 
     if (!finalestage)
 	F_TextWrite ();
-    else
+    else if (finaleending == UM_END_BUNNY)
+	F_BunnyScroll ();
+    else if (W_CheckNumForName (finalepic) >= 0)
     {
-	switch (gameepisode)
-	{
-	  case 1:
-	    if ( gamemode == retail )
-	      V_DrawPatch (0,0,0,
-			 W_CacheLumpName("CREDIT",PU_CACHE));
-	    else
-	      V_DrawPatch (0,0,0,
-			 W_CacheLumpName("HELP2",PU_CACHE));
-	    break;
-	  case 2:
-	    V_DrawPatch(0,0,0,
-			W_CacheLumpName("VICTORY2",PU_CACHE));
-	    break;
-	  case 3:
-	    F_BunnyScroll ();
-	    break;
-	  case 4:
-	    V_DrawPatch (0,0,0,
-			 W_CacheLumpName("ENDPIC",PU_CACHE));
-	    break;
-	}
+	// on black: an add-on's picture can have gaps, where the text
+	// screen went on showing through
+	memset (screens[0], 0, SCREENWIDTH*SCREENHEIGHT);
+	V_DrawPatch (0,0,0, W_CacheLumpName (finalepic,PU_CACHE));
     }
 			
 }

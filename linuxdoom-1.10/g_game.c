@@ -69,6 +69,7 @@ rcsid[] = "$Id: g_game.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 
 
 #include "i_pad.h"
+#include "u_mapinfo.h"
 #include "g_game.h"
 
 
@@ -474,6 +475,67 @@ void G_BuildTiccmd (ticcmd_t* cmd)
  
 
 //
+// G_MapExists
+// Whether the game data has a map, by its lump.
+//
+boolean G_MapExists (int episode, int map)
+{
+    char	name[9];
+
+    U_MapName (name, episode, map);
+    return W_CheckNumForName (name) >= 0;
+}
+
+
+//
+// G_Ending
+// How the game ends after the map being played, if it does: as its UMAPINFO
+// says, else after an ExM8 in DOOM and MAP30 in DOOM II.
+//
+umending_t G_Ending (void)
+{
+    umapentry_t*	map = U_ThisMap ();
+
+    if (map && map->ending != UM_END_UNSET)
+	return map->ending;
+    if (gamemode == commercial)
+	return gamemap == 30 ? UM_END_DEFAULT : UM_END_NONE;
+    return gamemap == 8 ? UM_END_DEFAULT : UM_END_NONE;
+}
+
+
+//
+// G_SetSky
+// The sky of the map about to be played: the one its UMAPINFO names, or the
+// game's own -- by episode in DOOM, by map number in DOOM II.
+//
+static void G_SetSky (void)
+{
+    umapentry_t*	map = U_ThisMap ();
+    char		name[9];
+
+    if (map && map->skytexture[0]
+	&& R_CheckTextureNumForName (map->skytexture) >= 0)
+    {
+	skytexture = R_TextureNumForName (map->skytexture);
+	return;
+    }
+
+    if (gamemode == commercial)
+	strcpy (name, gamemap < 12 ? "SKY1" : gamemap < 21 ? "SKY2" : "SKY3");
+    else
+    {
+	// SKY1 to SKY4 for the four episodes id made; one past them takes
+	// the sky of its number when the game data has one.
+	sprintf (name, "SKY%d", gameepisode);
+	if (R_CheckTextureNumForName (name) < 0)
+	    strcpy (name, "SKY1");
+    }
+    skytexture = R_TextureNumForName (name);
+}
+
+
+//
 // G_DoLoadLevel 
 //
 extern  gamestate_t     wipegamestate; 
@@ -489,25 +551,9 @@ void G_DoLoadLevel (void)
     //  setting one.
     skyflatnum = R_FlatNumForName ( SKYFLATNAME );
 
-    // DOOM determines the sky texture to be used
-    // depending on the current episode, and the game version.
-    if ( (gamemode == commercial)
-	 || ( gamemode == pack_tnt )
-	 || ( gamemode == pack_plut ) )
-    {
-	skytexture = R_TextureNumForName ("SKY3");
-	if (gamemap < 12)
-	    skytexture = R_TextureNumForName ("SKY1");
-	else
-	    if (gamemap < 21)
-		skytexture = R_TextureNumForName ("SKY2");
-
-	// No Rest for the Living's MAP04 to MAP08 are in hell, and were made
-	// for DOOM II's hell sky. Choosing by map number alone gave them the
-	// city skyline of MAP01-11 instead.
-	if (G_NerveMap () && gamemap >= 4 && gamemap <= 8)
-	    skytexture = R_TextureNumForName ("SKY3");
-    }
+    // Here for every game, not only DOOM II: a UMAPINFO exit can lead into
+    // another episode, and so under another sky.
+    G_SetSky ();
 
     levelstarttic = gametic;        // for time calculation
     
@@ -1035,27 +1081,6 @@ int pars[4][10] =
 }; 
 
 // DOOM II Par Times
-//
-// G_NerveMap
-//
-// Whether the map being played is one of No Rest for the Living's: nerve.wad
-// over DOOM II, MAP01 to MAP09. It is nine maps, not thirty-two, and the BFG
-// Edition that brought it plays them by rules of their own -- a hell sky from
-// MAP04 to MAP08, a secret exit from MAP04 to MAP09 and back to MAP05, its own
-// par times and level names, and an ending after MAP08. Without them the
-// expansion ran on from MAP08 into its secret map and then DOOM II's MAP10.
-// The rules and figures are the BFG Edition's, as Crispy Doom has them.
-//
-boolean G_NerveMap (void)
-{
-    return nervepack && gamemode == commercial && gamemap <= 9;
-}
-
-static const int npars[9] =
-{
-    75,105,120,105,210,105,165,105,135
-};
-
 int cpars[32] =
 {
     30,90,120,120,90,150,120,120,270,90,	//  1-10
@@ -1080,9 +1105,13 @@ void G_ExitLevel (void)
 // Here's for the german edition.
 void G_SecretExitLevel (void) 
 { 
+    umapentry_t*	map = U_ThisMap ();
+
     // IF NO WOLF3D LEVELS, NO SECRET EXIT!
+    // Unless UMAPINFO gives the secret exit somewhere else to go.
     if ( (gamemode == commercial)
-      && (W_CheckNumForName("map31")<0))
+      && (W_CheckNumForName("map31")<0)
+      && !(map && map->secretmap))
 	secretexit = false;
     else
 	secretexit = true; 
@@ -1092,6 +1121,7 @@ void G_SecretExitLevel (void)
 void G_DoCompleted (void) 
 { 
     int             i; 
+    umapentry_t*    map = U_ThisMap ();
 	 
     gameaction = ga_nothing; 
  
@@ -1101,51 +1131,50 @@ void G_DoCompleted (void)
 	 
     if (automapactive) 
 	AM_Stop (); 
-	
-    if ( gamemode != commercial)
-	switch(gamemap)
-	{
-	  case 8:
-	    gameaction = ga_victory;
-	    return;
-	  case 9: 
-	    for (i=0 ; i<MAXPLAYERS ; i++) 
-		players[i].didsecret = true; 
-	    break;
-	}
-		
-//#if 0  Hmmm - why?
-    if ( (gamemap == 8)
-	 && (gamemode != commercial) ) 
-    {
-	// victory 
-	gameaction = ga_victory; 
-	return; 
-    } 
-	 
+
+    // An ExM9 is its episode's secret level, found. The original tested
+    // this, and the ExM8 below, twice over; once is enough.
     if ( (gamemap == 9)
 	 && (gamemode != commercial) ) 
     {
-	// exit secret level 
 	for (i=0 ; i<MAXPLAYERS ; i++) 
 	    players[i].didsecret = true; 
     } 
-//#endif
-    
+
+    // The end of the game. DOOM goes from an ExM8 straight to its ending,
+    // with no tally; a map whose UMAPINFO ends the game has the tally
+    // first, unless it says nointermission, as DOOM II always had.
+    if (G_Ending () != UM_END_NONE
+	&& ((map && map->ending != UM_END_UNSET)
+	    ? map->nointermission : gamemode != commercial))
+    {
+	gameaction = ga_victory; 
+	return; 
+    } 
+
+    // A map UMAPINFO describes has a secret exit only if its entry says
+    // where it goes; otherwise it leads where the regular exit does. So
+    // the Master Levels' MAP15 goes on to their MAP16, not to DOOM II's
+    // MAP31.
+    if (map && secretexit && !map->secretmap)
+	secretexit = false;
 	 
     wminfo.didsecret = players[consoleplayer].didsecret; 
     wminfo.epsd = gameepisode -1; 
     wminfo.last = gamemap -1;
+    wminfo.nextep = wminfo.epsd;
     
     // wminfo.next is 0 biased, unlike gamemap
-    if ( G_NerveMap () )
+    if (map && secretexit)
     {
-	if (secretexit && gamemap == 4)
-	    wminfo.next = 8;		// MAP09, the secret level
-	else if (gamemap == 9)
-	    wminfo.next = 4;		// and back to MAP05
-	else
-	    wminfo.next = gamemap;
+	// UMAPINFO's exits, which can cross into another episode
+	wminfo.nextep = map->secretepisode - 1;
+	wminfo.next = map->secretmap - 1;
+    }
+    else if (map && map->nextmap)
+    {
+	wminfo.nextep = map->nextepisode - 1;
+	wminfo.next = map->nextmap - 1;
     }
     else if ( gamemode == commercial)
     {
@@ -1184,6 +1213,11 @@ void G_DoCompleted (void)
 	      case 4:
 		wminfo.next = 2;
 		break;
+	      default:
+		// An episode UMAPINFO added that did not say: its first map
+		// rather than an ExM10 there is none of.
+		wminfo.next = 0;
+		break;
 	    }                
 	} 
 	else 
@@ -1194,12 +1228,16 @@ void G_DoCompleted (void)
     wminfo.maxitems = totalitems; 
     wminfo.maxsecret = totalsecret; 
     wminfo.maxfrags = 0; 
-    if ( G_NerveMap () )
-	wminfo.partime = 35*npars[gamemap-1];
+    // None, and none shown, for a map past the tables' ends -- E4, which
+    // the original read from past the end of pars[], SIGIL's E5, a MAP33 --
+    // unless its UMAPINFO has one.
+    if ( map && map->partime > 0 )
+	wminfo.partime = 35*map->partime;
     else if ( gamemode == commercial )
-	wminfo.partime = 35*cpars[gamemap-1]; 
+	wminfo.partime = gamemap <= 32 ? 35*cpars[gamemap-1] : 0; 
     else
-	wminfo.partime = 35*pars[gameepisode][gamemap]; 
+	wminfo.partime = gameepisode <= 3 && gamemap <= 9
+	    ? 35*pars[gameepisode][gamemap] : 0; 
     wminfo.pnum = consoleplayer; 
  
     for (i=0 ; i<MAXPLAYERS ; i++) 
@@ -1234,34 +1272,15 @@ void G_WorldDone (void)
     if (secretexit) 
 	players[consoleplayer].didsecret = true; 
 
-    if ( G_NerveMap () )
-    {
-	// The end of the expansion: its own text, then the cast of
-	// characters, as after MAP30.
-	if (gamemap == 8)
-	    F_StartFinale ();
-    }
-    else if ( gamemode == commercial )
-    {
-	switch (gamemap)
-	{
-	  case 15:
-	  case 31:
-	    if (!secretexit)
-		break;
-	  case 6:
-	  case 11:
-	  case 20:
-	  case 30:
-	    F_StartFinale ();
-	    break;
-	}
-    }
+    // Text between maps, or the end of the game.
+    if (F_InterText () || G_Ending () != UM_END_NONE)
+	F_StartFinale ();
 } 
  
 void G_DoWorldDone (void) 
 {        
     gamestate = GS_LEVEL; 
+    gameepisode = wminfo.nextep+1;
     gamemap = wminfo.next+1; 
     G_DoLoadLevel (); 
     gameaction = ga_nothing; 
@@ -1470,36 +1489,38 @@ G_InitNew
 	skill = sk_nightmare;
 
 
-    // This was quite messy with SPECIAL and commented parts.
-    // Supposedly hacks to make the latest edition work.
-    // It might not work properly.
     if (episode < 1)
       episode = 1; 
-
-    if ( gamemode == retail )
-    {
-      if (episode > 4)
-	episode = 4;
-    }
-    else if ( gamemode == shareware )
-    {
-      if (episode > 1) 
-	   episode = 1;	// only start episode 1 on shareware
-    }  
-    else
-    {
-      if (episode > 3)
-	episode = 3;
-    }
-    
-
-  
     if (map < 1) 
 	map = 1;
+    if (gamemode == commercial)
+      episode = 1;		// DOOM II has none
+
+    // A map the game data has is played, whatever its number: add-ons go
+    // past the original limits -- SIGIL is episode 5, the Master Levels
+    // run to MAP21. Anything else is brought inside them, as before.
+    if (!G_MapExists (episode, map))
+    {
+	if ( gamemode == retail )
+	{
+	    if (episode > 4)
+		episode = 4;
+	}
+	else if ( gamemode == shareware )
+	{
+	    if (episode > 1) 
+		episode = 1;	// only start episode 1 on shareware
+	}  
+	else if ( gamemode != commercial )
+	{
+	    if (episode > 3)
+		episode = 3;
+	}
     
-    if ( (map > 9)
-	 && ( gamemode != commercial) )
-      map = 9; 
+	if ( (map > 9)
+	     && ( gamemode != commercial) )
+	    map = 9; 
+    }
 		 
     M_ClearRandom (); 
 	 
@@ -1541,35 +1562,7 @@ G_InitNew
  
     viewactive = true;
     
-    // set the sky map for the episode
-    if ( gamemode == commercial)
-    {
-	skytexture = R_TextureNumForName ("SKY3");
-	if (gamemap < 12)
-	    skytexture = R_TextureNumForName ("SKY1");
-	else
-	    if (gamemap < 21)
-		skytexture = R_TextureNumForName ("SKY2");
-	if (G_NerveMap () && gamemap >= 4 && gamemap <= 8)
-	    skytexture = R_TextureNumForName ("SKY3");
-    }
-    else
-	switch (episode) 
-	{ 
-	  case 1: 
-	    skytexture = R_TextureNumForName ("SKY1"); 
-	    break; 
-	  case 2: 
-	    skytexture = R_TextureNumForName ("SKY2"); 
-	    break; 
-	  case 3: 
-	    skytexture = R_TextureNumForName ("SKY3"); 
-	    break; 
-	  case 4:	// Special Edition sky
-	    skytexture = R_TextureNumForName ("SKY4");
-	    break;
-	} 
- 
+    // G_DoLoadLevel sets the sky.
     G_DoLoadLevel (); 
 } 
  

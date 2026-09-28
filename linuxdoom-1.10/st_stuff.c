@@ -683,7 +683,7 @@ ST_Responder (event_t* ev)
       
       if (gamemode == commercial)
       {
-	epsd = 0;
+	epsd = 1;	// was 0, which the check below then refused
 	map = (buf[0] - '0')*10 + buf[1] - '0';
       }
       else
@@ -699,20 +699,24 @@ ST_Responder (event_t* ev)
       if (map < 1)
 	return false;
       
+      // Any map the game data has, SIGIL's E5 among them; the original
+      // limits otherwise.
+      if (G_MapExists (epsd, map))
+	;
       // Ohmygod - this is not going to work.
-      if ((gamemode == retail)
+      else if ((gamemode == retail)
 	  && ((epsd > 4) || (map > 9)))
 	return false;
 
-      if ((gamemode == registered)
+      else if ((gamemode == registered)
 	  && ((epsd > 3) || (map > 9)))
 	return false;
 
-      if ((gamemode == shareware)
+      else if ((gamemode == shareware)
 	  && ((epsd > 1) || (map > 9)))
 	return false;
 
-      if ((gamemode == commercial)
+      else if ((gamemode == commercial)
 	&& (( epsd > 1) || (map > 34)))
 	return false;
 

@@ -37,6 +37,7 @@ rcsid[] = "$Id: p_enemy.c,v 1.5 1997/02/03 22:45:11 b1 Exp $";
 #include "s_sound.h"
 
 #include "g_game.h"
+#include "u_mapinfo.h"
 
 // State.
 #include "doomstat.h"
@@ -1602,6 +1603,83 @@ void A_Explode (mobj_t* thingy)
 
 
 //
+// P_BossAction
+// The boss deaths a map's UMAPINFO gives in place of the game's: when the
+// last of a kind of monster dies, a line special goes off, as if the player
+// had crossed or pressed a line carrying it -- the Master Levels' MAP19 and
+// MAP20 lower floors so. False when the map gives none and the game's own
+// stand; true when it does, even if none is for this monster.
+//
+static boolean P_BossAction (mobj_t* mo)
+{
+    umapentry_t*	map = U_ThisMap ();
+    thinker_t*		th;
+    mobj_t*		mo2;
+    int			i;
+
+    if (!map || !map->bossactions_set)
+	return false;
+
+    for (i=0 ; i<map->numbossactions ; i++)
+	if (map->bossactions[i].type == mo->type)
+	    break;
+    if (i == map->numbossactions)
+	return true;
+
+    // a player alive to do it for, and the last of them dead, as below
+    for (i=0 ; i<MAXPLAYERS ; i++)
+	if (playeringame[i] && players[i].health > 0 && players[i].mo)
+	    break;
+    if (i==MAXPLAYERS)
+	return true;
+
+    for (th = thinkercap.next ; th != &thinkercap ; th=th->next)
+    {
+	if (th->function.acp1 != (actionf_p1)P_MobjThinker)
+	    continue;
+	mo2 = (mobj_t *)th;
+	if (mo2 != mo && mo2->type == mo->type && mo2->health > 0)
+	    return true;
+    }
+
+    {
+	mobj_t*	activator = players[i].mo;
+
+	for (i=0 ; i<map->numbossactions ; i++)
+	    if (map->bossactions[i].type == mo->type)
+		P_ActivateLineSpecial (map->bossactions[i].special,
+				       map->bossactions[i].tag, activator);
+    }
+    return true;
+}
+
+
+//
+// P_BossActionOnKill
+// UMAPINFO can give a boss action to any monster, where the game has one
+// only for those whose death frames end in A_BossDeath. The others' happen
+// here, as they die.
+//
+void A_BossDeath (mobj_t* mo);
+
+void P_BossActionOnKill (mobj_t* target)
+{
+    statenum_t	s = mobjinfo[target->type].deathstate;
+    int		n;
+
+    for (n = 0; s != S_NULL && n < 64; n++)
+    {
+	if (states[s].action.acp1 == (actionf_p1)A_BossDeath)
+	    return;			// A_BossDeath will see to it
+	if (states[s].tics == -1)
+	    break;
+	s = states[s].nextstate;
+    }
+    P_BossAction (target);
+}
+
+
+//
 // A_BossDeath
 // Possibly trigger special effects
 // if on first boss level
@@ -1612,12 +1690,13 @@ void A_BossDeath (mobj_t* mo)
     mobj_t*	mo2;
     line_t	junk;
     int		i;
+
+    if (P_BossAction (mo))
+	return;
 		
     if ( gamemode == commercial)
     {
-	// No Rest for the Living's MAP07 is not DOOM II's Dead Simple, and
-	// the floors that opened when the last Mancubus died are not there.
-	if (gamemap != 7 || G_NerveMap ())
+	if (gamemap != 7)
 	    return;
 		
 	if ((mo->type != MT_FATSO)

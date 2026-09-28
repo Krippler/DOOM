@@ -51,14 +51,20 @@ planefunction_t		ceilingfunc;
 //
 
 // Here comes the obnoxious "visplane".
-#define MAXVISPLANES	128
+//
+// This and the other fixed tables of the renderer and the play code were
+// sized in 1993 for id's own maps, and the add-ons of the 2024 re-release
+// go past them -- SIGIL's E5M6 wants 132 visplanes where there were 128, and
+// the game stopped. Raised eight times over; all they cost is memory, a
+// megabyte or so in all. Nothing about how the game plays depends on them.
+#define MAXVISPLANES	1024
 visplane_t		visplanes[MAXVISPLANES];
 visplane_t*		lastvisplane;
 visplane_t*		floorplane;
 visplane_t*		ceilingplane;
 
 // ?
-#define MAXOPENINGS	SCREENWIDTH*64
+#define MAXOPENINGS	SCREENWIDTH*512
 short			openings[MAXOPENINGS];
 short*			lastopening;
 

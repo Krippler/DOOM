@@ -42,6 +42,9 @@ void F_Drawer (void);
 
 void F_StartFinale (void);
 
+// The text for the exit just taken from the map being played, or NULL.
+char* F_InterText (void);
+
 
 
 

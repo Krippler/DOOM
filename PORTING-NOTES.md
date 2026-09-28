@@ -812,18 +812,82 @@ it -- are the 1994 data with additions the 1997 engine never expected:
   wide versions were extended from.
 - **UMAPINFO**, in No Rest for the Living, TNT, Plutonia, the Master Levels
   and Sigil: each map's name, sky, music, par time, next and secret maps,
-  and any closing text. The 1997 engine reads none of it. For No Rest for the
-  Living, which was built for the BFG Edition's hardcoded rules before
-  UMAPINFO existed, those rules are now in the engine (`G_NerveMap`): SKY3
-  from MAP04 to MAP08, the secret exit from MAP04 to MAP09 and back to MAP05,
-  the ending after MAP08 on SLIME16 followed by the cast, its par times,
-  names and music, and no DOOM II MAP07 boss special. Every value matches the
-  expansion's own UMAPINFO, and Crispy Doom's.
+  and any closing text. The 1997 engine read none of it; see the next
+  section.
 
 Found from a report of the wrong sky in No Rest for the Living, and checked
 against the actual re-release WADs: `textures[skytexture]` read out of the
 running engine is SKY1 on MAP04, 05 and 08 before and SKY3 after, and the
 title screen goes from 249 refused pictures in seven seconds to none.
+
+## UMAPINFO
+
+`u_mapinfo.c` reads every lump called UMAPINFO, in load order, to revision
+2.2 of the specification (github.com/kraflab/umapinfo); a later entry for a
+map replaces an earlier one whole. Keys it does not know -- the re-release's
+own `kex_` ones -- are read past. Anything that is not UMAPINFO stops the
+reading of that lump with a message naming the line, and what was read
+before it stands. The rest of the engine asks `U_ThisMap ()` or
+`U_FindMap (episode, map)` and falls back to what it always did when there is
+no entry, or the entry does not say:
+
+| Key | Where |
+|---|---|
+| `levelname`, `label` | `HU_Title` (automap); `WI_drawName` when there is no `levelpic` |
+| `levelpic`, `exitpic`, `enterpic` | `WI_LevelPic`, `WI_loadData`, `WI_initShowNextLoc` |
+| `skytexture` | `G_SetSky`, now called for every game from `G_DoLoadLevel`, since an exit can cross episodes |
+| `music`, `intermusic` | `S_ChangeMusicName`: one of the game's own tracks when the name is one, so a track shared by two maps plays on, else a slot of its own |
+| `next`, `nextsecret` | `G_DoCompleted`, into `wminfo.next` and the new `wminfo.nextep`; `G_DoWorldDone` changes episode |
+| `partime` | `G_DoCompleted`; par is drawn when there is one, not by episode number |
+| `endgame`, `endpic`, `endbunny`, `endcast`, `nointermission` | `G_Ending`, `F_SetEnding` |
+| `intertext`, `intertextsecret`, `interbackdrop` | `F_InterText`, `F_StartFinale`, `F_TextWrite` (a picture when the name is not a flat) |
+| `episode` | `M_InitEpisodes` |
+| `bossaction` | `P_BossAction`, from `A_BossDeath` and, for monsters whose deaths do not call it, `P_KillMobj` |
+
+Things the 1997 engine assumed that UMAPINFO breaks, and what replaced them:
+
+- **Episodes past four.** `G_InitNew` clamped the episode to 4 (3, 1), and
+  `-warp 5 1` became E4M1. A map the game data has is now played whatever
+  its number (`G_MapExists`); the clamps apply otherwise. Music, par times,
+  level names and intermission backgrounds were all arrays indexed by
+  episode and map, read past their ends for E5 -- and for E4, whose par time
+  came from beyond `pars[]` and was only not shown. Each is bounded now.
+- **The intermission loaded every level-name picture** of the episode, or all
+  32 of DOOM II's, and stopped the game when one was missing. It loads the two
+  it shows, and writes a name out in the small font when there is no picture.
+- **The finale** decided its text, backdrop and ending by `gamemode` and
+  `gamemap` in three places. `F_InterText`, `F_Backdrop` and `F_SetEnding`
+  decide once; the text screen then leads to the next map, a picture, the
+  bunny or the cast. DOOM II's text still waits for a button and DOOM's
+  still waits for the reading time.
+- **A secret exit** from a map UMAPINFO describes leads where its entry says,
+  or where the regular exit does, as the specification asks: the Master
+  Levels' MAP15 goes to their MAP16, not to DOOM II's Wolfenstein level.
+- **Boss actions** fire a line special with no line to fire it from:
+  `P_ActivateLineSpecial` puts it on a copy of line 0, crossed and used by a
+  living player, with line 0's front side bare meanwhile so that a switch
+  special finds no switch to throw there. Doors that act on the line's own
+  back sector, locked doors and teleporters are refused when the lump is
+  read, as the specification allows.
+- **No Rest for the Living** from the BFG Edition has no UMAPINFO. Its rules,
+  as the 2024 release's lump states them, are a string in `u_mapinfo.c`
+  (`nerveinfo`), read first when `nerve.wad` is loaded over DOOM II; a real
+  lump read after it replaces it. This replaces the `G_NerveMap` special
+  cases an earlier change had put in five files.
+
+`tools/umapinfo-test.c` runs the reader on lumps written for the purpose, in
+CI; everything else was checked against the re-release's own WADs with gdb
+calling `G_ExitLevel` and `G_SecretExitLevel`: every exit named above, the
+SIGIL and Master Levels endings, the Master Levels' MAP19 floor lowering when
+its last Mancubus was killed, and the unchanged rules of DOOM II and The
+Ultimate DOOM without any UMAPINFO.
+
+SIGIL's E5M6 then stopped with "R_DrawPlanes: visplane overflow (132)" at
+the start, against 128 visplanes. The renderer's and the play code's fixed
+tables were raised eightfold: `MAXVISPLANES`, `MAXOPENINGS`, `MAXDRAWSEGS`,
+`MAXVISSPRITES`, `MAXPLATS`, `MAXCEILINGS`, `MAXBUTTONS`, `MAXLINEANIMS`.
+Only memory depends on them. The scrolling-wall list, which the original
+filled with no check at all, stops at its end now.
 
 ## Delete was Backspace
 

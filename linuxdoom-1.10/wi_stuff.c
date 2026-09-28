@@ -24,7 +24,9 @@
 static const char
 rcsid[] = "$Id: wi_stuff.c,v 1.7 1997/02/03 22:45:13 b1 Exp $";
 
+#include <ctype.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "z_zone.h"
 
@@ -36,6 +38,8 @@ rcsid[] = "$Id: wi_stuff.c,v 1.7 1997/02/03 22:45:13 b1 Exp $";
 #include "w_wad.h"
 
 #include "g_game.h"
+#include "hu_stuff.h"
+#include "u_mapinfo.h"
 
 #include "r_local.h"
 #include "s_sound.h"
@@ -330,16 +334,11 @@ static int		cnt_time;
 static int		cnt_par;
 static int		cnt_pause;
 
-// # of commercial levels
-static int		NUMCMAPS; 
-
 
 //
 //	GRAPHICS
 //
 
-// background (map of levels).
-static patch_t*		bg;
 
 // You Are Here graphic
 static patch_t*		yah[2]; 
@@ -393,7 +392,20 @@ static patch_t*		p[MAXPLAYERS];
 static patch_t*		bp[MAXPLAYERS];
 
  // Name graphics of each level (centered)
-static patch_t**	lnames;
+// the names of the level left and the level entered: a picture, or NULL
+// for one written out
+static patch_t*		lastpic;
+static patch_t*		nextpic;
+
+// the backgrounds UMAPINFO gives, or "" for the game's own
+static char		exitpic[9];
+static char		enterpic[9];
+
+// the background is UMAPINFO's, and none of the episode maps' animations
+// and splats belong on it
+static boolean		custombg;
+
+extern patch_t*		hu_font[HU_FONTSIZE];
 
 //
 // CODE
@@ -417,18 +429,102 @@ boolean WI_Responder(event_t* ev)
 }
 
 
+//
+// WI_LevelPic
+// The picture of a level's name: the one its UMAPINFO gives, else the
+// game's own when there is one, and when UMAPINFO has not given the level
+// a name those would not match. NULL has it written out.
+//
+static patch_t* WI_LevelPic (int episode, int map)
+{
+    umapentry_t*	m = U_FindMap (episode, map);
+    char		name[32];
+    int			lump;
+
+    if (m && m->levelpic[0] && (lump = W_CheckNumForName (m->levelpic)) >= 0)
+	return W_CacheLumpNum (lump, PU_STATIC);
+    if (m && m->levelname)
+	return NULL;
+
+    if (gamemode == commercial)
+	sprintf (name, "CWILV%2.2d", map-1);
+    else
+	sprintf (name, "WILV%d%d", episode-1, map-1);
+    lump = W_CheckNumForName (name);
+    return lump >= 0 ? W_CacheLumpNum (lump, PU_STATIC) : NULL;
+}
+
+// Text in the small font, centred; returns its height.
+static int WI_drawText (int y, const char* s)
+{
+    const char*	p;
+    int		c;
+    int		w = 0;
+    int		x;
+
+    for (p = s; *p; p++)
+    {
+	c = toupper ((unsigned char)*p) - HU_FONTSTART;
+	w += (c < 0 || c >= HU_FONTSIZE) ? 4 : SHORT(hu_font[c]->width);
+    }
+
+    for (x = (SCREENWIDTH - w)/2, p = s; *p; p++)
+    {
+	c = toupper ((unsigned char)*p) - HU_FONTSTART;
+	if (c < 0 || c >= HU_FONTSIZE)
+	{
+	    x += 4;
+	    continue;
+	}
+	if (x >= 0 && x + SHORT(hu_font[c]->width) <= SCREENWIDTH)
+	    V_DrawPatch (x, y, FB, hu_font[c]);
+	x += SHORT(hu_font[c]->width);
+    }
+    return SHORT(hu_font[0]->height);
+}
+
+//
+// WI_drawName
+// A level's name at y: its picture, or when it has none, its UMAPINFO
+// name -- or the map's own, E5M1 -- written out, with its author under it
+// when UMAPINFO gives one. Returns the height it took.
+//
+static int WI_drawName (int episode, int map, patch_t* pic, int y)
+{
+    umapentry_t*	m;
+    char		name[80];
+    int			h;
+
+    if (pic)
+    {
+	V_DrawPatch ((SCREENWIDTH - SHORT(pic->width))/2, y, FB, pic);
+	return SHORT(pic->height);
+    }
+
+    m = U_FindMap (episode, map);
+    if (m && m->levelname)
+	snprintf (name, sizeof(name), "%s", m->levelname);
+    else
+	U_MapName (name, episode, map);
+    h = WI_drawText (y, name);
+
+    if (m && m->author)
+    {
+	snprintf (name, sizeof(name), "by %s", m->author);
+	h += 2 + WI_drawText (y + h + 2, name);
+    }
+    return h;
+}
+
 // Draws "<Levelname> Finished!"
 void WI_drawLF(void)
 {
     int y = WI_TITLEY;
 
     // draw <LevelName> 
-    V_DrawPatch((SCREENWIDTH - SHORT(lnames[wbs->last]->width))/2,
-		y, FB, lnames[wbs->last]);
+    y += (5*WI_drawName (wbs->epsd+1, wbs->last+1, lastpic, y))/4;
 
     // draw "Finished!"
-    y += (5*SHORT(lnames[wbs->last]->height))/4;
-    
     V_DrawPatch((SCREENWIDTH - SHORT(finished->width))/2,
 		y, FB, finished);
 }
@@ -444,12 +540,47 @@ void WI_drawEL(void)
     V_DrawPatch((SCREENWIDTH - SHORT(entering->width))/2,
 		y, FB, entering);
 
-    // draw level
-    y += (5*SHORT(lnames[wbs->next]->height))/4;
+    // draw level; spaced by its own height, as the original did
+    y += (5*SHORT(nextpic ? nextpic->height : entering->height))/4;
 
-    V_DrawPatch((SCREENWIDTH - SHORT(lnames[wbs->next]->width))/2,
-		y, FB, lnames[wbs->next]);
+    WI_drawName (wbs->nextep+1, wbs->next+1, nextpic, y);
+}
 
+//
+// WI_background
+// Into screens[1]: UMAPINFO's picture, or the episode's map in DOOM's first
+// three episodes, or INTERPIC.
+//
+static void WI_background (char* pic)
+{
+    char	name[24];
+
+    custombg = pic[0] != 0;
+    if (custombg)
+	strcpy (name, pic);
+    else if (gamemode == commercial || wbs->epsd > 2)
+	strcpy (name, "INTERPIC");
+    else
+	sprintf (name, "WIMAP%d", wbs->epsd);
+
+    memset (screens[1], 0, SCREENWIDTH*SCREENHEIGHT);
+    V_DrawPatch (0, 0, 1, W_CacheLumpName (name, PU_CACHE));
+}
+
+//
+// WI_afterStats
+// On from the tally: to where the next level is on the episode's map, in
+// DOOM, unless the game ends here. A level that ends the game has no next.
+//
+static void WI_afterStats (void)
+{
+    void WI_initNoState(void);
+    void WI_initShowNextLoc(void);
+
+    if (gamemode == commercial || G_Ending () != UM_END_NONE)
+	WI_initNoState();
+    else
+	WI_initShowNextLoc();
 }
 
 void
@@ -508,7 +639,7 @@ void WI_initAnimatedBack(void)
     if (gamemode == commercial)
 	return;
 
-    if (wbs->epsd > 2)
+    if (wbs->epsd > 2 || custombg)
 	return;
 
     for (i=0;i<NUMANIMS[wbs->epsd];i++)
@@ -537,7 +668,7 @@ void WI_updateAnimatedBack(void)
     if (gamemode == commercial)
 	return;
 
-    if (wbs->epsd > 2)
+    if (wbs->epsd > 2 || custombg)
 	return;
 
     for (i=0;i<NUMANIMS[wbs->epsd];i++)
@@ -588,7 +719,7 @@ void WI_drawAnimatedBack(void)
     if (commercial)
 	return;
 
-    if (wbs->epsd > 2)
+    if (wbs->epsd > 2 || custombg)
 	return;
 
     for (i=0 ; i<NUMANIMS[wbs->epsd] ; i++)
@@ -755,6 +886,9 @@ void WI_initShowNextLoc(void)
     acceleratestage = 0;
     cnt = SHOWNEXTLOCDELAY * TICRATE;
 
+    if (strcmp (enterpic, exitpic))
+	WI_background (enterpic);
+
     WI_initAnimatedBack();
 }
 
@@ -779,9 +913,15 @@ void WI_drawShowNextLoc(void)
     // draw animated background
     WI_drawAnimatedBack(); 
 
+    // A game that ends here has no next level to show.
+    if (G_Ending () != UM_END_NONE)
+	return;
+
     if ( gamemode != commercial)
     {
-  	if (wbs->epsd > 2)
+	// Only on the episode's own map, and between levels on it.
+  	if (wbs->epsd > 2 || custombg
+	    || wbs->nextep != wbs->epsd || wbs->last > 8 || wbs->next > 8)
 	{
 	    WI_drawEL();
 	    return;
@@ -803,9 +943,7 @@ void WI_drawShowNextLoc(void)
     }
 
     // draws which level you are entering..
-    if ( (gamemode != commercial)
-	 || wbs->next != 30)
-	WI_drawEL();  
+    WI_drawEL();  
 
 }
 
@@ -960,10 +1098,7 @@ void WI_updateDeathmatchStats(void)
 	{
 	    S_StartSound(0, sfx_slop);
 
-	    if ( gamemode == commercial)
-		WI_initNoState();
-	    else
-		WI_initShowNextLoc();
+	    WI_afterStats();
 	}
     }
     else if (dm_state & 1)
@@ -1240,10 +1375,7 @@ void WI_updateNetgameStats(void)
 	if (acceleratestage)
 	{
 	    S_StartSound(0, sfx_sgcock);
-	    if ( gamemode == commercial )
-		WI_initNoState();
-	    else
-		WI_initShowNextLoc();
+	    WI_afterStats();
 	}
     }
     else if (ng_state & 1)
@@ -1416,10 +1548,7 @@ void WI_updateStats(void)
 	{
 	    S_StartSound(0, sfx_sgcock);
 
-	    if (gamemode == commercial)
-		WI_initNoState();
-	    else
-		WI_initShowNextLoc();
+	    WI_afterStats();
 	}
     }
     else if (sp_state & 1)
@@ -1459,7 +1588,8 @@ void WI_drawStats(void)
     V_DrawPatch(SP_TIMEX, SP_TIMEY, FB, time);
     WI_drawTime(SCREENWIDTH/2 - SP_TIMEX, SP_TIMEY, cnt_time);
 
-    if (wbs->epsd < 3)
+    // none for a level there is no par time for
+    if (wbs->partime > 0)
     {
 	V_DrawPatch(SCREENWIDTH/2 + SP_TIMEX, SP_TIMEY, FB, par);
 	WI_drawTime(SCREENWIDTH - SP_TIMEX, SP_TIMEY, cnt_par);
@@ -1542,20 +1672,21 @@ void WI_loadData(void)
     char	name[9];
     anim_t*	a;
 
-    if (gamemode == commercial)
-	strcpy(name, "INTERPIC");
-    else 
-	sprintf(name, "WIMAP%d", wbs->epsd);
-    
-    if ( gamemode == retail )
+    // background: the one UMAPINFO gives for leaving the level, and for
+    // entering the next, which is the leaving one's when it gives none
     {
-      if (wbs->epsd == 3)
-	strcpy(name,"INTERPIC");
-    }
+	umapentry_t*	last = U_FindMap (wbs->epsd+1, wbs->last+1);
+	umapentry_t*	next = U_FindMap (wbs->nextep+1, wbs->next+1);
 
-    // background
-    bg = W_CacheLumpName(name, PU_CACHE);    
-    V_DrawPatch(0, 0, 1, bg);
+	exitpic[0] = enterpic[0] = 0;
+	if (last && last->exitpic[0] && W_CheckNumForName (last->exitpic) >= 0)
+	    strcpy (exitpic, last->exitpic);
+	if (next && next->enterpic[0] && W_CheckNumForName (next->enterpic) >= 0)
+	    strcpy (enterpic, next->enterpic);
+	else
+	    strcpy (enterpic, exitpic);
+    }
+    WI_background (exitpic);
 
 
     // UNUSED unsigned char *pic = screens[1];
@@ -1569,26 +1700,14 @@ void WI_loadData(void)
     // }
     //}
 
-    if (gamemode == commercial)
+    // Only the two names shown. The original loaded every one of the
+    // episode's, or DOOM II's thirty-two, and stopped the game when one was
+    // missing -- as SIGIL's episode would have been, and a MAP33.
+    lastpic = WI_LevelPic (wbs->epsd+1, wbs->last+1);
+    nextpic = WI_LevelPic (wbs->nextep+1, wbs->next+1);
+
+    if (gamemode != commercial)
     {
-	NUMCMAPS = 32;								
-	lnames = (patch_t **) Z_Malloc(sizeof(patch_t*) * NUMCMAPS,
-				       PU_STATIC, 0);
-	for (i=0 ; i<NUMCMAPS ; i++)
-	{								
-	    sprintf(name, "CWILV%2.2d", i);
-	    lnames[i] = W_CacheLumpName(name, PU_STATIC);
-	}					
-    }
-    else
-    {
-	lnames = (patch_t **) Z_Malloc(sizeof(patch_t*) * NUMMAPS,
-				       PU_STATIC, 0);
-	for (i=0 ; i<NUMMAPS ; i++)
-	{
-	    sprintf(name, "WILV%d%d", wbs->epsd, i);
-	    lnames[i] = W_CacheLumpName(name, PU_STATIC);
-	}
 
 	// you are here
 	yah[0] = W_CacheLumpName("WIURH0", PU_STATIC);
@@ -1715,20 +1834,17 @@ void WI_unloadData(void)
     for (i=0 ; i<10 ; i++)
 	Z_ChangeTag(num[i], PU_CACHE);
     
-    if (gamemode == commercial)
-    {
-  	for (i=0 ; i<NUMCMAPS ; i++)
-	    Z_ChangeTag(lnames[i], PU_CACHE);
-    }
-    else
+    if (lastpic)
+	Z_ChangeTag(lastpic, PU_CACHE);
+    if (nextpic)
+	Z_ChangeTag(nextpic, PU_CACHE);
+
+    if (gamemode != commercial)
     {
 	Z_ChangeTag(yah[0], PU_CACHE);
 	Z_ChangeTag(yah[1], PU_CACHE);
 
 	Z_ChangeTag(splat, PU_CACHE);
-
-	for (i=0 ; i<NUMMAPS ; i++)
-	    Z_ChangeTag(lnames[i], PU_CACHE);
 	
 	if (wbs->epsd < 3)
 	{
@@ -1740,8 +1856,7 @@ void WI_unloadData(void)
 	    }
 	}
     }
-    
-    Z_Free(lnames);
+
 
     Z_ChangeTag(percent, PU_CACHE);
     Z_ChangeTag(colon, PU_CACHE);
@@ -1829,10 +1944,6 @@ void WI_initVariables(wbstartstruct_t* wbstartstruct)
 
     if (!wbs->maxsecret)
 	wbs->maxsecret = 1;
-
-    if ( gamemode != retail )
-      if (wbs->epsd > 2)
-	wbs->epsd -= 3;
 }
 
 void WI_Start(wbstartstruct_t* wbstartstruct)
