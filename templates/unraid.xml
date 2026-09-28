@@ -39,6 +39,12 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.11.0
+- Version numbers change scheme: the middle number now moves when something
+  is added, the last when something is fixed. The game is the same as
+  1.10.78. The 1.10 image tag stays on 1.10.78; latest keeps following
+  releases.
+
 ### 1.10.78
 - SIGIL II: its episode is offered once sigil2.wad is loaded, and its
   recorded soundtrack plays - the game can play Ogg Vorbis music now.

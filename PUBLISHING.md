@@ -14,8 +14,12 @@ and, in the same run, publishes the images, pushes the `vX.Y.Z` git tag, and
 creates the GitHub Release using that CHANGELOG section as the body. Nothing
 to push from your machine.
 
-There is no version string baked into the engine to bump: the version tracks
-linuxdoom-1.10, so releases move the patch component.
+There is no version string baked into the engine to bump; the CHANGELOG
+heading is the version. It is this project's own, numbered as the Quake
+container's is: a release that adds something moves the minor number and
+resets the patch (`1.11.0`), one that only fixes or adjusts moves the patch
+(`1.11.1`). Up to 1.10.78 the version followed linuxdoom-1.10 and every
+release moved the patch, whatever was in it.
 
 ## Tagging policy
 
