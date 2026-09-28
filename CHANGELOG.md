@@ -1,10 +1,16 @@
 # Changelog
 
-Notable changes to the containerised DOOM. Versions are the image tags
-published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
-`:latest` always tracks the newest release and `:edge` the tip of `master`.
+All notable changes are here. The format follows Keep a Changelog, and the
+top section's heading is what the release workflow reads: `## [X.Y.Z] — DATE`
+on the default branch publishes that version, `## [Unreleased]` publishes only
+`edge`. Versions are the image tags published to `ghcr.io/krippler/doom`, so
+`1.11.0` here is `:1.11.0` there.
 
-The version follows the engine this is built from, linuxdoom-1.10.
+Versions are this project's own, numbered as the Quake container's are: a
+release that adds something moves the minor number (`1.11.0`), one that only
+fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
+numbers followed the engine, linuxdoom-1.10, and every release moved the
+patch whatever was in it.
 
 ## [1.10.78] — 2026-09-28
 
