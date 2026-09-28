@@ -12,6 +12,16 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [1.11.0] — 2026-09-28
+
+### Changed
+- **Versions are numbered as the Quake container's are.** They followed the
+  engine, linuxdoom-1.10, with every release moving the last number whatever
+  it held. From this one, a release that adds something moves the middle
+  number and one that only fixes moves the last. The game is 1.10.78's. The
+  `:1.10` image tag stays on 1.10.78 from here on; `:latest` and `:1` go on
+  following releases.
+
 ## [1.10.78] — 2026-09-28
 
 ### Added
