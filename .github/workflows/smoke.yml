@@ -50,6 +50,16 @@ jobs:
           make -C "${RUNNER_TEMP}/nomusic" clean >/dev/null
           make -C "${RUNNER_TEMP}/nomusic" -j"$(nproc)" MUSIC=none
 
+      # The UMAPINFO reader on its own, with lumps written for the purpose:
+      # the add-ons that carry UMAPINFO are not something CI can have.
+      - name: Test the UMAPINFO reader
+        run: |
+          cc -Wall -Werror -Ilinuxdoom-1.10 -DNORMALUNIX -DLINUX \
+            -o "${RUNNER_TEMP}/umapinfo-test" \
+            tools/umapinfo-test.c linuxdoom-1.10/u_mapinfo.c
+          "${RUNNER_TEMP}/umapinfo-test" doom
+          "${RUNNER_TEMP}/umapinfo-test" doom2
+
       - name: Run the smoke test
         run: tools/smoke-test.sh "${RUNNER_TEMP}/doom-smoke"
 

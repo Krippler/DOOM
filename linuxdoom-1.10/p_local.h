@@ -274,6 +274,15 @@ P_DamageMobj
 
 
 //
+// P_ENEMY
+//
+
+// A monster killed, for the boss actions UMAPINFO gives monsters whose
+// deaths do not end in A_BossDeath.
+void P_BossActionOnKill (mobj_t* target);
+
+
+//
 // P_SPEC
 //
 #include "p_spec.h"

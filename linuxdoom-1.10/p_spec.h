@@ -65,6 +65,13 @@ P_CrossSpecialLine
   int		side,
   mobj_t*	thing );
 
+// A line special with no line of the map's to cross or press.
+void
+P_ActivateLineSpecial
+( int		special,
+  int		tag,
+  mobj_t*	thing );
+
 void    P_PlayerInSpecialSector (player_t* player);
 
 int
@@ -241,7 +248,7 @@ typedef struct
 #define MAXSWITCHES		50
 
  // 4 players, 4 buttons each at once, max.
-#define MAXBUTTONS		16
+#define MAXBUTTONS		128	// 16; see MAXVISPLANES in r_plane.c
 
  // 1 second, in ticks. 
 #define BUTTONTIME      35             
@@ -303,7 +310,7 @@ typedef struct
 
 #define PLATWAIT		3
 #define PLATSPEED		FRACUNIT
-#define MAXPLATS		30
+#define MAXPLATS		240	// 30; see MAXVISPLANES in r_plane.c
 
 
 extern plat_t*	activeplats[MAXPLATS];
@@ -515,7 +522,7 @@ typedef struct
 
 #define CEILSPEED		FRACUNIT
 #define CEILWAIT		150
-#define MAXCEILINGS		30
+#define MAXCEILINGS		240	// 30; see MAXVISPLANES in r_plane.c
 
 extern ceiling_t*	activeceilings[MAXCEILINGS];
 

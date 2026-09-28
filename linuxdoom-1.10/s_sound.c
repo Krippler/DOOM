@@ -28,6 +28,8 @@ rcsid[] = "$Id: s_sound.c,v 1.6 1997/02/03 22:45:12 b1 Exp $";
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <strings.h>
 
 #include "i_system.h"
 #include "i_sound.h"
@@ -43,6 +45,7 @@ rcsid[] = "$Id: s_sound.c,v 1.6 1997/02/03 22:45:12 b1 Exp $";
 
 #include "doomstat.h"
 #include "g_game.h"
+#include "u_mapinfo.h"
 
 
 // Purpose?
@@ -222,20 +225,22 @@ void S_Start(void)
   
   // start new music for the level
   mus_paused = 0;
-  
-  if (gamemode == commercial && G_NerveMap ())
+
+  // The map's own, when its UMAPINFO names one the game data has.
   {
-    // No Rest for the Living has a track of its own for each map, from
-    // DOOM II's set, as its UMAPINFO lists them.
-    static const int nervemus[9] =
+    umapentry_t*	map = U_ThisMap ();
+
+    if (map && map->music[0] && S_ChangeMusicName (map->music, true))
     {
-      mus_messag, mus_ddtblu, mus_doom, mus_shawn, mus_in_cit,
-      mus_the_da, mus_in_cit, mus_shawn, mus_ddtblu
-    };
-    mnum = nervemus[gamemap - 1];
+      nextcleanup = 15;
+      return;
+    }
   }
-  else if (gamemode == commercial)
-    mnum = mus_runnin + gamemap - 1;
+  
+  // Past the ends of the game's lists -- DOOM II's MAP33 on, an episode
+  // after The Ultimate DOOM's fourth -- the tracks come round again.
+  if (gamemode == commercial)
+    mnum = mus_runnin + (gamemap - 1) % 32;
   else
   {
     int spmus[]=
@@ -253,10 +258,10 @@ void S_Start(void)
       mus_e1m9	// Tim		e4m9
     };
     
-    if (gameepisode < 4)
+    if (gameepisode < 4 && gamemap <= 9)
       mnum = mus_e1m1 + (gameepisode-1)*9 + gamemap-1;
     else
-      mnum = spmus[gamemap-1];
+      mnum = spmus[(gamemap-1) % 9];
     }	
   
   // HACK FOR COMMERCIAL
@@ -671,6 +676,8 @@ void S_StartMusic(int m_id)
     S_ChangeMusic(m_id, false);
 }
 
+static void S_PlayMusic (musicinfo_t* music, int looping);
+
 void
 S_ChangeMusic
 ( int			musicnum,
@@ -690,15 +697,55 @@ S_ChangeMusic
     if (mus_playing == music)
 	return;
 
-    // shutdown old music
-    S_StopMusic();
-
     // get lumpnum if neccessary
     if (!music->lumpnum)
     {
 	sprintf(namebuf, "d_%s", music->name);
 	music->lumpnum = W_GetNumForName(namebuf);
     }
+
+    S_PlayMusic (music, looping);
+}
+
+
+//
+// S_ChangeMusicName
+// One of the game's own tracks when the name is one of theirs, so that two
+// maps with the same one play on through the change, as they always have;
+// otherwise a slot for a track the game's list does not have.
+//
+boolean S_ChangeMusicName (const char* lump, int looping)
+{
+    static char		othername[9];
+    static musicinfo_t	other = { othername };
+    int			i;
+    int			num = W_CheckNumForName ((char *)lump);
+
+    if (num < 0)
+	return false;
+
+    if (!strncasecmp (lump, "D_", 2))
+	for (i = mus_None + 1; i < NUMMUSIC; i++)
+	    if (!strcasecmp (S_music[i].name, lump + 2))
+	    {
+		S_ChangeMusic (i, looping);
+		return true;
+	    }
+
+    if (mus_playing == &other && other.lumpnum == num)
+	return true;
+
+    snprintf (othername, sizeof(othername), "%s", lump);
+    other.lumpnum = num;
+    S_PlayMusic (&other, looping);
+    return true;
+}
+
+
+static void S_PlayMusic (musicinfo_t* music, int looping)
+{
+    // shutdown old music
+    S_StopMusic();
 
     // load & register it
     music->data = (void *) W_CacheLumpNum(music->lumpnum, PU_MUSIC);

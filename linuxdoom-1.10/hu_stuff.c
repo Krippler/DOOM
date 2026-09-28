@@ -39,6 +39,7 @@ rcsid[] = "$Id: hu_stuff.c,v 1.4 1997/02/03 16:47:52 b1 Exp $";
 
 #include "doomstat.h"
 #include "g_game.h"
+#include "u_mapinfo.h"
 
 // Data.
 #include "dstrings.h"
@@ -47,8 +48,6 @@ rcsid[] = "$Id: hu_stuff.c,v 1.4 1997/02/03 16:47:52 b1 Exp $";
 //
 // Locally used constants, shortcuts.
 //
-#define HU_TITLE	(mapnames[(gameepisode-1)*9+gamemap-1])
-#define HU_TITLE2	(G_NerveMap () ? nervenames[gamemap-1] : mapnames2[gamemap-1])
 #define HU_TITLEP	(mapnamesp[gamemap-1])
 #define HU_TITLET	(mapnamest[gamemap-1])
 #define HU_TITLEHEIGHT	1
@@ -165,20 +164,6 @@ char*	mapnames[] =	// DOOM shareware/registered/retail (Ultimate) names.
     "NEWLEVEL",
     "NEWLEVEL",
     "NEWLEVEL"
-};
-
-// No Rest for the Living's, for its nine maps; G_NerveMap says when.
-char*	nervenames[] =
-{
-    "level 1: the earth base",
-    "level 2: the pain labs",
-    "level 3: canyon of the dead",
-    "level 4: hell mountain",
-    "level 5: vivisection",
-    "level 6: inferno of blood",
-    "level 7: baron's banquet",
-    "level 8: tomb of malevolence",
-    "level 9: march of the demons"
 };
 
 char*	mapnames2[] =	// DOOM 2 map names.
@@ -431,6 +416,52 @@ void HU_Stop(void)
     headsupactive = false;
 }
 
+//
+// HU_Title
+// The map's name on the automap. UMAPINFO's when it gives one, with the
+// label it asks for in front -- "Level 4: " -- or the map's own name. The
+// game's own lists otherwise, as far as they go.
+//
+// TNT and Plutonia have names of their own in mapnamest and mapnamesp, but
+// nothing in this engine tells those games from DOOM II, and they showed
+// DOOM II's. The 2024 re-release's TNT and Plutonia carry UMAPINFO with
+// their names in, and show those.
+//
+static char* HU_Title (void)
+{
+    static char		title[HU_MAXLINELENGTH+1];
+    umapentry_t*	map = U_ThisMap ();
+    char		name[9];
+    int			i;
+
+    U_MapName (name, gameepisode, gamemap);
+
+    if (map && map->levelname)
+    {
+	if (map->labelclear)
+	    snprintf (title, sizeof(title), "%s", map->levelname);
+	else
+	    snprintf (title, sizeof(title), "%s: %s",
+		      map->label ? map->label : name, map->levelname);
+	return title;
+    }
+
+    if (gamemode == commercial)
+    {
+	if (gamemap <= (int)(sizeof(mapnames2)/sizeof(*mapnames2)))
+	    return mapnames2[gamemap-1];
+    }
+    else
+    {
+	i = (gameepisode-1)*9 + gamemap-1;
+	if (gamemap <= 9 && i < (int)(sizeof(mapnames)/sizeof(*mapnames)))
+	    return mapnames[i];
+    }
+
+    snprintf (title, sizeof(title), "%s", name);
+    return title;
+}
+
 void HU_Start(void)
 {
 
@@ -458,29 +489,7 @@ void HU_Start(void)
 		       hu_font,
 		       HU_FONTSTART);
     
-    switch ( gamemode )
-    {
-      case shareware:
-      case registered:
-      case retail:
-	s = HU_TITLE;
-	break;
-
-/* FIXME
-      case pack_plut:
-	s = HU_TITLEP;
-	break;
-      case pack_tnt:
-	s = HU_TITLET;
-	break;
-*/
-	
-      case commercial:
-      default:
-	 s = HU_TITLE2;
-	 break;
-    }
-    
+    s = HU_Title ();
     while (*s)
 	HUlib_addCharToTextLine(&w_title, *(s++));
 

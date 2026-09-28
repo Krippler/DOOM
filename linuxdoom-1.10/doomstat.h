@@ -65,7 +65,7 @@ extern  boolean	modifiedgame;
 
 // No Rest for the Living (nerve.wad) is loaded over DOOM II. Its nine maps
 // follow the expansion's own rules, as the BFG Edition plays them: see
-// G_NerveMap.
+// nerveinfo in u_mapinfo.c.
 extern  boolean	nervepack;
 
 

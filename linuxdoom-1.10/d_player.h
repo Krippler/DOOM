@@ -194,6 +194,10 @@ typedef struct
     // previous and next levels, origin 0
     int		last;
     int		next;	
+
+    // the next level's episode, origin 0: epsd, unless a UMAPINFO exit
+    // leads into another
+    int		nextep;
     
     int		maxkills;
     int		maxitems;

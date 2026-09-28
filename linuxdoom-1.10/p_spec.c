@@ -138,7 +138,7 @@ anim_t*		lastanim;
 //
 //      Animating line specials
 //
-#define MAXLINEANIMS            64
+#define MAXLINEANIMS            512	// 64; see MAXVISPLANES in r_plane.c
 
 extern  short	numlinespecials;
 extern  line_t*	linespeciallist[MAXLINEANIMS];
@@ -488,16 +488,64 @@ P_FindMinSurroundingLight
 // Called every time a thing origin is about
 //  to cross a line with a non 0 special.
 //
+static void P_CrossLine (line_t* line, int side, mobj_t* thing);
+
 void
 P_CrossSpecialLine
 ( int		linenum,
   int		side,
   mobj_t*	thing )
 {
-    line_t*	line;
+    P_CrossLine (&lines[linenum], side, thing);
+}
+
+
+//
+// P_ActivateLineSpecial
+// For UMAPINFO's boss actions: the special on a copy of line 0, crossed and
+// used by the thing, which is a player -- each of those only acts on the
+// specials of its own kind. Line 0's front side is bare meanwhile, so that
+// a switch special finds no switch to throw there. The specials that act
+// on the line's own sectors, or move whoever triggered them, UMAPINFO
+// refuses when it is read.
+//
+void
+P_ActivateLineSpecial
+( int		special,
+  int		tag,
+  mobj_t*	thing )
+{
+    static line_t	line;
+    side_t*		side;
+    short		top, mid, bottom;
+
+    line = lines[0];
+    line.special = special;
+    line.tag = tag;
+
+    side = &sides[line.sidenum[0]];
+    top = side->toptexture;
+    mid = side->midtexture;
+    bottom = side->bottomtexture;
+    side->toptexture = side->midtexture = side->bottomtexture = 0;
+
+    P_CrossLine (&line, 0, thing);
+    P_UseSpecialLine (thing, &line, 0);
+
+    side->toptexture = top;
+    side->midtexture = mid;
+    side->bottomtexture = bottom;
+}
+
+
+static void
+P_CrossLine
+( line_t*	line,
+  int		side,
+  mobj_t*	thing )
+{
     int		ok;
 
-    line = &lines[linenum];
     
     //	Triggers that other things can activate
     if (!thing->player)
@@ -1340,8 +1388,9 @@ void P_SpawnSpecials (void)
 	{
 	  case 48:
 	    // EFFECT FIRSTCOL SCROLL+
-	    linespeciallist[numlinespecials] = &lines[i];
-	    numlinespecials++;
+	    // The original wrote on past the end of the list.
+	    if (numlinespecials < MAXLINEANIMS)
+		linespeciallist[numlinespecials++] = &lines[i];
 	    break;
 	}
     }

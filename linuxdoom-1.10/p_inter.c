@@ -678,6 +678,8 @@ P_KillMobj
 	target->flags &= ~MF_NOGRAVITY;
 
     target->flags |= MF_CORPSE|MF_DROPOFF;
+
+    P_BossActionOnKill (target);
     target->height >>= 2;
 
     if (source && source->player)

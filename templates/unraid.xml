@@ -39,6 +39,17 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.10.76
+- Add-ons that describe their levels with UMAPINFO play by it, among them the
+  2024 re-release's SIGIL, Master Levels, No Rest for the Living, TNT and
+  Plutonia: their own skies, music, level names, secret exits, story text and
+  endings. SIGIL's episode 5 can be reached at last, and New Game goes
+  straight to it while sigil.wad is loaded.
+- No Rest for the Living's hell levels have the hell sky, and its campaign
+  ends after MAP08 as it should.
+- The 2024 re-release's wide title screens and status bar are drawn again.
+- Larger maps no longer stop the game with "visplane overflow".
+
 ### 1.10.75
 - The game reads the controller itself now, and it vibrates when you fire or
   are hurt. Set it up in the game under Options - Setup - Controller: what

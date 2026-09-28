@@ -28,7 +28,7 @@
 #pragma interface
 #endif
 
-#define MAXVISSPRITES  	128
+#define MAXVISSPRITES  	1024	// 128; see MAXVISPLANES
 
 extern vissprite_t	vissprites[MAXVISSPRITES];
 extern vissprite_t*	vissprite_p;

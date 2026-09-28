@@ -25,6 +25,7 @@
 
 #include "doomdef.h"
 #include "d_event.h"
+#include "u_mapinfo.h"
 
 
 
@@ -65,8 +66,14 @@ void G_SecretExitLevel (void);
 
 void G_WorldDone (void);
 
-// A No Rest for the Living map being played: see g_game.c.
-boolean G_NerveMap (void);
+// Whether the map was left by its secret exit.
+extern boolean secretexit;
+
+// Whether the game data has a map.
+boolean G_MapExists (int episode, int map);
+
+// How the game ends after the map being played, if it does.
+umending_t G_Ending (void);
 
 void G_Ticker (void);
 boolean G_Responder (event_t*	ev);

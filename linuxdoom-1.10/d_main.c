@@ -79,6 +79,7 @@ static const char rcsid[] = "$Id: d_main.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 
 
 #include "i_pad.h"
+#include "u_mapinfo.h"
 #include "d_main.h"
 
 //
@@ -737,7 +738,8 @@ void D_AddFile (char *file)
     strcpy (newfile, file);
 
     // No Rest for the Living, known by its file name as every release of it
-    // has been: nothing inside it says what it is.
+    // has been. The BFG Edition's has nothing inside it saying what it is;
+    // U_Init supplies what the 2024 re-release's UMAPINFO says.
     {
 	char*	base = strrchr (file, '/');
 
@@ -1400,6 +1402,9 @@ void D_DoomMain (void)
 	// Ouch.
 	break;
     }
+
+    // Before the menu, which lists the episodes it may add.
+    U_Init ();
 
     printf ("M_Init: Init miscellaneous info.\n");
     M_Init ();

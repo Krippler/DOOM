@@ -25,6 +25,9 @@
 #             General MIDI soundfont is installed)
 #   depth 8   the colour-mapped path the engine was written for draws the
 #             status bar exactly as the truecolour one does
+#   umapinfo  a level starts with a UMAPINFO lump naming it, its sky and its
+#             music, and the lump is read without complaint (the reader
+#             itself is tools/umapinfo-test.c's)
 #   pointer   with capture on, the pointer is held at the centre in a level
 #             and let go in the menu (needs xdotool; skipped without it)
 #   crash     SIGSEGV prints "DOOM died on" and a backtrace with names in it
@@ -120,7 +123,8 @@ start_game() {  # log, then engine arguments
     log=$1
     shift
     DISPLAY="$disp" HOME="$work" DOOMWADDIR="$work/wads" \
-        "$engine" -2 -iwad "$work/wads/doom1.wad" "$@" >"$work/$log" 2>&1 &
+        "$engine" -2 -iwad "${game_iwad:-$work/wads/doom1.wad}" "$@" \
+        >"$work/$log" 2>&1 &
     game_pid=$!
 }
 
@@ -216,6 +220,46 @@ grep -q "I_InitGraphics: 8-bit PseudoColor" "$work/depth8.log" \
 kill "$game_pid" 2>/dev/null
 wait_game 10
 stop_x
+
+# ----------------------------------------------------------------- umapinfo
+# The shareware episode cannot load add-ons, so the lump goes into a copy of
+# the WAD itself, which is still called doom1.wad for the engine to know it.
+say "umapinfo: E1M1 as a UMAPINFO lump describes it"
+mkdir -p "$work/umapinfo"
+python3 - "$wad" "$work/umapinfo/doom1.wad" <<'EOF' || die "could not add a UMAPINFO lump"
+import struct, sys
+data = open(sys.argv[1], 'rb').read()
+kind, count, diroff = struct.unpack('<4sii', data[:12])
+lump = (b'MAP E1M1 { levelname = "Smoke Test" label = clear\n'
+        b'  skytexture = "SKY1" music = "D_E1M2" partime = 45\n'
+        b'  next = "E1M3" intertext = "One line", "and another"\n'
+        b'  episode = clear episode = "M_EPI1", "Smoke", "s" }\n')
+directory = data[diroff:diroff + 16 * count]
+directory += struct.pack('<ii8s', diroff, len(lump), b'UMAPINFO')
+out = struct.pack('<4sii', kind, count + 1, diroff + len(lump))
+out += data[12:diroff] + lump + directory
+open(sys.argv[2], 'wb').write(out)
+EOF
+start_x 24
+rm -f "$work/.doomrc"
+game_iwad="$work/umapinfo/doom1.wad" start_game umapinfo.log -warp 1 1 -nojoy
+i=0
+until grep -q "I_InitGraphics" "$work/umapinfo.log" 2>/dev/null; do
+    i=$((i + 1))
+    [ "$i" -gt 200 ] && die "the engine never opened its window; see $work/umapinfo.log"
+    sleep 0.1
+done
+sleep 2
+kill -0 "$game_pid" 2>/dev/null \
+    || die "E1M1 with UMAPINFO did not stay up; see $work/umapinfo.log"
+grep -q "^U_Init: UMAPINFO describes 1 map" "$work/umapinfo.log" \
+    || die "the UMAPINFO lump was not read; see $work/umapinfo.log"
+grep -q "^UMAPINFO:" "$work/umapinfo.log" \
+    && die "the UMAPINFO lump was read with complaints; see $work/umapinfo.log"
+kill "$game_pid" 2>/dev/null
+wait_game 10
+stop_x
+say "the lump is read, and E1M1 plays by it"
 
 # ------------------------------------------------------------ pointer, crash
 start_x 24

@@ -6,18 +6,46 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
-## [Unreleased]
+## [1.10.76] — 2026-09-28
+
+### Added
+- **UMAPINFO.** Add-ons made since 2017 carry a lump that says what their
+  maps are called, what sky and music each has, where its exits lead, what
+  text comes between them, what ends the game and what New Game offers. The
+  2024 re-release's No Rest for the Living, Master Levels, SIGIL, TNT and
+  Plutonia all do, and the engine reads it now, to revision 2.2 of the
+  specification. What that means for those WADs:
+  - **SIGIL can be played.** Its levels are episode 5, which the 1997 engine
+    had no way to reach — New Game offered E1 to E4 and `-warp 5 1` quietly
+    became E4M1. With `sigil.wad` loaded, New Game goes straight to it, as
+    its UMAPINFO asks: its own sky, music, level names and intermission
+    screen, the secret exit from E5M6 to E5M9 and back to E5M7, and its
+    closing text and credits after E5M8. It replaces E1 to E4 in the menu
+    while it is loaded; unload it to play those.
+  - **The Master Levels play as a set of their own**, not as DOOM II with
+    other maps in: their own skies (they had DOOM II's), music and names,
+    MAP18's secret exit to MAP21 and back to MAP19, MAP15's secret exit to
+    their MAP16 rather than DOOM II's Wolfenstein level, the floors that open
+    in MAP19 and MAP20 when the last Mancubus or Arachnotron dies, and the
+    ending after MAP20.
+  - **No Rest for the Living plays as it should.** Its hell levels, MAP04 to
+    MAP08, got DOOM II's city skyline, because the 1997 engine picks the sky
+    by map number. They get the hell sky now, MAP04's secret exit leads to
+    MAP09 and back to MAP05, it ends after MAP08 with its own text and the
+    cast rather than running on into DOOM II's MAP10, and MAP07 no longer
+    opens DOOM II's MAP07's floors. The BFG Edition's `nerve.wad`, which has
+    no UMAPINFO, gets the same from a copy built into the engine.
+  - **TNT and Plutonia have their own level names and story text.** The 1997
+    engine cannot tell them from DOOM II and showed DOOM II's.
 
 ### Fixed
-- **No Rest for the Living plays as it should.** Loaded over DOOM II, its hell
-  levels, MAP04 to MAP08, got DOOM II's city skyline, because the 1997 engine
-  picks the sky by map number; they get the hell sky they were made for now.
-  The expansion also runs by its own rules as the BFG Edition and the 2024
-  release play it, all taken from its own UMAPINFO: MAP04's secret exit leads
-  to MAP09 and back to MAP05, it ends after MAP08 with its own text and the
-  cast of characters rather than running on into DOOM II's MAP10, each map has
-  its own music, par time and automap name, and MAP07 no longer opens floors
-  when the last Mancubus dies, which is DOOM II's MAP07 and not this one.
+- **SIGIL's E5M6 stopped the game with "visplane overflow".** Its maps need
+  more of the renderer than id's did, and the 1997 engine's tables were fixed
+  at what id's needed. They are eight times the size now — visplanes, wall
+  segments, sprites, moving floors and ceilings, buttons, scrolling walls —
+  for a megabyte or so of memory; nothing about how the game plays changes.
+- **The `idclev` cheat did nothing in DOOM II**, and could not reach a map
+  past the original games' — an add-on's MAP21, SIGIL's E5 — in any game.
 - **The 2024 re-release's WADs lost their title screens and status bar.** Its
   DOOM, DOOM II, TNT and Plutonia draw the status bar 576 pixels wide and the
   title, intermission and help screens 560, and No Rest for the Living, the
