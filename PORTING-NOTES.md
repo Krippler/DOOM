@@ -889,6 +889,44 @@ tables were raised eightfold: `MAXVISPLANES`, `MAXOPENINGS`, `MAXDRAWSEGS`,
 Only memory depends on them. The scrolling-wall list, which the original
 filled with no check at all, stops at its end now.
 
+## SIGIL II: Ogg Vorbis music, BEX par times, bigger saves
+
+SIGIL II is episode 6, and the UMAPINFO support above covers it as it
+covers SIGIL's episode 5. Its re-release WAD brings three more things the
+1997 engine did not handle:
+
+- **Its music is Ogg Vorbis**, Thorr's recorded soundtrack, where DOOM has
+  MUS and other add-ons MIDI. `I_RegisterSong` now takes the lump's length,
+  which Ogg does not carry, and an `OggS` lump is opened with stb_vorbis
+  (`stb_vorbis.c`, public domain, as it comes from github.com/nothings/stb)
+  instead of going to FluidSynth. `I_OggMix` decodes it as it plays,
+  resamples it to the rate the synth renders at by taking each output frame
+  between the two source frames either side, and adds it to the synth's
+  output: in the pipe thread for the container, and on the desktop in an
+  audio driver callback (`new_fluid_audio_driver2`), which replaces
+  FluidSynth's own rendering. A driver that takes no callback -- FluidSynth's
+  "file" driver -- falls back to the old one, with MIDI only. The smoke test
+  encodes a 440 Hz tone at 44100 Hz, makes it E1M1's music through UMAPINFO,
+  and hears it from the 22050 Hz mixer at 440 Hz; through PulseAudio it was
+  recorded from a null sink at 434 Hz, the capture's own gaps taking the
+  rest.
+- **Par times in DEHACKED.** SIGIL's DEHACKED lump is nothing but a Boom
+  `[PARS]` section, `par 5 1 90` and so on. `U_ReadBexPars` reads those lines
+  from every DEHACKED lump; UMAPINFO's `partime` comes first, then these,
+  then the game's tables.
+- **Savegames past 180K.** `G_DoSaveGame` built the save at
+  `screens[1]+0x4000` and checked its length against `SAVEGAMESIZE` only
+  once it was written. SIGIL's E5M7 saves at 210,402 bytes: 1.10.77 printed
+  "Savegame buffer overrun" and died on SIGSEGV. The buffer is 8 MB of its
+  own now.
+
+SIGIL II itself could not be tried here: the re-release's `sigil2.wad` was
+too big to hand over. What was checked instead is an episode 6 made from
+The Ultimate DOOM's E1M1 and E1M2 under the names E6M1 and E6M2, with a
+UMAPINFO that adds its episode to the menu, gives it an Ogg Vorbis track and
+ends the game after E6M2: New Game lists it after the four, it plays, leads
+to E6M2 and ends with its text and a picture.
+
 ## SKYDEFS: a sky of its own
 
 The re-release's DOOM II carries a JSON lump, `SKYDEFS`, whose

@@ -28,6 +28,12 @@
 #   umapinfo  a level starts with a UMAPINFO lump naming it, its sky and its
 #             music, and the lump is read without complaint (the reader
 #             itself is tools/umapinfo-test.c's)
+#   ogg       a level whose music is an Ogg Vorbis lump, as SIGIL II's are,
+#             is heard at the tone's own pitch (needs oggenc, from
+#             vorbis-tools, and a soundfont; skipped without)
+#   ogg       a level whose music is an Ogg Vorbis lump, as SIGIL II's are,
+#             is heard at the tone's own pitch (needs oggenc, from
+#             vorbis-tools, and a soundfont; skipped without)
 #   pointer   with capture on, the pointer is held at the centre in a level
 #             and let go in the menu (needs xdotool; skipped without it)
 #   crash     SIGSEGV prints "DOOM died on" and a backtrace with names in it
@@ -149,6 +155,28 @@ wait_game() {
     game_pid=
 }
 
+# add_lumps IN OUT NAME FILE [NAME FILE ...]
+# A copy of a WAD with lumps added at its end, as a PWAD would add them: the
+# shareware episode cannot load PWADs, so what a test adds goes into a copy
+# of the WAD itself, still called doom1.wad for the engine to know it.
+add_lumps() {
+    python3 - "$@" <<'EOF'
+import struct, sys
+src, dst, rest = sys.argv[1], sys.argv[2], sys.argv[3:]
+data = open(src, 'rb').read()
+kind, count, diroff = struct.unpack('<4sii', data[:12])
+body = bytearray(data[12:diroff])
+directory = bytearray(data[diroff:diroff + 16 * count])
+for name, path in zip(rest[0::2], rest[1::2]):
+    lump = open(path, 'rb').read()
+    directory += struct.pack('<ii8s', 12 + len(body), len(lump), name.encode())
+    body += lump
+    count += 1
+open(dst, 'wb').write(struct.pack('<4sii', kind, count, 12 + len(body))
+                      + body + directory)
+EOF
+}
+
 # -------------------------------------------------------------------- level
 say "level: E1M1 at depth 24, with the mixer and a controller"
 start_x 24
@@ -222,27 +250,21 @@ wait_game 10
 stop_x
 
 # ----------------------------------------------------------------- umapinfo
-# The shareware episode cannot load add-ons, so the lump goes into a copy of
-# the WAD itself, which is still called doom1.wad for the engine to know it.
 say "umapinfo: E1M1 as a UMAPINFO lump describes it"
 mkdir -p "$work/umapinfo"
-python3 - "$wad" "$work/umapinfo/doom1.wad" <<'EOF' || die "could not add a UMAPINFO lump"
-import struct, sys
-data = open(sys.argv[1], 'rb').read()
-kind, count, diroff = struct.unpack('<4sii', data[:12])
-lump = (b'MAP E1M1 { levelname = "Smoke Test" label = clear\n'
-        b'  skytexture = "SKY1" music = "D_E1M2" partime = 45\n'
-        b'  next = "E1M3" intertext = "One line", "and another"\n'
-        b'  episode = clear episode = "M_EPI1", "Smoke", "s" }\n')
-directory = data[diroff:diroff + 16 * count]
-directory += struct.pack('<ii8s', diroff, len(lump), b'UMAPINFO')
-out = struct.pack('<4sii', kind, count + 1, diroff + len(lump))
-out += data[12:diroff] + lump + directory
-open(sys.argv[2], 'wb').write(out)
+cat >"$work/umapinfo/umapinfo.txt" <<'EOF'
+MAP E1M1 { levelname = "Smoke Test" label = clear
+  skytexture = "SKY1" music = "D_E1M2" partime = 45
+  next = "E1M3" intertext = "One line", "and another"
+  episode = clear episode = "M_EPI1", "Smoke", "s" }
 EOF
+add_lumps "$wad" "$work/umapinfo/doom1.wad" \
+    UMAPINFO "$work/umapinfo/umapinfo.txt" \
+    || die "could not add a UMAPINFO lump"
 start_x 24
 rm -f "$work/.doomrc"
 game_iwad="$work/umapinfo/doom1.wad" start_game umapinfo.log -warp 1 1 -nojoy
+game_iwad=
 i=0
 until grep -q "I_InitGraphics" "$work/umapinfo.log" 2>/dev/null; do
     i=$((i + 1))
@@ -260,6 +282,46 @@ kill "$game_pid" 2>/dev/null
 wait_game 10
 stop_x
 say "the lump is read, and E1M1 plays by it"
+
+# ---------------------------------------------------------------------- ogg
+if [ -z "$soundfont" ] || ! command -v oggenc >/dev/null 2>&1; then
+    say "ogg: skipped, needs a soundfont and oggenc (vorbis-tools)"
+else
+    say "ogg: E1M1's music an Ogg Vorbis lump, as SIGIL II's are"
+    mkdir -p "$work/ogg"
+    python3 - "$work/ogg/tone.wav" <<'EOF' || die "could not write the tone"
+import math, struct, sys, wave
+w = wave.open(sys.argv[1], 'wb')
+w.setnchannels(2)
+w.setsampwidth(2)
+w.setframerate(44100)
+w.writeframes(b''.join(struct.pack('<hh', v, v) for v in
+    (int(12000 * math.sin(2 * math.pi * 440 * i / 44100))
+     for i in range(44100 * 3))))
+w.close()
+EOF
+    oggenc -Q -q 2 -o "$work/ogg/tone.ogg" "$work/ogg/tone.wav" \
+        || die "oggenc could not encode the tone"
+    printf 'MAP E1M1 { music = "D_TONE" }\n' >"$work/ogg/umapinfo.txt"
+    add_lumps "$wad" "$work/ogg/doom1.wad" \
+        UMAPINFO "$work/ogg/umapinfo.txt" D_TONE "$work/ogg/tone.ogg" \
+        || die "could not add the Ogg Vorbis lump"
+    start_x 24
+    start_mixer
+    printf 'music_volume 15\nsfx_volume 0\n' >"$work/.doomrc"
+    DOOM_SFX_SOCKET="$work/sfx.sock" DOOM_MUSIC_PIPE="$work/music.pipe" \
+    DOOM_AUDIO_RATE=22050 DOOM_SOUNDFONT="$soundfont" \
+    game_iwad="$work/ogg/doom1.wad" start_game ogg.log -warp 1 1 -nojoy
+    game_iwad=
+    python3 "$client" ogg --audio "$audio_port" \
+        || { tail -20 "$work/ogg.log" >&2; die "the ogg phase; see $work/ogg.log"; }
+    grep -q "I_RegisterSong" "$work/ogg.log" \
+        && die "the engine complained about the Ogg Vorbis track; see $work/ogg.log"
+    kill "$game_pid" 2>/dev/null
+    wait_game 10
+    stop_mixer
+    stop_x
+fi
 
 # ------------------------------------------------------------ pointer, crash
 start_x 24
