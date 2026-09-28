@@ -39,6 +39,12 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.10.78
+- SIGIL II: its episode is offered once sigil2.wad is loaded, and its
+  recorded soundtrack plays - the game can play Ogg Vorbis music now.
+- SIGIL's par times are shown after each level.
+- Saving on a big map (SIGIL's E5M7 among them) no longer crashes the game.
+
 ### 1.10.77
 - DOOM II's MAP20, from the 2024 re-release, shows the hell sky in its pit
   again, where it drew a placeholder floor.
