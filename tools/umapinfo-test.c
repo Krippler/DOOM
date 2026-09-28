@@ -105,6 +105,15 @@ static void TestDoom (void)
     AddLump ("UMAPINFO",
 	"MAP E5M2 { levelname = \"Replaced\" }\n"
 	"MAP E5M1 { episode = \"M_EPI5\", \"Fifth\", \"5\" endbunny = true }\n");
+    AddLump ("DEHACKED",
+	"Patch File for DeHackEd v3.0\n"
+	"Doom version = 21\n"
+	"[PARS]\n"
+	"par 5 1 90\n"
+	"  par 5 2 150\n"
+	"par 5 1 95\n"			// a later word on the same map
+	"[STRINGS]\n"
+	"par 5 3 360\n");		// not in [PARS]
     AddLump ("UMAPINFO",
 	"MAP E6M1 { levelname = \"Kept\" }\n"
 	"MAP E6M2 { levelname \"no equals\" }\n"
@@ -166,6 +175,12 @@ static void TestDoom (void)
     gameepisode = 5;
     gamemap = 1;
     CHECK (U_ThisMap () == U_FindMap (5, 1));
+
+    // DEHACKED's [PARS], as SIGIL has its par times
+    CHECK (U_BexPar (5, 1) == 95);
+    CHECK (U_BexPar (5, 2) == 150);
+    CHECK (U_BexPar (5, 3) == 0);
+    CHECK (U_BexPar (1, 1) == 0);
 }
 
 static void TestDoom2 (void)

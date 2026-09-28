@@ -114,4 +114,7 @@ boolean U_ParseMapName (const char* name, int* episode, int* map);
 // The other way: the map's lump name, into at least 9 bytes.
 void U_MapName (char* buf, int episode, int map);
 
+// A par time from a DEHACKED lump's [PARS] section, in seconds, or 0.
+int U_BexPar (int episode, int map);
+
 #endif

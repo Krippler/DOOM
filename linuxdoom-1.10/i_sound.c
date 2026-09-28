@@ -982,6 +982,40 @@ static size_t		song_midi_len = 0;
 // a busy score does not clip.
 #define MUSIC_MAX_GAIN	0.6f
 
+//
+// Ogg Vorbis music.
+//
+// The 2024 re-release's SIGIL II has its soundtrack -- Thorr's, recorded --
+// as Ogg Vorbis lumps in the music's place, where DOOM has MUS and other
+// add-ons MIDI. They are decoded here with stb_vorbis as they play,
+// resampled to the rate the synth renders at, and added to its output on
+// the way out: into the pipe, or in the audio driver's callback. The synth
+// has no song while one plays.
+//
+#define STB_VORBIS_HEADER_ONLY
+#define STB_VORBIS_NO_STDIO
+#define STB_VORBIS_NO_PUSHDATA_API
+#include "stb_vorbis.c"
+
+// Recorded music at full volume against the synth's: mastered tracks come
+// near full scale, where the synth's output is well under it.
+#define OGG_MAX_GAIN	0.7f
+
+#define OGG_CHUNK	2048		// frames decoded at a time
+
+static stb_vorbis*	ogg = NULL;	// the song registered, when it is Ogg
+static int		ogg_playing;	// started, and not at its end
+static int		ogg_paused;
+static int		ogg_loop;
+static float		ogg_step;	// its frames for each one rendered
+static float		ogg_frac;	// how far from ogg_cur to ogg_nxt
+static short		ogg_cur[2];
+static short		ogg_nxt[2];
+static short		ogg_buf[OGG_CHUNK * 2];
+static int		ogg_have;	// frames in ogg_buf
+static int		ogg_pos;	// and taken from it
+static float		ogg_gain = OGG_MAX_GAIN;
+
 // Searched in order when neither -soundfont nor DOOM_SOUNDFONT says
 // otherwise.
 //
@@ -1020,7 +1054,144 @@ void I_FluidSetGain (int volume)
 
     pthread_mutex_lock (&fl_lock);
     fluid_synth_set_gain (fl_synth, gain);
+    ogg_gain = (float)volume / 15.0f * OGG_MAX_GAIN;
     pthread_mutex_unlock (&fl_lock);
+}
+
+
+//
+// The Ogg song's next frame, into f, from the start again when it loops.
+// False at the end of one that does not.
+//
+static int I_OggFrame (short* f)
+{
+    if (ogg_pos == ogg_have)
+    {
+	ogg_pos = 0;
+	ogg_have = stb_vorbis_get_samples_short_interleaved
+	    (ogg, 2, ogg_buf, OGG_CHUNK * 2);
+
+	if (!ogg_have && ogg_loop)
+	{
+	    stb_vorbis_seek_start (ogg);
+	    ogg_have = stb_vorbis_get_samples_short_interleaved
+		(ogg, 2, ogg_buf, OGG_CHUNK * 2);
+	}
+	if (!ogg_have)
+	    return 0;
+    }
+
+    f[0] = ogg_buf[ogg_pos * 2];
+    f[1] = ogg_buf[ogg_pos * 2 + 1];
+    ogg_pos++;
+    return 1;
+}
+
+
+static void I_OggStart (int loops)
+{
+    stb_vorbis_seek_start (ogg);
+    ogg_have = ogg_pos = 0;
+    ogg_frac = 0;
+    ogg_loop = loops;
+    ogg_paused = 0;
+    ogg_cur[0] = ogg_cur[1] = 0;
+    ogg_playing = I_OggFrame (ogg_cur) && I_OggFrame (ogg_nxt);
+}
+
+
+//
+// Adds frames of the Ogg song to out, interleaved stereo at the rendering
+// rate, taking each between the two source frames either side of it. Under
+// fl_lock.
+//
+static void I_OggMix (short* out, int frames)
+{
+    int		i;
+    int		c;
+
+    if (!ogg || !ogg_playing || ogg_paused)
+	return;
+
+    for (i = 0; i < frames; i++)
+    {
+	for (c = 0; c < 2; c++)
+	{
+	    float	s = ogg_cur[c] + (ogg_nxt[c] - ogg_cur[c]) * ogg_frac;
+	    int		v = out[i * 2 + c] + (int)(s * ogg_gain);
+
+	    out[i * 2 + c] = v > 32767 ? 32767 : v < -32768 ? -32768 : v;
+	}
+
+	for (ogg_frac += ogg_step; ogg_frac >= 1.0f; ogg_frac -= 1.0f)
+	{
+	    ogg_cur[0] = ogg_nxt[0];
+	    ogg_cur[1] = ogg_nxt[1];
+	    if (!I_OggFrame (ogg_nxt))
+	    {
+		ogg_playing = 0;
+		return;
+	    }
+	}
+    }
+}
+
+
+static void I_OggClose (void)
+{
+    pthread_mutex_lock (&fl_lock);
+    if (ogg)
+	stb_vorbis_close (ogg);
+    ogg = NULL;
+    ogg_playing = 0;
+    pthread_mutex_unlock (&fl_lock);
+}
+
+
+//
+// The audio driver's callback, on a desktop: the synth, and the Ogg song
+// added to it. FluidSynth's own driver would render the synth alone.
+//
+static int
+I_FluidAudioFunc
+( void*		data,
+  int		len,
+  int		nfx,
+  float*	fx[],
+  int		nout,
+  float*	out[] )
+{
+    short	mix[512 * 2];
+    int		done;
+    int		n;
+    int		i;
+
+    (void) data;
+
+    // fluid_synth_process adds to what is there.
+    for (i = 0; i < nfx; i++)
+	memset (fx[i], 0, len * sizeof(float));
+    for (i = 0; i < nout; i++)
+	memset (out[i], 0, len * sizeof(float));
+
+    pthread_mutex_lock (&fl_lock);
+
+    fluid_synth_process (fl_synth, len, nfx, fx, nout, out);
+
+    for (done = 0; nout >= 2 && ogg && ogg_playing && done < len; done += n)
+    {
+	n = len - done < 512 ? len - done : 512;
+	memset (mix, 0, n * 2 * sizeof(short));
+	I_OggMix (mix, n);
+	for (i = 0; i < n; i++)
+	{
+	    out[0][done + i] += mix[i * 2] / 32768.0f;
+	    out[1][done + i] += mix[i * 2 + 1] / 32768.0f;
+	}
+    }
+
+    pthread_mutex_unlock (&fl_lock);
+    return FLUID_OK;
 }
 
 
@@ -1081,6 +1252,7 @@ I_FluidPipeThread (void* unused)
 	pthread_mutex_lock (&fl_lock);
 	fluid_synth_write_s16 (fl_synth, MUSIC_PIPE_FRAMES,
 			       buf, 0, 2, buf, 1, 2);
+	I_OggMix (buf, MUSIC_PIPE_FRAMES);
 	pthread_mutex_unlock (&fl_lock);
 
 	while (left && fl_pipe_running)
@@ -1207,7 +1379,18 @@ void I_InitMusic(void)
     }
     else
     {
-	fl_driver = new_fluid_audio_driver (fl_settings, fl_synth);
+	fl_driver = new_fluid_audio_driver2 (fl_settings,
+					     I_FluidAudioFunc, NULL);
+
+	// Not every FluidSynth driver takes a callback -- "file" does not --
+	// and one that will not can still play the synth, just not Ogg.
+	if (!fl_driver)
+	{
+	    fl_driver = new_fluid_audio_driver (fl_settings, fl_synth);
+	    if (fl_driver)
+		fprintf (stderr, "I_InitMusic: this audio driver cannot "
+			 "play Ogg Vorbis music, only MIDI\n");
+	}
 
 	if (!fl_driver)
 	{
@@ -1275,6 +1458,11 @@ void I_ShutdownMusic(void)
     free (song_midi);
     song_midi = NULL;
     song_midi_len = 0;
+
+    if (ogg)
+	stb_vorbis_close (ogg);
+    ogg = NULL;
+    ogg_playing = 0;
 }
 
 
@@ -1316,7 +1504,7 @@ static size_t I_MidiFileLength (const byte* data)
 }
 
 
-int I_RegisterSong(void* data)
+int I_RegisterSong(void* data, int len)
 {
     size_t	muslen;
     size_t	midlen;
@@ -1327,6 +1515,28 @@ int I_RegisterSong(void* data)
     free (song_midi);
     song_midi = NULL;
     song_midi_len = 0;
+    I_OggClose ();
+
+    if (len >= 4 && !memcmp (data, "OggS", 4))
+    {
+	int		err = 0;
+	stb_vorbis*	v = stb_vorbis_open_memory (data, len, &err, NULL);
+
+	if (!v)
+	{
+	    fprintf (stderr, "I_RegisterSong: could not read the Ogg Vorbis "
+		     "music (stb_vorbis error %d)\n", err);
+	    return 1;
+	}
+
+	pthread_mutex_lock (&fl_lock);
+	ogg = v;
+	ogg_playing = 0;
+	ogg_step = stb_vorbis_get_info (v).sample_rate
+	    / (float) I_MusicSampleRate ();
+	pthread_mutex_unlock (&fl_lock);
+	return 1;
+    }
 
     muslen = MUS_LumpLength (data);
 
@@ -1370,6 +1580,14 @@ void I_PlaySong(int handle, int loops)
 
     looping = loops;
     musicdies = gametic + TICRATE*30;
+
+    if (fl_synth && ogg)
+    {
+	pthread_mutex_lock (&fl_lock);
+	I_OggStart (loops);
+	pthread_mutex_unlock (&fl_lock);
+	return;
+    }
 
     if (!fl_synth || !song_midi)
 	return;
@@ -1417,6 +1635,8 @@ void I_PauseSong (int handle)
 
     pthread_mutex_lock (&fl_lock);
 
+    ogg_paused = 1;
+
     if (fl_player)
     {
 	fluid_player_stop (fl_player);
@@ -1436,6 +1656,8 @@ void I_ResumeSong (int handle)
 
     pthread_mutex_lock (&fl_lock);
 
+    ogg_paused = 0;
+
     if (fl_player)
 	fluid_player_play (fl_player);
 
@@ -1451,6 +1673,8 @@ void I_StopSong(int handle)
     musicdies = 0;
 
     pthread_mutex_lock (&fl_lock);
+
+    ogg_playing = 0;
 
     if (fl_player)
     {
@@ -1476,6 +1700,9 @@ void I_UnRegisterSong(int handle)
     free (song_midi);
     song_midi = NULL;
     song_midi_len = 0;
+
+    // Before the lump it reads from goes back to the cache.
+    I_OggClose ();
 }
 
 
@@ -1486,6 +1713,14 @@ int I_QrySongPlaying(int handle)
 
     // Reads the player, so it queues behind whoever is replacing it.
     pthread_mutex_lock (&fl_lock);
+
+    if (ogg)
+    {
+	int	playing = ogg_playing && !ogg_paused;
+
+	pthread_mutex_unlock (&fl_lock);
+	return playing;
+    }
 
     if (fl_player)
     {
@@ -1540,10 +1775,11 @@ void I_UnRegisterSong(int handle)
   handle = 0;
 }
 
-int I_RegisterSong(void* data)
+int I_RegisterSong(void* data, int len)
 {
   // UNUSED.
   data = NULL;
+  len = 0;
   
   return 1;
 }

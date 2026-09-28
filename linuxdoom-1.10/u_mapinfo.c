@@ -42,6 +42,16 @@ umepisode_t	um_episodes[UM_MAXEPISODES];
 static umapentry_t*	maps;
 static int		nummaps;
 
+typedef struct
+{
+    int		episode;
+    int		map;
+    int		seconds;
+} bexpar_t;
+
+static bexpar_t*	bexpars;
+static int		numbexpars;
+
 
 //
 // The monster names bossaction takes: ZDoom's, as the specification lists
@@ -694,6 +704,74 @@ static void U_Parse (const char* text, const char* what)
 
 
 //
+// BEX PAR TIMES
+//
+// Boom's extension of DEHACKED gave it a [PARS] section, "par episode map
+// seconds" -- "par map seconds" for DOOM II -- and SIGIL's DEHACKED lump
+// is that and nothing else: the par times of its E5. The rest of DEHACKED,
+// which changes things, weapons and text, this engine does not read.
+//
+static void U_ReadBexPars (const char* text)
+{
+    char	line[256];
+    boolean	inpars = false;
+    int		a, b, c, n;
+
+    while (*text)
+    {
+	const char*	nl = strchr (text, '\n');
+	size_t		len = nl ? (size_t)(nl - text) : strlen (text);
+	char*		p = line;
+
+	snprintf (line, sizeof(line), "%.*s", (int) len, text);
+	text += nl ? len + 1 : len;
+
+	while (isspace ((unsigned char)*p))
+	    p++;
+
+	if (*p == '[')
+	{
+	    inpars = !strncasecmp (p, "[PARS]", 6);
+	    continue;
+	}
+	if (!inpars || strncasecmp (p, "par", 3)
+	    || !isspace ((unsigned char)p[3]))
+	    continue;
+
+	n = sscanf (p + 3, "%d %d %d", &a, &b, &c);
+	if (n == 2)
+	{
+	    c = b;		// DOOM II's: par map seconds
+	    b = a;
+	    a = 1;
+	}
+	else if (n != 3)
+	    continue;
+
+	bexpars = realloc (bexpars, (numbexpars + 1) * sizeof(*bexpars));
+	if (!bexpars)
+	    I_Error ("DEHACKED: out of memory");
+	bexpars[numbexpars].episode = a;
+	bexpars[numbexpars].map = b;
+	bexpars[numbexpars].seconds = c;
+	numbexpars++;
+    }
+}
+
+int U_BexPar (int episode, int map)
+{
+    int		i;
+
+    // The last word on a map is the one that counts.
+    for (i = numbexpars - 1; i >= 0; i--)
+	if (bexpars[i].map == map
+	    && (gamemode == commercial || bexpars[i].episode == episode))
+	    return bexpars[i].seconds;
+    return 0;
+}
+
+
+//
 // U_Init
 //
 void U_Init (void)
@@ -710,7 +788,9 @@ void U_Init (void)
 	int	len;
 	char	what[32];
 
-	if (strncasecmp (lumpinfo[i].name, "UMAPINFO", 8))
+	boolean	umapinfo = !strncasecmp (lumpinfo[i].name, "UMAPINFO", 8);
+
+	if (!umapinfo && strncasecmp (lumpinfo[i].name, "DEHACKED", 8))
 	    continue;
 
 	len = W_LumpLength (i);
@@ -720,10 +800,15 @@ void U_Init (void)
 	W_ReadLump (i, text);
 	text[len] = 0;
 
-	sprintf (what, "lump %d", i);
-	U_Parse (text, what);
+	if (umapinfo)
+	{
+	    sprintf (what, "lump %d", i);
+	    U_Parse (text, what);
+	    found++;
+	}
+	else
+	    U_ReadBexPars (text);
 	free (text);
-	found++;
     }
 
     if (found || nummaps)

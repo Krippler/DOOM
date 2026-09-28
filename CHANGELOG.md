@@ -6,6 +6,29 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [Unreleased]
+
+### Added
+- **SIGIL II.** Its levels are episode 6, which New Game offers once
+  `sigil2.wad` is loaded, as UMAPINFO has it, the way SIGIL's episode 5 is.
+  What it needed besides:
+  - **Ogg Vorbis music.** The 2024 re-release's `sigil2.wad` has its
+    soundtrack, Thorr's recordings, as Ogg Vorbis where the music would be;
+    the engine played MUS and MIDI only. It decodes Ogg Vorbis now, with
+    stb_vorbis, in the container and on the desktop alike, looping, pausing
+    and following the music volume as the rest of the music does.
+  - **Par times from DEHACKED.** SIGIL gives its par times in a DEHACKED
+    lump's `[PARS]` section, Boom's extension, and SIGIL II is made the same
+    way; the tally showed none. They are read now — only those: the rest of
+    DEHACKED still is not.
+
+### Fixed
+- **Saving on a big map stopped the game.** The savegame was built in 180K
+  borrowed from the screen buffers and only measured once written, so a map
+  that needed more wrote past them and the game ended with "Savegame buffer
+  overrun" — SIGIL's E5M7 does, at 210K, and crashed on the way out. Saves
+  have 8 MB of their own now.
+
 ## [1.10.77] — 2026-09-28
 
 ### Fixed

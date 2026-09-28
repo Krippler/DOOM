@@ -26,7 +26,7 @@ MUSIC?=fluidsynth
 
 ifeq ($(MUSIC),fluidsynth)
 CFLAGS+=-DMUSIC_FLUIDSYNTH
-MUSIC_OBJ=$(O)/mus2mid.o
+MUSIC_OBJ=$(O)/mus2mid.o $(O)/stb_vorbis.o
 MUSIC_LIBS=-lfluidsynth -lpthread
 else ifeq ($(MUSIC),none)
 MUSIC_OBJ=
@@ -120,6 +120,12 @@ $(O)/linuxxdoom:	$(O) $(OBJS) $(O)/i_main.o
 
 $(O)/%.o:	%.c | $(O)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+# stb_vorbis, for Ogg Vorbis music, as it comes from github.com/nothings/stb:
+# its warnings are its own.
+$(O)/stb_vorbis.o:	stb_vorbis.c | $(O)
+	$(CC) $(CFLAGS) -w -DSTB_VORBIS_NO_STDIO -DSTB_VORBIS_NO_PUSHDATA_API \
+	-c $< -o $@
 
 #############################################################
 #

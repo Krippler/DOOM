@@ -232,7 +232,7 @@ class Pad:
 #
 
 class Audio:
-    def __init__(self, port):
+    def __init__(self, port, record=False):
         end = time.time() + 10
         while True:
             try:
@@ -254,6 +254,8 @@ class Audio:
         self.lock = threading.Lock()
         self.samples = []       # (time, peak) per chunk
         self.total = 0
+        self.left = [] if record else None  # every left sample, when asked
+        self.left = [] if record else None  # every left sample, when asked
         threading.Thread(target=self._read, daemon=True).start()
 
     def _read(self):
@@ -266,13 +268,15 @@ class Audio:
             if not d:
                 return
             d = rest + d
-            n = len(d) // 2 * 2
+            n = len(d) // 4 * 4         # whole stereo frames
             rest = d[n:]
             vals = struct.unpack('<%dh' % (n // 2), d[:n])
             peak = max((abs(v) for v in vals), default=0)
             with self.lock:
                 self.samples.append((time.time(), peak))
                 self.total += n
+                if self.left is not None:
+                    self.left.extend(vals[0::2])
 
     def peak(self, t0, t1):
         with self.lock:
@@ -366,6 +370,46 @@ def music(a):
     say('the title music plays: peak %d' % peak)
 
 
+def ogg(a):
+    # The track is a 440 Hz tone recorded at 44100 a second; the mixer runs
+    # at its own rate. Heard at 440 Hz, it was decoded and resampled right.
+    audio = Audio(a.audio, record=True)
+    time.sleep(5)
+    with audio.lock:
+        tail = audio.left[-audio.rate * 2:]
+    peak = max((abs(v) for v in tail), default=0)
+    if peak < 1000:
+        die('E1M1 with an Ogg Vorbis track for its music, and the loudest '
+            'sample in two seconds was %d' % peak)
+    crossings = sum(1 for i in range(1, len(tail))
+                    if (tail[i - 1] < 0) != (tail[i] < 0))
+    hz = crossings / 2 / (len(tail) / audio.rate)
+    if abs(hz - 440) > 22:
+        die('the Ogg Vorbis track plays at %.0f Hz; it is a 440 Hz tone' % hz)
+    say('the Ogg Vorbis track plays, at %.0f Hz as it should: peak %d'
+        % (hz, peak))
+
+
+def ogg(a):
+    # The track is a 440 Hz tone recorded at 44100 a second; the mixer runs
+    # at its own rate. Heard at 440 Hz, it was decoded and resampled right.
+    audio = Audio(a.audio, record=True)
+    time.sleep(5)
+    with audio.lock:
+        tail = audio.left[-audio.rate * 2:]
+    peak = max((abs(v) for v in tail), default=0)
+    if peak < 1000:
+        die('E1M1 with an Ogg Vorbis track for its music, and the loudest '
+            'sample in two seconds was %d' % peak)
+    crossings = sum(1 for i in range(1, len(tail))
+                    if (tail[i - 1] < 0) != (tail[i] < 0))
+    hz = crossings / 2 / (len(tail) / audio.rate)
+    if abs(hz - 440) > 22:
+        die('the Ogg Vorbis track plays at %.0f Hz; it is a 440 Hz tone' % hz)
+    say('the Ogg Vorbis track plays, at %.0f Hz as it should: peak %d'
+        % (hz, peak))
+
+
 def compare(a):
     fb = wait_for_level(a.fb)
     if fb[3] != 8:
@@ -386,7 +430,7 @@ def compare(a):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('phase', choices=['level', 'music', 'compare'])
+    p.add_argument('phase', choices=['level', 'music', 'ogg', 'compare'])
     p.add_argument('--fb')
     p.add_argument('--pad', type=int)
     p.add_argument('--audio', type=int)
@@ -394,7 +438,8 @@ def main():
     p.add_argument('--src', help="the engine's v_video.c, for its gamma table")
     p.add_argument('--out', default='.')
     a = p.parse_args()
-    {'level': level, 'music': music, 'compare': compare}[a.phase](a)
+    {'level': level, 'music': music, 'ogg': ogg,
+     'compare': compare}[a.phase](a)
 
 
 if __name__ == '__main__':

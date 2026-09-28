@@ -73,7 +73,10 @@ rcsid[] = "$Id: g_game.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 #include "g_game.h"
 
 
-#define SAVEGAMESIZE	0x2c000
+// 180K in 1994, and taken from the screen buffers, past the end of which
+// a bigger map's savegame went on writing before this was checked. Its own
+// buffer now, and room for any map there is.
+#define SAVEGAMESIZE	(8*1024*1024)
 #define SAVESTRINGSIZE	24
 
 
@@ -1233,6 +1236,8 @@ void G_DoCompleted (void)
     // unless its UMAPINFO has one.
     if ( map && map->partime > 0 )
 	wminfo.partime = 35*map->partime;
+    else if ( U_BexPar (gameepisode, gamemap) > 0 )
+	wminfo.partime = 35*U_BexPar (gameepisode, gamemap);
     else if ( gamemode == commercial )
 	wminfo.partime = gamemap <= 32 ? 35*cpars[gamemap-1] : 0; 
     else
@@ -1390,7 +1395,13 @@ void G_DoSaveGame (void)
 	sprintf (name,SAVEGAMENAME"%d.dsg",savegameslot); 
     description = savedescription; 
 	 
-    save_p = savebuffer = screens[1]+0x4000; 
+    {
+	static byte*	buffer;
+
+	if (!buffer && !(buffer = malloc (SAVEGAMESIZE)))
+	    I_Error ("G_DoSaveGame: no memory for the savegame");
+	save_p = savebuffer = buffer;
+    }
 	 
     memcpy (save_p, description, SAVESTRINGSIZE); 
     save_p += SAVESTRINGSIZE; 

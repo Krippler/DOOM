@@ -24,14 +24,15 @@ jobs:
       - uses: actions/checkout@v4
 
       # TimGM6mb rather than FluidR3: 6 MB instead of 142, and the music check
-      # only needs to hear that there is some.
+      # only needs to hear that there is some. vorbis-tools for oggenc, which
+      # makes the Ogg Vorbis track the ogg phase plays.
       - name: Install build and test dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             gcc libc6-dev make \
             libx11-dev libxext-dev libpulse-dev libfluidsynth-dev \
-            xvfb xdotool timgm6mb-soundfont
+            xvfb xdotool timgm6mb-soundfont vorbis-tools
 
       - name: Build the engine
         run: make -C linuxdoom-1.10 -j"$(nproc)"
