@@ -233,7 +233,7 @@ R_FindPlane
 {
     visplane_t*	check;
 	
-    if (picnum == skyflatnum)
+    if (R_IsSkyFlat (picnum))
     {
 	height = 0;			// all skys map together
 	lightlevel = 0;
@@ -404,7 +404,7 @@ void R_DrawPlanes (void)
 
 	
 	// sky flat
-	if (pl->picnum == skyflatnum)
+	if (R_IsSkyFlat (pl->picnum))
 	{
 	    dc_iscale = pspriteiscale>>detailshift;
 	    
@@ -423,7 +423,7 @@ void R_DrawPlanes (void)
 		{
 		    angle = (viewangle + xtoviewangle[x])>>ANGLETOSKYSHIFT;
 		    dc_x = x;
-		    dc_source = R_GetColumn(skytexture, angle);
+		    dc_source = R_GetColumn(R_SkyTexture (pl->picnum), angle);
 		    colfunc ();
 		}
 	    }

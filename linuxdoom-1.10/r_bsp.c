@@ -523,7 +523,7 @@ void R_Subsector (int num)
 	floorplane = NULL;
     
     if (frontsector->ceilingheight > viewz 
-	|| frontsector->ceilingpic == skyflatnum)
+	|| R_IsSkyFlat (frontsector->ceilingpic))
     {
 	ceilingplane = R_FindPlane (frontsector->ceilingheight,
 				    frontsector->ceilingpic,

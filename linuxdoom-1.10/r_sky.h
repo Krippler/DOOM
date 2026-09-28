@@ -40,6 +40,13 @@ extern int		skytexturemid;
 // Called whenever the view size changes.
 void R_InitSkyMap (void);
 
+// Reads SKYDEFS, once the flats and textures are known.
+void R_InitSkyDefs (void);
+
+// The sky texture a sky flat shows.
+#define R_SkyTexture(pic) \
+	((pic) == skyflatnum ? skytexture : flatskytexture[pic])
+
 #endif
 //-----------------------------------------------------------------------------
 //

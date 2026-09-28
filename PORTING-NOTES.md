@@ -889,6 +889,30 @@ tables were raised eightfold: `MAXVISPLANES`, `MAXOPENINGS`, `MAXDRAWSEGS`,
 Only memory depends on them. The scrolling-wall list, which the original
 filled with no check at all, stops at its end now.
 
+## SKYDEFS: a sky of its own
+
+The re-release's DOOM II carries a JSON lump, `SKYDEFS`, whose
+`flatmapping` makes `F_RSKY1`, `F_RSKY2` and `F_RSKY3` stand for the skies
+`SKY1` to `SKY3`, whatever the map's own sky is. MAP20 uses it: sector 179,
+a pit, has an `F_RSKY3` floor, to show the hell sky among the city's SKY2.
+The 1997 engine had one sky flat, `F_SKY1`, compared by number with
+`skyflatnum` in eight places, and drew the pit as a floor of the flat's
+placeholder pattern.
+
+`R_InitSkyDefs` (r_sky.c) reads the mapping into `flatskytexture`, by flat
+number, and `R_IsSkyFlat` stands in for each of those eight comparisons: the
+renderer's sky planes, upper walls between two skies and closed-door checks,
+and the play code's bullets and missiles vanishing into a sky ceiling.
+`R_DrawPlanes` draws a sky plane with `R_SkyTexture`, the map's sky for
+`F_SKY1` and the mapped one for the others. Planes of different skies
+merge only with their own, as they carry their flat's number. The "skies"
+half of SKYDEFS, which can define scrolling and fire skies, is not read;
+DOOM II's has none.
+
+Checked against the re-release's DOOM II with the player put into the pit:
+its floor was the placeholder pattern, and is SKY3 now. The WAD's other maps
+use none of these flats, and the other re-release WADs have no SKYDEFS.
+
 ## Delete was Backspace
 
 `xlatekey` sent `XK_Delete` as `KEY_BACKSPACE`, so the two were one key: Delete

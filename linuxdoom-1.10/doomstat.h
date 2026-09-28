@@ -271,6 +271,14 @@ extern  int             bodyqueslot;
 //  as well as tracking projectiles etc.
 extern int		skyflatnum;
 
+// Other flats that stand for a sky, by flat number: the sky texture each
+// shows, or -1. The 2024 re-release's SKYDEFS lump makes these; see r_sky.c.
+extern int*		flatskytexture;
+
+// Whether a flat is sky: F_SKY1, showing the map's sky, or one of those.
+#define R_IsSkyFlat(pic) \
+	((pic) == skyflatnum || flatskytexture[pic] >= 0)
+
 
 
 // Netgame stuff (buffers and pointers, i.e. indices).
