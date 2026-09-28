@@ -39,6 +39,10 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.10.77
+- DOOM II's MAP20, from the 2024 re-release, shows the hell sky in its pit
+  again, where it drew a placeholder floor.
+
 ### 1.10.76
 - Add-ons that describe their levels with UMAPINFO play by it, among them the
   2024 re-release's SIGIL, Master Levels, No Rest for the Living, TNT and

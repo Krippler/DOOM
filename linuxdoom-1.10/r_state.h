@@ -57,6 +57,7 @@ extern int		viewheight;
 
 extern int		firstflat;
 extern int		lastflat;
+extern int		numflats;
 
 // for global animation
 extern int*		flattranslation;	

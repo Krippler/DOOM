@@ -6,6 +6,16 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
+## [1.10.77] — 2026-09-28
+
+### Fixed
+- **DOOM II's MAP20 has its hell sky in the pit again.** The 2024 re-release
+  gives MAP20 a pit whose floor shows the hell sky among the city's, using a
+  flat of its own, `F_RSKY3`, that its `SKYDEFS` lump maps to that sky. The
+  1997 engine only knew one flat as sky, and drew the pit's floor as the
+  flat's placeholder pattern. It reads the mapping now: `F_RSKY1` to
+  `F_RSKY3` are skies wherever a map uses them.
+
 ## [1.10.76] — 2026-09-28
 
 ### Added

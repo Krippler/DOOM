@@ -953,14 +953,14 @@ boolean PTR_ShootTraverse (intercept_t* in)
 	y = trace.y + FixedMul (trace.dy, frac);
 	z = shootz + FixedMul (aimslope, FixedMul(frac, attackrange));
 
-	if (li->frontsector->ceilingpic == skyflatnum)
+	if (R_IsSkyFlat (li->frontsector->ceilingpic))
 	{
 	    // don't shoot the sky!
 	    if (z > li->frontsector->ceilingheight)
 		return false;
 	    
 	    // it's a sky hack wall
-	    if	(li->backsector && li->backsector->ceilingpic == skyflatnum)
+	    if	(li->backsector && R_IsSkyFlat (li->backsector->ceilingpic))
 		return false;		
 	}
 
