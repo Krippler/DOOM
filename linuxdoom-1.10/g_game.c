@@ -169,6 +169,14 @@ int		key_speed;
 // it; Escape is still read directly, so this only ever adds a key.
 int		key_menu = '`';
 
+// Next and previous weapon, which 1997 DOOM did not have: the wheel, by
+// default. The controller has its own, KEY_WEAPNEXT and KEY_WEAPPREV.
+int		key_nextweapon = KEY_MWHEELUP;
+int		key_prevweapon = KEY_MWHEELDOWN;
+
+// Asked for since the last tic: 1 next, -1 previous, 0 neither.
+static int	weaponcycle;
+
 // Whether pushing the mouse forward walks the player forward.
 //
 // The original used the mouse's Y axis for movement, because there was
@@ -374,14 +382,24 @@ void G_BuildTiccmd (ticcmd_t* cmd)
 	dclicks = 0;                   
     } 
 
-    // chainsaw overrides 
-    for (i=0 ; i<NUMWEAPONS-1 ; i++)        
-	if (gamekeydown['1'+i]) 
-	{ 
-	    cmd->buttons |= BT_CHANGE; 
-	    cmd->buttons |= i<<BT_WEAPONSHIFT; 
-	    break; 
+    // chainsaw overrides
+    for (i=0 ; i<NUMWEAPONS-1 ; i++)
+	if (gamekeydown['1'+i])
+	{
+	    cmd->buttons |= BT_CHANGE;
+	    cmd->buttons |= i<<BT_WEAPONSHIFT;
+	    break;
 	}
+
+    // next or previous, when no number key has said which
+    if (weaponcycle && !(cmd->buttons & BT_CHANGE))
+    {
+	int	slot = G_CycleWeapon (weaponcycle);
+
+	if (slot >= 0)
+	    cmd->buttons |= BT_CHANGE | slot<<BT_WEAPONSHIFT;
+    }
+    weaponcycle = 0;
     
     // mouse
     if (mousebuttons[mousebforward]) 
@@ -539,9 +557,70 @@ static void G_SetSky (void)
 
 
 //
-// G_DoLoadLevel 
+// G_CycleWeapon
+// The weapon after, or before, the one in hand or on its way, in the order
+// the number keys give them -- fist, chainsaw, pistol, shotgun, super
+// shotgun, chaingun, rocket launcher, plasma rifle, BFG -- passing over any
+// not owned or without the ammunition to fire. Returned as the number key's
+// slot, which is all a tic command can carry: the fist and the chainsaw
+// share 1, and the shotgun and the super shotgun 3, and P_PlayerThink
+// chooses between them as it does for the keys. That means the shotgun is
+// reached going back from the super shotgun, not forward from the pistol,
+// when both are owned. -1 when nothing else can be chosen.
 //
-extern  gamestate_t     wipegamestate; 
+static const struct { weapontype_t weapon; int slot; } weaponorder[] =
+{
+    {wp_fist, 0}, {wp_chainsaw, 0}, {wp_pistol, 1}, {wp_shotgun, 2},
+    {wp_supershotgun, 2}, {wp_chaingun, 3}, {wp_missile, 4},
+    {wp_plasma, 5}, {wp_bfg, 6}
+};
+
+#define NUMWEAPONORDER	(int)(sizeof(weaponorder)/sizeof(*weaponorder))
+
+static boolean G_WeaponSelectable (player_t* p, weapontype_t w)
+{
+    ammotype_t	ammo = weaponinfo[w].ammo;
+    int		need = w == wp_bfg ? 40 : w == wp_supershotgun ? 2 : 1;
+
+    if (!p->weaponowned[w])
+	return false;
+    if (w == wp_supershotgun && gamemode != commercial)
+	return false;
+    // 1 gives the chainsaw when there is one, unless berserk and holding it
+    if (w == wp_fist && p->weaponowned[wp_chainsaw] && !p->powers[pw_strength])
+	return false;
+    return ammo == am_noammo || p->ammo[ammo] >= need;
+}
+
+int G_CycleWeapon (int dir)
+{
+    player_t*		p = &players[consoleplayer];
+    weapontype_t	now;
+    int			i;
+    int			j;
+
+    now = p->pendingweapon != wp_nochange ? p->pendingweapon : p->readyweapon;
+    for (i = 0; i < NUMWEAPONORDER; i++)
+	if (weaponorder[i].weapon == now)
+	    break;
+    if (i == NUMWEAPONORDER)
+	i = 0;
+
+    for (j = 1; j < NUMWEAPONORDER; j++)
+    {
+	int	k = (i + dir * j + NUMWEAPONORDER * j) % NUMWEAPONORDER;
+
+	if (G_WeaponSelectable (p, weaponorder[k].weapon))
+	    return weaponorder[k].slot;
+    }
+    return -1;
+}
+
+
+//
+// G_DoLoadLevel
+//
+extern  gamestate_t     wipegamestate;
  
 void G_DoLoadLevel (void) 
 { 
@@ -579,7 +658,8 @@ void G_DoLoadLevel (void)
     Z_CheckHeap ();
     
     // clear cmd building stuff
-    memset (gamekeydown, 0, sizeof(gamekeydown)); 
+    memset (gamekeydown, 0, sizeof(gamekeydown));
+    weaponcycle = 0; 
     joyxmove = joyymove = 0; 
     mousex = mousey = 0; 
     sendpause = sendsave = paused = false; 
@@ -648,11 +728,23 @@ boolean G_Responder (event_t* ev)
 	 
     switch (ev->type) 
     { 
-      case ev_keydown: 
-	if (ev->data1 == KEY_PAUSE) 
-	{ 
-	    sendpause = true; 
-	    return true; 
+      case ev_keydown:
+	if (ev->data1 == KEY_PAUSE)
+	{
+	    sendpause = true;
+	    return true;
+	}
+	if (gamestate == GS_LEVEL
+	    && (ev->data1 == key_nextweapon || ev->data1 == KEY_WEAPNEXT))
+	{
+	    weaponcycle = 1;
+	    return true;
+	}
+	if (gamestate == GS_LEVEL
+	    && (ev->data1 == key_prevweapon || ev->data1 == KEY_WEAPPREV))
+	{
+	    weaponcycle = -1;
+	    return true;
 	} 
 	if (ev->data1 <NUMKEYS) 
 	    gamekeydown[ev->data1] = true; 

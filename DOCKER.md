@@ -157,9 +157,10 @@ advantage fullscreen has. **Hold** Escape to actually leave; browsers guarantee
 that way out and it cannot be taken away.
 
 Playing in the window, Escape always releases the mouse — nothing can change
-that. This is why backquote (`` ` ``) opens the menu too, in every mode: the
-game uses that key for nothing else and no browser claims it, so it reaches
-DOOM whatever the pointer lock is doing.
+that. This is why backquote (`` ` ``) and **Backspace** open the menu too, in
+every mode: the game uses those keys for nothing else and no browser claims
+them, so they reach DOOM whatever the pointer lock is doing. Backspace is the
+Quake container's menu key, so one habit does for both.
 
 Keyboard Lock is a Chromium feature, so on Firefox and Safari Escape ends the
 capture even in fullscreen. The page says so when that is the case; backquote
@@ -183,20 +184,44 @@ Click into the canvas first — the browser only sends keys to a focused canvas.
 
 | | |
 | --- | --- |
-| Move | arrow keys |
-| Strafe | `,` and `.`, or hold Alt and steer |
+| Move | W and S |
+| Strafe | A and D, or hold Alt and steer |
+| Turn | the mouse, or the left and right arrows |
 | Run | hold Shift |
-| Fire | Ctrl |
-| Open, use | Space |
-| Weapons | `1`–`7` |
+| Fire | Ctrl, or the left mouse button |
+| Open, use | E |
+| Weapons | `1`–`7`, or the mouse wheel for the next and the one before |
 | Map | Tab |
-| Menu | `` ` ``, or Esc when the browser lets it through |
+| Menu | `` ` `` or Backspace, or Esc when the browser lets it through |
+
+That is WASD, as the Quake container has, written into `.doomrc` the first time
+the container starts on an empty state directory. id's own keys — the arrows to
+walk, `,` and `.` to sidestep, Space to use — are one `DOOM_MODERN_CONTROLS=0`
+away, and only on a state directory with no `.doomrc` yet: from then on the file
+is the game's, and what you change in it stays.
 
 All of these can be changed from the game: **` → Options → Setup →
-Controls**, the menu key included. Pick a line, press Return, then press the key you want;
+Controls**, next and previous weapon included. Pick a line, press Return, then
+press the key you want — the mouse wheel counts, as WHEEL UP and WHEEL DOWN;
 **Delete** on a line clears it, leaving that control with no key. Backspace goes
-back a page, in every menu. The choice is written to `.doomrc` in the state
-directory, so it survives a restart.
+back a page, in every menu, and out of the menus from the top. It is the one key
+that cannot be bound, as it opens the menu. The choice is written to `.doomrc`
+in the state directory, so it survives a restart.
+
+Next and previous weapon go through the weapons in the order of the number
+keys, passing over any you do not have or have no ammunition for. The fist and
+the chainsaw share `1`, and the shotgun and the super shotgun `3`, and the game
+has only the number to go on, so with both shotguns, going forward from the
+pistol reaches the super shotgun; the shotgun is the one going back from it.
+
+**Options → Setup → Gameplay** has the rest, from the Quake container:
+
+| | |
+| --- | --- |
+| Crosshair | off (id's), a cross, a dot, a circle, a cross with a gap, or a circle with a dot |
+| Crosshair red, green, blue | its colour, 0–8 each, drawn as the nearest in DOOM's palette |
+| HUD style | the status bar, or **minimal**: the view fills the screen, with the face and health in the bottom left, armour after them, the ammunition in hand in the bottom right and the keys above |
+| Weapon on pickup | change to a weapon picked up **always**, **only if new** (id's), or **never**. Demos and net games always play id's way |
 
 A game controller works too, and is set up in the same place — see below.
 
@@ -241,7 +266,8 @@ The layout out of the box:
 | LT | run |
 | A | open / use; chooses in menus, and is *yes* to a question |
 | B | the game menu; goes back a page in menus, and is *no* to a question |
-| X, Y, LB, RB | weapons 3, 2, 4 and 5: shotgun, pistol, chaingun, rocket launcher |
+| X, Y | weapons 3 and 2: shotgun, pistol |
+| LB, RB | the weapon before, the next weapon |
 | Left stick click, Right stick click | weapons 1 and 6: fist or chainsaw, plasma rifle |
 | D-pad | walk and turn; moves the cursor in menus |
 | View | automap |
@@ -323,6 +349,13 @@ lost, the same as quitting.
 Shareware refuses to load mods — that is the engine's own restriction, not the
 container's — and the menu says so instead of restarting into a fatal error.
 
+**A WAD the engine cannot run** — a texture it does not have, a map in a format
+it cannot read — ends in a fatal error, as it always did. It used to take the
+container with it. Now the engine goes back to the game it was running before
+the choice, and the title screen says which WAD it was and what the error was,
+until a key is pressed. The log has the same, as `Error: ...` and then `Going
+back to the game before ...`.
+
 ## Size
 
 About 216 MB to pull, 603 MB unpacked. The engine and sound server together
@@ -368,6 +401,8 @@ Everything is set through the environment:
 | `DOOM_PAD_PORT` | `5902` | Internal port the engine hears the controller on. Nothing to publish; the controller shares the web port. |
 | `PULSE_SERVER` | unset | Send the sound to this PulseAudio server instead of the browser. |
 | `DOOM_SOUNDFONT` | auto | General MIDI soundfont for music; empty means search for an installed one. |
+| `DOOM_MODERN_CONTROLS` | `1` | WASD, and E to use, on a first start. `0` starts from id's keys instead. Only read while the state directory has no `.doomrc`. |
+| `DOOM_RESTART` | `1` | Start the game again after a crash or QUIT GAME. `0` stops the container instead. |
 | `PUID` / `PGID` | `1001` | User to drop to, when the container starts as root. |
 
 Anything you pass after the image name goes straight to the engine:
@@ -840,6 +875,11 @@ an older build can still carry the value, and the fix makes it a dead control
 rather than a crash. Rebind it in **Options → Setup → Controls**.
 
 ## Troubleshooting
+
+**Reading the start-up log.** Every line the container prints carries the
+seconds since it started, `[doom 12.3s] ...`, so a slow start shows where the
+time went. A long gap before `found IWAD` is the WAD directory being scanned —
+on Unraid, often disks spinning up.
 
 **It starts, crashes immediately and keeps restarting.** Almost always a bad
 `screenblocks` in `.doomrc` in the state directory: the view size is computed

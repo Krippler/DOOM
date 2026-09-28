@@ -73,8 +73,8 @@ int	padbind[PB_COUNT] =
     PA_MENU,		// B
     PA_WEAPON3,		// X
     PA_WEAPON2,		// Y
-    PA_WEAPON4,		// LB
-    PA_WEAPON5,		// RB
+    PA_PREVWEAPON,	// LB
+    PA_NEXTWEAPON,	// RB
     PA_RUN,		// LT
     PA_FIRE,		// RT
     PA_AUTOMAP,		// View
@@ -151,6 +151,9 @@ static void PAD_BridgeInit (int port)
     br_listen = socket (AF_INET, SOCK_STREAM, 0);
     if (br_listen < 0)
 	return;
+    // Not into the engine the WAD menu restarts with exec, which listens on
+    // the same port and could not while this was still open in it.
+    fcntl (br_listen, F_SETFD, FD_CLOEXEC);
     setsockopt (br_listen, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
 
     memset (&addr, 0, sizeof(addr));
@@ -201,6 +204,7 @@ static void PAD_BridgeRead (void)
     {
 	PAD_BridgeDrop ();
 	br_conn = c;
+	fcntl (br_conn, F_SETFD, FD_CLOEXEC);
 	fcntl (br_conn, F_SETFL, O_NONBLOCK);
 	setsockopt (br_conn, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
     }
@@ -451,6 +455,8 @@ static int PAD_GameKey (int b)
       case PA_STRAFERIGHT:	return key_straferight;
       case PA_AUTOMAP:		return KEY_TAB;
       case PA_MENU:		return KEY_ESCAPE;
+      case PA_NEXTWEAPON:	return KEY_WEAPNEXT;
+      case PA_PREVWEAPON:	return KEY_WEAPPREV;
     }
     if (a >= PA_WEAPON1 && a <= PA_WEAPON7)
 	return '1' + a - PA_WEAPON1;

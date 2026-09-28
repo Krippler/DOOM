@@ -68,6 +68,7 @@ rcsid[] = "$Id: m_menu.c,v 1.7 1997/02/03 22:45:10 b1 Exp $";
 #include "i_sound.h"
 #include "i_pad.h"
 #include "u_mapinfo.h"
+#include "st_stuff.h"
 
 
 
@@ -1025,7 +1026,10 @@ extern int	key_use;
 extern int	key_strafe;
 extern int	key_speed;
 extern int	key_menu;
+extern int	key_nextweapon;
+extern int	key_prevweapon;
 extern int	novert;
+extern int	weaponpickup;
 
 extern int	usemouse;
 extern int	mousebfire;
@@ -1052,6 +1056,8 @@ static binding_t bindings[] =
     {"STRAFE RIGHT",	&key_straferight},
     {"STRAFE ON",	&key_strafe},
     {"RUN",		&key_speed},
+    {"NEXT WEAPON",	&key_nextweapon},
+    {"PREV WEAPON",	&key_prevweapon},
     {"MENU",		&key_menu}
 };
 
@@ -1093,6 +1099,8 @@ static keyname_t keynames[] =
     {KEY_RSHIFT,	"SHIFT"},
     {KEY_RCTRL,		"CTRL"},
     {KEY_RALT,		"ALT"},
+    {KEY_MWHEELUP,	"WHEEL UP"},
+    {KEY_MWHEELDOWN,	"WHEEL DOWN"},
     {' ',		"SPACE"},
     {',',		"COMMA"},
     {'.',		"PERIOD"},
@@ -1143,15 +1151,19 @@ enum
     setup_controls,
     setup_mouse,
     setup_pad,
+    setup_gameplay,
     setup_wads,
     setup_end
 } setup_e;
+
+void M_Gameplay (int choice);
 
 menuitem_t SetupMenu[] =
 {
     {1,"",M_Controls,'c',"CONTROLS"},
     {1,"",M_MouseOptions,'m',"MOUSE"},
     {1,"",M_PadOptions,'p',"CONTROLLER"},
+    {1,"",M_Gameplay,'g',"GAMEPLAY"},
     {1,"",M_WadSelect,'w',"LOAD WAD"}
 };
 
@@ -1187,18 +1199,21 @@ menuitem_t ControlsMenu[] =
     {1,"",M_ChangeBinding,0}, {1,"",M_ChangeBinding,0},
     {1,"",M_ChangeBinding,0}, {1,"",M_ChangeBinding,0},
     {1,"",M_ChangeBinding,0}, {1,"",M_ChangeBinding,0},
+    {1,"",M_ChangeBinding,0}, {1,"",M_ChangeBinding,0},
     {1,"",M_ChangeBinding,0}
 };
 
+// Thirteen rows at the small font's 13 pixels reach into the status bar,
+// so these are packed at 11, as the controller's buttons are at 10.
 menu_t ControlsDef =
 {
     NUM_BINDINGS,
     &SetupDef,
     ControlsMenu,
     M_DrawControls,
-    56,25,
+    56,26,
     0,
-    SMALLLINEHEIGHT
+    11
 };
 
 
@@ -1427,7 +1442,8 @@ static char* padactionnames[PA_COUNT] =
     "STRAFE LEFT", "STRAFE RIGHT",
     "WEAPON 1", "WEAPON 2", "WEAPON 3", "WEAPON 4",
     "WEAPON 5", "WEAPON 6", "WEAPON 7",
-    "AUTOMAP", "MENU"
+    "AUTOMAP", "MENU",
+    "NEXT WEAPON", "PREV WEAPON"
 };
 
 // The buttons that can be set, in the order the page lists them. Start is
@@ -1626,6 +1642,126 @@ void M_DrawPadButtons (void)
 
 
 //
+// Gameplay: the crosshair, the HUD and changing weapon on a pickup, from
+// the Quake container's Options -> Gameplay.
+//
+enum
+{
+    gp_crosshair,
+    gp_red,
+    gp_green,
+    gp_blue,
+    gp_hud,
+    gp_pickup,
+    gp_end
+} gameplay_e;
+
+void M_ChangeCrosshair (int choice);
+void M_ChangeCrosshairRed (int choice);
+void M_ChangeCrosshairGreen (int choice);
+void M_ChangeCrosshairBlue (int choice);
+void M_ChangeHudStyle (int choice);
+void M_ChangeWeaponPickup (int choice);
+void M_DrawGameplay (void);
+
+menuitem_t GameplayMenu[] =
+{
+    {2,"",M_ChangeCrosshair,'c'},
+    {2,"",M_ChangeCrosshairRed,'r'},
+    {2,"",M_ChangeCrosshairGreen,'g'},
+    {2,"",M_ChangeCrosshairBlue,'b'},
+    {2,"",M_ChangeHudStyle,'h'},
+    {2,"",M_ChangeWeaponPickup,'w'}
+};
+
+menu_t GameplayDef =
+{
+    gp_end,
+    &SetupDef,
+    GameplayMenu,
+    M_DrawGameplay,
+    32,48,
+    0,
+    SMALLLINEHEIGHT
+};
+
+static char* crosshairnames[] =
+    { "OFF", "CROSS", "DOT", "CIRCLE", "CROSS WITH GAP", "CIRCLE WITH DOT" };
+static char* pickupnames[] = { "ALWAYS", "ONLY IF NEW", "NEVER" };
+
+void M_Gameplay (int choice)
+{
+    choice = 0;
+    M_SetupNextMenu (&GameplayDef);
+}
+
+// A setting that goes round: right and Enter forward, left back.
+static void M_Cycle (int* value, int choice, int count)
+{
+    if (*value < 0 || *value >= count)
+	*value = 0;
+    *value = choice ? (*value + 1) % count : (*value + count - 1) % count;
+    S_StartSound (NULL, sfx_stnmov);
+}
+
+void M_ChangeCrosshair (int choice)	{ M_Cycle (&crosshair, choice, 6); }
+void M_ChangeCrosshairRed (int choice)	{ M_Step (&crosshair_r, choice, 8); }
+void M_ChangeCrosshairGreen (int choice) { M_Step (&crosshair_g, choice, 8); }
+void M_ChangeCrosshairBlue (int choice)	{ M_Step (&crosshair_b, choice, 8); }
+void M_ChangeWeaponPickup (int choice)	{ M_Cycle (&weaponpickup, choice, 3); }
+
+void M_ChangeHudStyle (int choice)
+{
+    M_Cycle (&hud_style, choice, 2);
+    // the view fills the screen with the minimal HUD, and goes back to the
+    // screen size setting without it
+    R_SetViewSize (screenblocks, detailLevel);
+}
+
+void M_DrawGameplay (void)
+{
+    int		x = GameplayDef.x;
+    int		y = GameplayDef.y;
+    int		vx = x + 184;
+    char	buf[16];
+
+    M_WriteText (x, 14, "GAMEPLAY");
+
+    M_WriteText (x, y, "CROSSHAIR");
+    M_WriteText (vx, y, crosshairnames[crosshair >= 0 && crosshair < 6
+					? crosshair : 0]);
+    y += GameplayDef.lineheight;
+
+    snprintf (buf, sizeof(buf), "%d", crosshair_r);
+    M_WriteText (x, y, "CROSSHAIR RED");
+    M_WriteText (vx, y, buf);
+    y += GameplayDef.lineheight;
+
+    snprintf (buf, sizeof(buf), "%d", crosshair_g);
+    M_WriteText (x, y, "CROSSHAIR GREEN");
+    M_WriteText (vx, y, buf);
+    y += GameplayDef.lineheight;
+
+    snprintf (buf, sizeof(buf), "%d", crosshair_b);
+    M_WriteText (x, y, "CROSSHAIR BLUE");
+    M_WriteText (vx, y, buf);
+    y += GameplayDef.lineheight;
+
+    M_WriteText (x, y, "HUD STYLE");
+    M_WriteText (vx, y, hud_style ? "MINIMAL" : "STATUS BAR");
+    y += GameplayDef.lineheight;
+
+    M_WriteText (x, y, "WEAPON ON PICKUP");
+    M_WriteText (vx, y, pickupnames[weaponpickup >= 0 && weaponpickup < 3
+				    ? weaponpickup : 1]);
+
+    // ONLY IF NEW is id's, and all a demo or a net game will use
+    M_WriteText (x, 140, "ONLY IF NEW IS ID'S, AND WHAT DEMOS");
+    M_WriteText (x, 152, "AND NET GAMES ALWAYS USE");
+}
+
+
+//
 // WAD selection.
 //
 #define MAX_WADS	10
@@ -1756,6 +1892,21 @@ static void M_RelaunchWith (char* path)
     newargv[argc++] = iwad ? "-iwad" : "-file";
     newargv[argc++] = path;
     newargv[argc] = NULL;
+
+    // Where to come back to if the engine cannot start on the new file:
+    // these arguments, which it is running on now. See I_ErrorGoBack.
+    {
+	static char	prev[4096];
+	size_t		n = 0;
+	char*		base = strrchr (path, '/');
+
+	for (i = 0; i < myargc && n < sizeof(prev); i++)
+	    n += snprintf (prev + n, sizeof(prev) - n, "%s%s",
+			   i ? "\x1f" : "", myargv[i]);
+	if (n < sizeof(prev))
+	    setenv ("DOOM_PREVIOUS_ARGS", prev, 1);
+	setenv ("DOOM_LOADING", base ? base + 1 : path, 1);
+    }
 
     M_SaveDefaults ();
     I_ShutdownSound ();
@@ -2438,6 +2589,11 @@ boolean M_Responder (event_t* ev)
 
 	bindingWait = false;
 
+	// Backspace is the menu's, as Escape is: it cancels, and is never a
+	// binding (see the pop-up below).
+	if (ch == KEY_BACKSPACE)
+	    ch = KEY_ESCAPE;
+
 	// Out of range is refused as well. xlatekey passes a keysym it does not
 	// recognise straight through, so a Super key or a media key arrives here
 	// as 65515 or thereabouts -- and G_Responder only ever records 0..255, so
@@ -2502,6 +2658,10 @@ boolean M_Responder (event_t* ev)
     // Take care of any messages that need input
     if (messageToPrint)
     {
+	// Backspace answers no, as it goes back everywhere else.
+	if (ch == KEY_BACKSPACE)
+	    ch = KEY_ESCAPE;
+
 	if (messageNeedsInput == true &&
 	    !(ch == ' ' || ch == 'n' || ch == 'y' || ch == KEY_ESCAPE))
 	    return false;
@@ -2645,9 +2805,14 @@ boolean M_Responder (event_t* ev)
 
     
     // Pop-up menu?
+    //
+    // Backspace too, as in the Quake container: inside the menus it already
+    // goes back a level, and in the browser, which keeps Escape for itself,
+    // it is a key that always reaches the game. Not while typing a chat
+    // message, where it rubs out.
     if (!menuactive)
     {
-	if (ch == KEY_ESCAPE)
+	if (ch == KEY_ESCAPE || (ch == KEY_BACKSPACE && !chat_on))
 	{
 	    M_StartControlPanel ();
 	    S_StartSound(NULL,sfx_swtchn);
@@ -2754,6 +2919,12 @@ boolean M_Responder (event_t* ev)
 	    currentMenu = currentMenu->prevMenu;
 	    itemOn = currentMenu->lastOn;
 	    S_StartSound(NULL,sfx_swtchn);
+	}
+	else
+	{
+	    // and out of the menus from the top, as it came in
+	    M_ClearMenus ();
+	    S_StartSound(NULL,sfx_swtchx);
 	}
 	return true;
 	
@@ -2954,6 +3125,50 @@ static void M_InitEpisodes (void)
 
 
 //
+// M_LoadFailed
+// Back on the game from before, after the engine could not start on the
+// one chosen from Load WAD (I_ErrorGoBack): what it was and why, on the
+// title screen until a key is pressed. The error is folded to fit.
+//
+void M_LoadFailed (char* wad, char* why)
+{
+    static char	text[512];
+    int		n;
+    int		col = 0;
+    char*	w;
+
+    n = snprintf (text, sizeof(text), "COULD NOT START %.24s\n\n",
+		  wad && *wad ? wad : "THAT WAD");
+    for (w = why; *w && n < (int)sizeof(text) - 32; w++)
+    {
+	// break at the space before a word that would pass 32 characters
+	if (*w == ' ')
+	{
+	    char*	end = strchr (w + 1, ' ');
+	    int		len = end ? end - w - 1 : (int)strlen (w + 1);
+
+	    if (col + 1 + len > 32)
+	    {
+		text[n++] = '\n';
+		col = 0;
+		continue;
+	    }
+	}
+	if (col == 32)
+	{
+	    text[n++] = '\n';
+	    col = 0;
+	}
+	text[n++] = *w;
+	col++;
+    }
+    snprintf (text + n, sizeof(text) - n, "\n\nTHE GAME BEFORE IT IS BACK.\n"
+	      "PRESS A KEY.");
+    M_StartMessage (text, NULL, false);
+}
+
+
+//
 // M_Init
 //
 void M_Init (void)
@@ -2979,6 +3194,16 @@ void M_Init (void)
     // costs nothing and gives those players the browser-safe key too.
     if (key_menu == KEY_ESCAPE)
 	key_menu = '`';
+
+    // Backspace opens the menu now, so it cannot be a control as well; an
+    // older config that bound it gets the control back unbound.
+    {
+	unsigned	i;
+
+	for (i = 0; i < NUM_BINDINGS; i++)
+	    if (*bindings[i].key == KEY_BACKSPACE)
+		*bindings[i].key = -1;
+    }
 
     screenSize = screenblocks - 3;
     messageToPrint = 0;

@@ -333,6 +333,10 @@
           Description="Set to 0 for no sound at all, which saves the bandwidth the audio stream uses."
           Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
 
+  <Config Name="Modern controls" Target="DOOM_MODERN_CONTROLS" Default="1"
+          Description="WASD to move and E to use, set up the first time the container starts with no saved settings. Set to 0 for id's original keys: the arrows to move, comma and period to sidestep, Space to use. Once the game has saved its settings, it keeps what you set in it either way."
+          Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>
+
   <Config Name="Restart on crash" Target="DOOM_RESTART" Default="1"
           Description="Start the game again if it crashes or you choose QUIT GAME, leaving the container up so the browser reconnects on its own. Set to 0 to have the container stop instead."
           Type="Variable" Display="advanced" Required="false" Mask="false">1</Config>

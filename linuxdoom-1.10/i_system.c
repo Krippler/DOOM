@@ -341,16 +341,56 @@ byte*	I_AllocLow(int length)
 //
 extern boolean demorecording;
 
+//
+// I_ErrorGoBack
+// A WAD chosen on Options -> Setup -> Load WAD that the engine cannot run
+// ends here, as any fatal error does: a texture it does not have, a map in
+// a format it cannot read. In the container that stopped the container,
+// and only a restart from outside brought it back. But the engine came
+// from a game that worked, and the menu left its arguments behind in
+// DOOM_PREVIOUS_ARGS, so it starts that again instead, and the title
+// screen says what went wrong (M_LoadFailed). Once: the variable goes, so
+// a failure of the game it goes back to is a real one.
+//
+static void I_ErrorGoBack (const char* why)
+{
+    char*	prev = getenv ("DOOM_PREVIOUS_ARGS");
+    char*	argv[64];
+    char*	copy;
+    char*	p;
+    int		n = 0;
+
+    if (!prev || !*prev || !(copy = strdup (prev)))
+	return;
+    for (p = strtok (copy, "\x1f"); p && n < 63; p = strtok (NULL, "\x1f"))
+	argv[n++] = p;
+    argv[n] = NULL;
+    if (!n)
+	return;
+
+    unsetenv ("DOOM_PREVIOUS_ARGS");
+    setenv ("DOOM_LOAD_FAILED", why, 1);
+    fprintf (stderr, "Going back to the game before %s\n",
+	     getenv ("DOOM_LOADING") ? getenv ("DOOM_LOADING") : "it");
+
+    I_PadShutdown ();
+    I_ShutdownSound ();
+    I_ShutdownMusic ();
+
+    execv ("/proc/self/exe", argv);
+    execv (argv[0], argv);
+}
+
 void I_Error (char *error, ...)
 {
     va_list	argptr;
+    char	why[256];
 
     // Message first.
     va_start (argptr,error);
-    fprintf (stderr, "Error: ");
-    vfprintf (stderr,error,argptr);
-    fprintf (stderr, "\n");
+    vsnprintf (why, sizeof(why), error, argptr);
     va_end (argptr);
+    fprintf (stderr, "Error: %s\n", why);
 
     fflush( stderr );
 
@@ -360,6 +400,8 @@ void I_Error (char *error, ...)
 
     D_QuitNetGame ();
     I_ShutdownGraphics();
-    
+
+    I_ErrorGoBack (why);
+
     exit(-1);
 }

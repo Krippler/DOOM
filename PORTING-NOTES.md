@@ -889,6 +889,75 @@ tables were raised eightfold: `MAXVISPLANES`, `MAXOPENINGS`, `MAXDRAWSEGS`,
 Only memory depends on them. The scrolling-wall list, which the original
 filled with no check at all, stops at its end now.
 
+## From the Quake container: weapons on the wheel, WASD, Backspace, Gameplay
+
+**Next and previous weapon.** 1993 DOOM changes weapon only by number, and
+a tic command can only carry a number: `BT_CHANGE` and three bits of slot.
+`G_CycleWeapon` walks id's order -- fist, chainsaw, pistol, shotgun, super
+shotgun, chaingun, rocket launcher, plasma rifle, BFG -- from the weapon in
+hand or on its way, passes over what is not owned or cannot fire (the BFG
+needs 40 cells, the super shotgun 2 shells), and returns the slot. The fist
+and the chainsaw share slot 0, and the two shotguns slot 2, and
+`P_PlayerThink` chooses between them as it does for the number keys; so
+with both shotguns, forward from the pistol lands on the super shotgun, and
+the shotgun is the one back from it. The request is taken in `G_Responder`
+and spent in `G_BuildTiccmd`, so it is in the tic command and demos replay it.
+
+**The wheel.** X reports it as buttons 4 and 5, which the 1997 driver
+dropped. They are posted as a press and a release of `KEY_MWHEELUP` and
+`KEY_MWHEELDOWN`, so the Controls page binds them like keys. Those codes,
+and `KEY_WEAPNEXT`/`KEY_WEAPPREV` for the controller's LB and RB, are 0x80
+plus the scancodes of Q, W, E and R: letters always arrive as ASCII, while
+any keysym above 0x7f can come through `xlatekey` as itself, and 0xa0 to
+0xff are the Latin-1 letters -- a Spanish keyboard's ñ is 0xf1.
+
+**WASD** is not a change to the engine's defaults, which stay id's: the
+entrypoint writes `key_up 119` and the rest into `.doomrc` when the state
+directory has none, as the Quake container writes its `config.cfg`, and the
+desktop launcher does the same in its first `doomrc`. After that the engine
+owns the file.
+
+**Backspace** opens the menu from `M_Responder`'s pop-up check, except while
+a chat message is being typed. A binding prompt takes it as Escape, a
+question as no, and `M_Init` clears it from any binding an older config
+gave it.
+
+**Options → Setup → Gameplay.** `HU_DrawCrosshair` draws one of five 9 by 9
+shapes into `screens[0]` at the middle of the view, after
+`R_RenderPlayerView`, in the palette index nearest the Red, Green and Blue
+settings. `hud_style 1` makes `R_SetViewSize` take 11 blocks whatever the
+screen size says, and `ST_DrawMinimal` draws over the view from the status
+bar's own patches -- the face, the tall digits and percent, the key icons --
+and the armour and ammunition pickups' sprites. `weapon_pickup` is read in
+`P_GiveWeapon`: 0 changes to a weapon whenever one is taken, 1 only when it
+is new, which is what the 1993 code did, 2 never. It is 1 in a demo or a net
+game whatever it is set to, since both need every machine and every replay
+to decide alike.
+
+**The start-up log** stamps each line with the time since the start, from a
+`date +%s%N` kept in `DOOM_LOG_T0` so the re-run after dropping privileges
+counts on from it.
+
+## A WAD that cannot be run, and the socket that outlived the engine
+
+**Options → Setup → Load WAD** restarts the engine with `execv` on the new
+file. A WAD it cannot run ends in `I_Error`, which exits -- and in the
+container that stopped the container, which only a restart from outside
+undid. `M_RelaunchWith` now leaves the arguments it was running on in
+`DOOM_PREVIOUS_ARGS` (joined by 0x1f) and the file's name in `DOOM_LOADING`.
+`I_ErrorGoBack`, from `I_Error`, execs those arguments once, with the error
+in `DOOM_LOAD_FAILED`, having removed `DOOM_PREVIOUS_ARGS` so that a failure
+of the game it goes back to is final. `D_DoomMain` shows it on the title
+screen through `M_LoadFailed`.
+
+Getting there turned up an older fault: the controller's listening socket
+had no close-on-exec, so every Load WAD carried it into the new engine,
+which then failed to listen on the same port with "Address already in use"
+-- the browser's controller was gone until the container restarted. Both
+of the bridge's sockets are `FD_CLOEXEC` now, and the smoke test walks
+**Load WAD** with the keyboard and checks the port is listened on again; it
+fails on 1.11.0's engine.
+
 ## SIGIL II: Ogg Vorbis music, BEX par times, bigger saves
 
 SIGIL II is episode 6, and the UMAPINFO support above covers it as it

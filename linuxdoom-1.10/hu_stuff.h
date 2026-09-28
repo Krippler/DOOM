@@ -54,6 +54,11 @@ boolean HU_Responder(event_t* ev);
 
 void HU_Ticker(void);
 void HU_Drawer(void);
+
+// Options -> Setup -> Gameplay -> Crosshair: 0 none, 1 to 5 a shape, and
+// its colour, 0 to 8 each.
+extern int crosshair, crosshair_r, crosshair_g, crosshair_b;
+void HU_DrawCrosshair (void);
 char HU_dequeueChatChar(void);
 void HU_Erase(void);
 

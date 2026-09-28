@@ -275,9 +275,14 @@ void D_Display (void)
     // draw buffered stuff to screen
     I_UpdateNoBlit ();
     
-    // draw the view directly
+    // draw the view directly, and what goes over it
     if (gamestate == GS_LEVEL && !automapactive && gametic)
+    {
 	R_RenderPlayerView (&players[displayplayer]);
+	HU_DrawCrosshair ();
+	if (hud_style && viewheight == SCREENHEIGHT)
+	    ST_DrawMinimal ();
+    }
 
     if (gamestate == GS_LEVEL && gametic)
 	HU_Drawer ();
@@ -1429,6 +1434,14 @@ void D_DoomMain (void)
 
     printf ("ST_Init: Init status bar.\n");
     ST_Init ();
+
+    // Back from a WAD the engine could not start on: say so.
+    if (getenv ("DOOM_LOAD_FAILED"))
+    {
+	M_LoadFailed (getenv ("DOOM_LOADING"), getenv ("DOOM_LOAD_FAILED"));
+	unsetenv ("DOOM_LOAD_FAILED");
+	unsetenv ("DOOM_LOADING");
+    }
 
     // check for a driver that wants intermission stats
     p = M_CheckParm ("-statcopy");

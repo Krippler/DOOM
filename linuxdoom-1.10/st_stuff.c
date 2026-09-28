@@ -28,8 +28,10 @@ rcsid[] = "$Id: st_stuff.c,v 1.6 1997/02/03 22:45:13 b1 Exp $";
 
 
 #include <stdio.h>
+#include <string.h>
 
 #include "i_system.h"
+#include "m_swap.h"
 #include "i_video.h"
 #include "z_zone.h"
 #include "m_random.h"
@@ -267,7 +269,10 @@ rcsid[] = "$Id: st_stuff.c,v 1.6 1997/02/03 22:45:13 b1 Exp $";
 
 	    
 // main player in game
-static player_t*	plyr; 
+static player_t*	plyr;
+
+// Options -> Setup -> Gameplay -> HUD Style: 0 the status bar, 1 minimal.
+int			hud_style; 
 
 // ST_Start() has just been called
 static boolean		st_firsttime;
@@ -1123,6 +1128,102 @@ void ST_Drawer (boolean fullscreen, boolean refresh)
     // Otherwise, update as little as possible
     else ST_diffDraw();
 
+}
+
+//
+// ST_DrawMinimal
+// The minimal HUD, over a view that fills the screen, as the Quake
+// container's HUD Style: Minimal is: the face and health in the bottom
+// left, armour after them when there is some, and the ammunition of the
+// weapon in hand in the bottom right with its pickup beside it. The keys go
+// in a row above the health. All in the status bar's own pictures, and the
+// pickups' sprites for the armour and the ammunition.
+//
+
+// A patch placed by its top left corner, whatever its offsets say.
+static void ST_MinPatch (int x, int y, patch_t* p)
+{
+    V_DrawPatch (x + SHORT(p->leftoffset), y + SHORT(p->topoffset), 0, p);
+}
+
+static patch_t* ST_MinSprite (char* name)
+{
+    int		lump = W_CheckNumForName (name);
+
+    return lump >= 0 ? W_CacheLumpNum (lump, PU_CACHE) : NULL;
+}
+
+// The status bar's big red digits, from x; returns where they end.
+static int ST_MinNum (int x, int y, int num)
+{
+    char	buf[8];
+    char*	c;
+
+    snprintf (buf, sizeof(buf), "%d", num < 0 ? 0 : num > 999 ? 999 : num);
+    for (c = buf; *c; c++)
+    {
+	ST_MinPatch (x, y, tallnum[*c - '0']);
+	x += SHORT(tallnum[0]->width);
+    }
+    return x;
+}
+
+void ST_DrawMinimal (void)
+{
+    static char*	ammosprite[NUMAMMO] =
+	{ "CLIPA0", "SHELA0", "CELLA0", "ROCKA0" };
+    patch_t*		face = faces[st_faceindex];
+    patch_t*		p;
+    int			bottom = SCREENHEIGHT - 3;
+    int			numy = bottom - SHORT(tallnum[0]->height);
+    int			x;
+    int			i;
+    ammotype_t		ammo;
+
+    if (!plyr || !face)
+	return;
+
+    // face, health
+    ST_MinPatch (3, bottom - SHORT(face->height), face);
+    x = 3 + SHORT(face->width) + 4;
+    x = ST_MinNum (x, numy, plyr->health);
+    ST_MinPatch (x, numy, tallpercent);
+    x += SHORT(tallpercent->width) + 10;
+
+    // keys, above the health
+    for (i = 0, p = NULL; i < NUMCARDS; i++)
+	if (plyr->cards[i] && keys[i])
+	{
+	    int	kx = 3 + SHORT(face->width) + 4
+		     + i * (SHORT(keys[i]->width) + 2);
+
+	    ST_MinPatch (kx, numy - SHORT(keys[i]->height) - 4, keys[i]);
+	}
+
+    // armour, and which
+    if (plyr->armorpoints > 0
+	&& (p = ST_MinSprite (plyr->armortype > 1 ? "ARM2A0" : "ARM1A0")))
+    {
+	ST_MinPatch (x, bottom - SHORT(p->height), p);
+	x += SHORT(p->width) + 2;
+	x = ST_MinNum (x, numy, plyr->armorpoints);
+	ST_MinPatch (x, numy, tallpercent);
+    }
+
+    // ammunition, from the right
+    ammo = weaponinfo[plyr->readyweapon].ammo;
+    if (ammo != am_noammo)
+    {
+	char	buf[8];
+	int	w;
+
+	snprintf (buf, sizeof(buf), "%d", plyr->ammo[ammo]);
+	w = strlen (buf) * SHORT(tallnum[0]->width);
+	x = SCREENWIDTH - 3 - w;
+	ST_MinNum (x, numy, plyr->ammo[ammo]);
+	if ((p = ST_MinSprite (ammosprite[ammo])))
+	    ST_MinPatch (x - 4 - SHORT(p->width), bottom - SHORT(p->height), p);
+    }
 }
 
 void ST_loadGraphics(void)

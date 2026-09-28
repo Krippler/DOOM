@@ -39,6 +39,7 @@ static const char rcsid[] = "$Id: r_main.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 
 #include "r_local.h"
 #include "r_sky.h"
+#include "st_stuff.h"
 
 
 
@@ -679,6 +680,11 @@ R_SetViewSize
     // menu no longer offers it; this makes sure a value left in a config file
     // by an older build cannot switch it on either.
     detail = 0;
+
+    // The minimal HUD draws over a view that fills the screen, whatever
+    // size the screen size setting holds for the status bar.
+    if (hud_style)
+	blocks = 11;
 
     setblocks = blocks;
     setdetail = detail;
