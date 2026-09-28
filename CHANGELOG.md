@@ -6,7 +6,7 @@ published to `ghcr.io/krippler/doom`, so `1.10.0` here is `:1.10.0` there.
 
 The version follows the engine this is built from, linuxdoom-1.10.
 
-## [Unreleased]
+## [1.10.77] — 2026-09-28
 
 ### Fixed
 - **DOOM II's MAP20 has its hell sky in the pit again.** The 2024 re-release
