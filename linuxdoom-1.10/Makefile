@@ -15,7 +15,8 @@ LDFLAGS?=-rdynamic
 # -lnsl is gone on modern glibc: those symbols now live in libc itself.
 # -ldl is for i_pad.c, which opens SDL2 with dlopen when there is one; on
 # glibc 2.34 and later that is in libc too, and the flag is harmless.
-LIBS=-lXext -lX11 -lm -ldl
+# -lz is for ZDBSP's compressed nodes (ZNOD), in p_setup.c.
+LIBS=-lXext -lX11 -lm -ldl -lz
 
 # Music: "fluidsynth" (default) or "none".
 #
@@ -76,6 +77,7 @@ OBJS=				\
 		$(O)/p_plats.o		\
 		$(O)/p_pspr.o			\
 		$(O)/p_setup.o		\
+		$(O)/p_inflate.o		\
 		$(O)/p_sight.o		\
 		$(O)/p_spec.o			\
 		$(O)/p_switch.o		\

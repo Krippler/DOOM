@@ -141,7 +141,7 @@ anim_t*		lastanim;
 // The lines that act every tic -- scrolling walls. id's list held 64 (raised
 // here to 512) and ignored the rest, which then stood still; it grows now.
 
-extern  short	numlinespecials;
+extern  int	numlinespecials;
 extern  line_t**	linespeciallist;
 
 
@@ -1283,7 +1283,7 @@ int EV_DoDonut(line_t*	line)
 // After the map has been loaded, scan for specials
 //  that spawn thinkers
 //
-short		numlinespecials;
+int		numlinespecials;
 line_t**	linespeciallist;
 static int	maxlinespecials;
 

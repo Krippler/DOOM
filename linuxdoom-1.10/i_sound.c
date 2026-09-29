@@ -104,7 +104,10 @@ static int flag = 0;
 
 // Needed for calling the actual sound output.
 #define SAMPLECOUNT		512
-#define NUM_CHANNELS		8
+// Sounds mixed at once. id's 8 was a 1994 CPU's budget; a big fight in a
+// modern map cuts sounds off at that. 32 is what the mixer loop can spare
+// many times over.
+#define NUM_CHANNELS		32
 // It is 2 for 16bit, and 2 for two channels.
 #define BUFMUL                  4
 #define MIXBUFFERSIZE		(SAMPLECOUNT*BUFMUL)
@@ -728,7 +731,7 @@ void I_ShutdownSound(void)
   
   while ( !done )
   {
-    for( i=0 ; i<8 && !channels[i] ; i++);
+    for( i=0 ; i<NUM_CHANNELS && !channels[i] ; i++);
     
     // FIXME. No proper channel output.
     //if (i==8)

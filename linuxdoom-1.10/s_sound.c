@@ -186,6 +186,12 @@ void S_Init
   // No music with Linux - another dummy.
   S_SetMusicVolume(musicVolume);
 
+  // id's default was 3, written into every config file since; three sounds
+  // at once is a 1993 sound card's limit, and a fight with more than three
+  // things making noise cut sounds off. Fewer than 8 is taken as that.
+  if (numChannels < 8)
+    numChannels = 32;
+
   // Allocating the internal channels for mixing
   // (the maximum numer of sounds rendered
   // simultaneously) within zone memory.

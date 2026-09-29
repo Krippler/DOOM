@@ -30,6 +30,8 @@ rcsid[] = "$Id: p_setup.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 #include <string.h>
 #include <math.h>
 
+#include "p_inflate.h"
+#include "m_argv.h"
 #include "z_zone.h"
 
 #include "m_swap.h"
@@ -88,9 +90,9 @@ side_t*		sides;
 // Blockmap size.
 int		bmapwidth;
 int		bmapheight;	// size in mapblocks
-short*		blockmap;	// int for larger maps
+int*		blockmap;	// int for larger maps: see P_LoadBlockMap
 // offsets in blockmap are from here
-short*		blockmaplump;		
+int*		blockmaplump;		
 // origin of block map
 fixed_t		bmaporgx;
 fixed_t		bmaporgy;
@@ -156,6 +158,43 @@ void P_LoadVertexes (int lump)
 
 
 //
+// One seg, from whichever format it was stored in. Every index is checked:
+// a map that points outside itself is stopped with a reason rather than left
+// to crash somewhere later.
+//
+static void P_SetSeg (seg_t* li, unsigned v1, unsigned v2, unsigned linedef,
+		      int side, angle_t angle, fixed_t offset)
+{
+    line_t*	ldef;
+
+    if (v1 >= (unsigned) numvertexes || v2 >= (unsigned) numvertexes)
+	I_Error ("P_SetSeg: seg %d has vertex %u or %u, of %d",
+		 (int) (li - segs), v1, v2, numvertexes);
+    if (linedef >= (unsigned) numlines)
+	I_Error ("P_SetSeg: seg %d has line %u, of %d",
+		 (int) (li - segs), linedef, numlines);
+
+    side &= 1;
+    ldef = &lines[linedef];
+    if (ldef->sidenum[side] < 0)
+	I_Error ("P_SetSeg: seg %d is on line %u's side %d, which it has not",
+		 (int) (li - segs), linedef, side);
+
+    li->v1 = &vertexes[v1];
+    li->v2 = &vertexes[v2];
+    li->angle = angle;
+    li->offset = offset;
+    li->linedef = ldef;
+    li->sidedef = &sides[ldef->sidenum[side]];
+    li->frontsector = sides[ldef->sidenum[side]].sector;
+    if ((ldef->flags & ML_TWOSIDED) && ldef->sidenum[side^1] >= 0)
+	li->backsector = sides[ldef->sidenum[side^1]].sector;
+    else
+	li->backsector = 0;
+}
+
+
+//
 // P_LoadSegs
 //
 void P_LoadSegs (int lump)
@@ -163,40 +202,24 @@ void P_LoadSegs (int lump)
     byte*		data;
     int			i;
     mapseg_t*		ml;
-    seg_t*		li;
-    line_t*		ldef;
-    int			linedef;
-    int			side;
-	
+
     numsegs = W_LumpLength (lump) / sizeof(mapseg_t);
-    segs = Z_Malloc (numsegs*sizeof(seg_t),PU_LEVEL,0);	
+    segs = Z_Malloc (numsegs*sizeof(seg_t),PU_LEVEL,0);
     memset (segs, 0, numsegs*sizeof(seg_t));
     data = W_CacheLumpNum (lump,PU_STATIC);
-	
+
     ml = (mapseg_t *)data;
-    li = segs;
-    for (i=0 ; i<numsegs ; i++, li++, ml++)
-    {
-	li->v1 = &vertexes[SHORT(ml->v1)];
-	li->v2 = &vertexes[SHORT(ml->v2)];
-					
-	li->angle = (SHORT(ml->angle))<<16;
-	li->offset = (SHORT(ml->offset))<<16;
-	linedef = SHORT(ml->linedef);
-	ldef = &lines[linedef];
-	li->linedef = ldef;
-	side = SHORT(ml->side);
-	li->sidedef = &sides[ldef->sidenum[side]];
-	li->frontsector = sides[ldef->sidenum[side]].sector;
-	if (ldef-> flags & ML_TWOSIDED)
-	    li->backsector = sides[ldef->sidenum[side^1]].sector;
-	else
-	    li->backsector = 0;
-    }
-	
+    for (i=0 ; i<numsegs ; i++, ml++)
+	P_SetSeg (&segs[i],
+		  (unsigned short) SHORT(ml->v1),
+		  (unsigned short) SHORT(ml->v2),
+		  (unsigned short) SHORT(ml->linedef),
+		  SHORT(ml->side),
+		  (SHORT(ml->angle))<<16,
+		  (SHORT(ml->offset))<<16);
+
     Z_Free (data);
 }
-
 
 //
 // P_LoadSubsectors
@@ -207,24 +230,23 @@ void P_LoadSubsectors (int lump)
     int			i;
     mapsubsector_t*	ms;
     subsector_t*	ss;
-	
+
     numsubsectors = W_LumpLength (lump) / sizeof(mapsubsector_t);
-    subsectors = Z_Malloc (numsubsectors*sizeof(subsector_t),PU_LEVEL,0);	
+    subsectors = Z_Malloc (numsubsectors*sizeof(subsector_t),PU_LEVEL,0);
     data = W_CacheLumpNum (lump,PU_STATIC);
-	
+
     ms = (mapsubsector_t *)data;
     memset (subsectors,0, numsubsectors*sizeof(subsector_t));
     ss = subsectors;
-    
+
     for (i=0 ; i<numsubsectors ; i++, ss++, ms++)
     {
-	ss->numlines = SHORT(ms->numsegs);
-	ss->firstline = SHORT(ms->firstseg);
+	ss->numlines = (unsigned short) SHORT(ms->numsegs);
+	ss->firstline = (unsigned short) SHORT(ms->firstseg);
     }
-	
+
     Z_Free (data);
 }
-
 
 
 //
@@ -287,13 +309,284 @@ void P_LoadNodes (int lump)
 	no->dy = SHORT(mn->dy)<<FRACBITS;
 	for (j=0 ; j<2 ; j++)
 	{
-	    no->children[j] = SHORT(mn->children[j]);
+	    unsigned	c = (unsigned short) SHORT(mn->children[j]);
+
+	    no->children[j] = c & NF_SUBSECTOR_CLASSIC
+		? (c & ~NF_SUBSECTOR_CLASSIC) | NF_SUBSECTOR : c;
 	    for (k=0 ; k<4 ; k++)
 		no->bbox[j][k] = SHORT(mn->bbox[j][k])<<FRACBITS;
 	}
     }
 	
     Z_Free (data);
+}
+
+
+//
+// Extended nodes.
+//
+// The classic NODES, SEGS and SSECTORS lumps number everything in 16 bits,
+// and a subsector in 15: a map past 32767 of any of them cannot be described
+// at all. Node builders for bigger maps write one of two formats instead,
+// which UZDoom reads, and so does this:
+//
+//   DeePBSP: NODES begins "xNd4\0\0\0\0"; nodes have 32-bit children, and
+//	SSECTORS and SEGS are in wider records of their own.
+//   ZDBSP: NODES begins "XNOD", or "ZNOD" and the rest zlib-compressed, and
+//	holds all three itself -- plus vertices the builder added, the
+//	subsectors as seg counts, and segs without angle or offset, which are
+//	worked out here. SSECTORS and SEGS are left empty.
+//
+static unsigned P_Long (byte* p)
+{
+    return p[0] | p[1] << 8 | p[2] << 16 | (unsigned) p[3] << 24;
+}
+
+static int P_Short (byte* p)
+{
+    return (short) (p[0] | p[1] << 8);
+}
+
+static void P_SetNode (node_t* no, byte* p, int wide)
+{
+    int		j, k;
+
+    no->x = P_Short (p) << FRACBITS;
+    no->y = P_Short (p + 2) << FRACBITS;
+    no->dx = P_Short (p + 4) << FRACBITS;
+    no->dy = P_Short (p + 6) << FRACBITS;
+    for (j = 0; j < 2; j++)
+	for (k = 0; k < 4; k++)
+	    no->bbox[j][k] = P_Short (p + 8 + j*8 + k*2) << FRACBITS;
+    for (j = 0; j < 2; j++)
+    {
+	unsigned c = wide ? P_Long (p + 24 + j*4)
+			  : (unsigned short) P_Short (p + 24 + j*2);
+
+	if (!wide && (c & NF_SUBSECTOR_CLASSIC))
+	    c = (c & ~NF_SUBSECTOR_CLASSIC) | NF_SUBSECTOR;
+	no->children[j] = c;
+    }
+}
+
+static void P_CheckNodes (void)
+{
+    int		i, j;
+
+    for (i = 0; i < numnodes; i++)
+	for (j = 0; j < 2; j++)
+	{
+	    unsigned	c = nodes[i].children[j];
+
+	    if (c & NF_SUBSECTOR ? (c & ~NF_SUBSECTOR) >= (unsigned) numsubsectors
+				 : c >= (unsigned) numnodes)
+		I_Error ("P_LoadNodes: node %d points at %s %u, of %d", i,
+			 c & NF_SUBSECTOR ? "subsector" : "node",
+			 c & ~NF_SUBSECTOR,
+			 c & NF_SUBSECTOR ? numsubsectors : numnodes);
+	}
+    for (i = 0; i < numsubsectors; i++)
+	if (subsectors[i].firstline < 0 || subsectors[i].numlines < 0
+	    || subsectors[i].firstline + subsectors[i].numlines > numsegs)
+	    I_Error ("P_LoadSubsectors: subsector %d has segs %d to %d, of %d",
+		     i, subsectors[i].firstline,
+		     subsectors[i].firstline + subsectors[i].numlines, numsegs);
+}
+
+static void P_LoadDeePBSP (int lumpnum)
+{
+    byte*	data;
+    byte*	p;
+    int		i;
+
+    data = W_CacheLumpNum (lumpnum+ML_SSECTORS, PU_STATIC);
+    numsubsectors = W_LumpLength (lumpnum+ML_SSECTORS) / 6;
+    subsectors = Z_Malloc (numsubsectors*sizeof(subsector_t), PU_LEVEL, 0);
+    memset (subsectors, 0, numsubsectors*sizeof(subsector_t));
+    for (i = 0, p = data; i < numsubsectors; i++, p += 6)
+    {
+	subsectors[i].numlines = (unsigned short) P_Short (p);
+	subsectors[i].firstline = P_Long (p + 2);
+    }
+    Z_Free (data);
+
+    data = W_CacheLumpNum (lumpnum+ML_NODES, PU_STATIC);
+    numnodes = (W_LumpLength (lumpnum+ML_NODES) - 8) / 32;
+    nodes = Z_Malloc (numnodes*sizeof(node_t), PU_LEVEL, 0);
+    for (i = 0, p = data + 8; i < numnodes; i++, p += 32)
+	P_SetNode (&nodes[i], p, 1);
+    Z_Free (data);
+
+    data = W_CacheLumpNum (lumpnum+ML_SEGS, PU_STATIC);
+    numsegs = W_LumpLength (lumpnum+ML_SEGS) / 16;
+    segs = Z_Malloc (numsegs*sizeof(seg_t), PU_LEVEL, 0);
+    memset (segs, 0, numsegs*sizeof(seg_t));
+    for (i = 0, p = data; i < numsegs; i++, p += 16)
+	P_SetSeg (&segs[i], P_Long (p), P_Long (p + 4),
+		  (unsigned short) P_Short (p + 10), P_Short (p + 12),
+		  (angle_t) (unsigned short) P_Short (p + 8) << 16,
+		  P_Short (p + 14) << 16);
+    Z_Free (data);
+
+    P_CheckNodes ();
+}
+
+static void P_LoadZDBSP (int lumpnum, boolean compressed)
+{
+    byte*	lump;
+    byte*	data;
+    byte*	p;
+    byte*	end;
+    int		len = W_LumpLength (lumpnum+ML_NODES);
+    unsigned	orgverts, newverts, n;
+    unsigned	i, first;
+    vertex_t*	old = vertexes;
+
+    lump = W_CacheLumpNum (lumpnum+ML_NODES, PU_STATIC);
+
+    if (compressed)
+    {
+	data = P_Inflate (lump + 4, len - 4, &len);
+	p = data;
+    }
+    else
+    {
+	data = NULL;
+	p = lump + 4;
+	len -= 4;
+    }
+    end = p + len;
+
+#define NEED(n) if (p + (n) > end) \
+	I_Error ("P_LoadZDBSP: the nodes lump ends early")
+
+    // vertices: the map's first orgverts, then the builder's own
+    NEED (8);
+    orgverts = P_Long (p);
+    newverts = P_Long (p + 4);
+    p += 8;
+    if (orgverts > (unsigned) numvertexes)
+	I_Error ("P_LoadZDBSP: nodes want %u of the map's vertices; it has %d",
+		 orgverts, numvertexes);
+    NEED (newverts * 8);
+    vertexes = Z_Malloc ((orgverts + newverts) * sizeof(vertex_t), PU_LEVEL, 0);
+    memcpy (vertexes, old, orgverts * sizeof(vertex_t));
+    for (i = 0; i < newverts; i++, p += 8)
+    {
+	vertexes[orgverts + i].x = P_Long (p);
+	vertexes[orgverts + i].y = P_Long (p + 4);
+    }
+    // the lines were given pointers into the old array
+    for (i = 0; i < (unsigned) numlines; i++)
+    {
+	unsigned	a = lines[i].v1 - old, b = lines[i].v2 - old;
+
+	if (a >= orgverts || b >= orgverts)
+	    I_Error ("P_LoadZDBSP: line %u uses a vertex the nodes dropped", i);
+	lines[i].v1 = &vertexes[a];
+	lines[i].v2 = &vertexes[b];
+    }
+    Z_Free (old);
+    numvertexes = orgverts + newverts;
+
+    // subsectors, as counts of consecutive segs
+    NEED (4);
+    numsubsectors = P_Long (p);
+    p += 4;
+    NEED ((unsigned) numsubsectors * 4);
+    subsectors = Z_Malloc (numsubsectors*sizeof(subsector_t), PU_LEVEL, 0);
+    memset (subsectors, 0, numsubsectors*sizeof(subsector_t));
+    for (i = 0, first = 0; i < (unsigned) numsubsectors; i++, p += 4)
+    {
+	subsectors[i].firstline = first;
+	subsectors[i].numlines = P_Long (p);
+	first += subsectors[i].numlines;
+    }
+
+    // segs: vertices, line and side; angle and offset are worked out
+    NEED (4);
+    numsegs = P_Long (p);
+    p += 4;
+    if (first != (unsigned) numsegs)
+	I_Error ("P_LoadZDBSP: subsectors hold %u segs; there are %d",
+		 first, numsegs);
+    NEED ((unsigned) numsegs * 11);
+    segs = Z_Malloc (numsegs*sizeof(seg_t), PU_LEVEL, 0);
+    memset (segs, 0, numsegs*sizeof(seg_t));
+    for (i = 0; i < (unsigned) numsegs; i++, p += 11)
+    {
+	seg_t*		li = &segs[i];
+	vertex_t*	from;
+	double		dx, dy;
+
+	P_SetSeg (li, P_Long (p), P_Long (p + 4),
+		  (unsigned short) P_Short (p + 8), p[10], 0, 0);
+	li->angle = R_PointToAngle2 (li->v1->x, li->v1->y,
+				     li->v2->x, li->v2->y);
+	from = p[10] ? li->linedef->v2 : li->linedef->v1;
+	dx = (double) (li->v1->x - from->x);
+	dy = (double) (li->v1->y - from->y);
+	li->offset = (fixed_t) sqrt (dx*dx + dy*dy);
+    }
+
+    // nodes
+    NEED (4);
+    n = P_Long (p);
+    p += 4;
+    NEED (n * 32);
+    numnodes = n;
+    nodes = Z_Malloc (numnodes*sizeof(node_t), PU_LEVEL, 0);
+    for (i = 0; i < n; i++, p += 32)
+	P_SetNode (&nodes[i], p, 1);
+#undef NEED
+
+    free (data);
+    Z_Free (lump);
+
+    P_CheckNodes ();
+}
+
+//
+// Which format the map's nodes are in, and read them.
+//
+static void P_LoadNodeFormat (int lumpnum)
+{
+    int		len = W_LumpLength (lumpnum+ML_NODES);
+    byte	head[8];
+
+    memset (head, 0, sizeof(head));
+    if (len >= 8)
+    {
+	byte*	data = W_CacheLumpNum (lumpnum+ML_NODES, PU_STATIC);
+
+	memcpy (head, data, 8);
+	Z_Free (data);
+    }
+
+    if (!memcmp (head, "xNd4\0\0\0\0", 8))
+    {
+	printf ("\nP_SetupLevel: DeePBSP extended nodes");
+	P_LoadDeePBSP (lumpnum);
+    }
+    else if (!memcmp (head, "XNOD", 4) || !memcmp (head, "ZNOD", 4))
+    {
+	printf ("\nP_SetupLevel: ZDBSP extended nodes%s",
+		head[0] == 'Z' ? ", compressed" : "");
+	P_LoadZDBSP (lumpnum, head[0] == 'Z');
+    }
+    else if (!memcmp (head, "XGL", 3) || !memcmp (head, "ZGL", 3))
+	I_Error ("P_SetupLevel: this map has only GL nodes (%.4s), which need"
+		 " a GL engine; rebuild it with regular nodes", head);
+    else if (!len)
+	I_Error ("P_SetupLevel: this map has no nodes; it needs a node"
+		 " builder run on it");
+    else
+    {
+	P_LoadSubsectors (lumpnum+ML_SSECTORS);
+	P_LoadNodes (lumpnum+ML_NODES);
+	P_LoadSegs (lumpnum+ML_SEGS);
+	P_CheckNodes ();
+    }
 }
 
 
@@ -360,6 +653,7 @@ void P_LoadLineDefs (int lump)
 {
     byte*		data;
     int			i;
+    int			j;
     maplinedef_t*	mld;
     line_t*		ld;
     vertex_t*		v1;
@@ -377,8 +671,16 @@ void P_LoadLineDefs (int lump)
 	ld->flags = SHORT(mld->flags);
 	ld->special = SHORT(mld->special);
 	ld->tag = SHORT(mld->tag);
-	v1 = ld->v1 = &vertexes[SHORT(mld->v1)];
-	v2 = ld->v2 = &vertexes[SHORT(mld->v2)];
+	{
+	    unsigned	i1 = (unsigned short) SHORT(mld->v1);
+	    unsigned	i2 = (unsigned short) SHORT(mld->v2);
+
+	    if (i1 >= (unsigned) numvertexes || i2 >= (unsigned) numvertexes)
+		I_Error ("P_LoadLineDefs: line %d has vertex %u or %u, of %d",
+			 i, i1, i2, numvertexes);
+	    v1 = ld->v1 = &vertexes[i1];
+	    v2 = ld->v2 = &vertexes[i2];
+	}
 	ld->dx = v2->x - v1->x;
 	ld->dy = v2->y - v1->y;
 	
@@ -416,8 +718,16 @@ void P_LoadLineDefs (int lump)
 	    ld->bbox[BOXTOP] = v1->y;
 	}
 
-	ld->sidenum[0] = SHORT(mld->sidenum[0]);
-	ld->sidenum[1] = SHORT(mld->sidenum[1]);
+	// 0xffff is none; anything else is a sidedef, up to 65534 of them
+	for (j = 0; j < 2; j++)
+	{
+	    unsigned	sn = (unsigned short) SHORT(mld->sidenum[j]);
+
+	    ld->sidenum[j] = sn == 0xffff ? -1 : (int) sn;
+	    if (ld->sidenum[j] >= numsides)
+		I_Error ("P_LoadLineDefs: line %d has sidedef %d, of %d",
+			 i, ld->sidenum[j], numsides);
+	}
 
 	if (ld->sidenum[0] != -1)
 	    ld->frontsector = sides[ld->sidenum[0]].sector;
@@ -458,10 +768,160 @@ void P_LoadSideDefs (int lump)
 	sd->toptexture = R_TextureNumForName(msd->toptexture);
 	sd->bottomtexture = R_TextureNumForName(msd->bottomtexture);
 	sd->midtexture = R_TextureNumForName(msd->midtexture);
-	sd->sector = &sectors[SHORT(msd->sector)];
+	{
+	    unsigned	sec = (unsigned short) SHORT(msd->sector);
+
+	    if (sec >= (unsigned) numsectors)
+		I_Error ("P_LoadSideDefs: sidedef %d has sector %u, of %d",
+			 i, sec, numsectors);
+	    sd->sector = &sectors[sec];
+	}
     }
 	
     Z_Free (data);
+}
+
+
+//
+// Whether a blockmap read from the map makes sense: its offsets inside the
+// lump and past its own table, each list ending before the lump does, and
+// every line number a line. A blockmap too big for 16-bit offsets wraps
+// them round into its own table, which this catches.
+//
+static boolean P_BlockMapValid (int count)
+{
+    int		w = blockmaplump[2];
+    int		h = blockmaplump[3];
+    int		table;
+    int		i, j;
+
+    if (w <= 0 || h <= 0 || 4 + (long) w * h > count)
+	return false;
+
+    table = 4 + w * h;
+    for (i = 4; i < table; i++)
+    {
+	int	ofs = blockmaplump[i];
+
+	if (ofs < table || ofs >= count)
+	    return false;
+	for (j = ofs; j < count && blockmaplump[j] != -1; j++)
+	    if (blockmaplump[j] >= numlines && numlines)
+		return false;
+	if (j == count)
+	    return false;
+    }
+    return true;
+}
+
+static void P_ClearBlockLinks (void)
+{
+    int		count = sizeof(*blocklinks) * bmapwidth * bmapheight;
+
+    blocklinks = Z_Malloc (count, PU_LEVEL, 0);
+    memset (blocklinks, 0, count);
+}
+
+//
+// A blockmap made from the lines, when the map has none or one that cannot
+// be used. Blocks of 128 units from the lower left of all the lines, and in
+// each block's list every line that passes through or touches the block, in
+// line order -- after a 0, as the node builders of the time began every
+// list, so a line 0 behaves as it always has.
+//
+static void P_CreateBlockMap (void)
+{
+    fixed_t	minx = MAXINT, miny = MAXINT, maxx = MININT, maxy = MININT;
+    int		i, b, total;
+    int**	lists;
+    int*	counts;
+    int*	caps;
+    int*	out;
+    int		nblocks;
+
+    for (i = 0; i < numlines; i++)
+    {
+	if (lines[i].bbox[BOXLEFT] < minx)	minx = lines[i].bbox[BOXLEFT];
+	if (lines[i].bbox[BOXBOTTOM] < miny)	miny = lines[i].bbox[BOXBOTTOM];
+	if (lines[i].bbox[BOXRIGHT] > maxx)	maxx = lines[i].bbox[BOXRIGHT];
+	if (lines[i].bbox[BOXTOP] > maxy)	maxy = lines[i].bbox[BOXTOP];
+    }
+    if (!numlines)
+	minx = miny = maxx = maxy = 0;
+
+    bmaporgx = (minx >> FRACBITS) << FRACBITS;
+    bmaporgy = (miny >> FRACBITS) << FRACBITS;
+    bmapwidth = ((maxx - bmaporgx) >> MAPBLOCKSHIFT) + 1;
+    bmapheight = ((maxy - bmaporgy) >> MAPBLOCKSHIFT) + 1;
+    nblocks = bmapwidth * bmapheight;
+
+    lists = calloc (nblocks, sizeof(*lists));
+    counts = calloc (nblocks, sizeof(*counts));
+    caps = calloc (nblocks, sizeof(*caps));
+    if (!lists || !counts || !caps)
+	I_Error ("P_CreateBlockMap: no memory for %d blocks", nblocks);
+
+    for (i = 0; i < numlines; i++)
+    {
+	line_t*	ld = &lines[i];
+	int	bx0 = (ld->bbox[BOXLEFT] - bmaporgx) >> MAPBLOCKSHIFT;
+	int	bx1 = (ld->bbox[BOXRIGHT] - bmaporgx) >> MAPBLOCKSHIFT;
+	int	by0 = (ld->bbox[BOXBOTTOM] - bmaporgy) >> MAPBLOCKSHIFT;
+	int	by1 = (ld->bbox[BOXTOP] - bmaporgy) >> MAPBLOCKSHIFT;
+	int	bx, by;
+
+	for (by = by0; by <= by1; by++)
+	    for (bx = bx0; bx <= bx1; bx++)
+	    {
+		fixed_t	box[4];
+
+		// a line crosses a block unless all four corners are on one
+		// side of it
+		box[BOXLEFT] = bmaporgx + (bx << MAPBLOCKSHIFT);
+		box[BOXRIGHT] = box[BOXLEFT] + MAPBLOCKSIZE;
+		box[BOXBOTTOM] = bmaporgy + (by << MAPBLOCKSHIFT);
+		box[BOXTOP] = box[BOXBOTTOM] + MAPBLOCKSIZE;
+		if (P_BoxOnLineSide (box, ld) != -1)
+		    continue;
+
+		b = by * bmapwidth + bx;
+		if (counts[b] == caps[b])
+		{
+		    caps[b] = caps[b] ? caps[b] * 2 : 8;
+		    lists[b] = realloc (lists[b], caps[b] * sizeof(**lists));
+		    if (!lists[b])
+			I_Error ("P_CreateBlockMap: no memory");
+		}
+		lists[b][counts[b]++] = i;
+	    }
+    }
+
+    total = 4 + nblocks;
+    for (b = 0; b < nblocks; b++)
+	total += counts[b] + 2;
+
+    blockmaplump = Z_Malloc (total * sizeof(*blockmaplump), PU_LEVEL, 0);
+    blockmaplump[0] = bmaporgx >> FRACBITS;
+    blockmaplump[1] = bmaporgy >> FRACBITS;
+    blockmaplump[2] = bmapwidth;
+    blockmaplump[3] = bmapheight;
+    out = blockmaplump + 4 + nblocks;
+    for (b = 0; b < nblocks; b++)
+    {
+	blockmaplump[4 + b] = out - blockmaplump;
+	*out++ = 0;
+	memcpy (out, lists[b], counts[b] * sizeof(*out));
+	out += counts[b];
+	*out++ = -1;
+	free (lists[b]);
+    }
+    free (lists);
+    free (counts);
+    free (caps);
+
+    blockmap = blockmaplump + 4;
+    P_ClearBlockLinks ();
+    printf ("\nP_CreateBlockMap: %d by %d blocks", bmapwidth, bmapheight);
 }
 
 
@@ -472,25 +932,76 @@ void P_LoadBlockMap (int lump)
 {
     int		i;
     int		count;
-	
-    blockmaplump = W_CacheLumpNum (lump,PU_LEVEL);
-    blockmap = blockmaplump+4;
+    short*	data;
+
     count = W_LumpLength (lump)/2;
 
-    for (i=0 ; i<count ; i++)
-	blockmaplump[i] = SHORT(blockmaplump[i]);
-		
-    bmaporgx = blockmaplump[0]<<FRACBITS;
-    bmaporgy = blockmaplump[1]<<FRACBITS;
-    bmapwidth = blockmaplump[2];
-    bmapheight = blockmaplump[3];
-	
-    // clear out mobj chains
-    count = sizeof(*blocklinks)* bmapwidth*bmapheight;
-    blocklinks = Z_Malloc (count,PU_LEVEL, 0);
-    memset (blocklinks, 0, count);
+    // Read whole, as numbers the engine can use past 32767: the header's
+    // origin signed, its size and every offset and line number unsigned, and
+    // 0xffff the end of a list. id read it all as signed 16-bit, which a
+    // blockmap over 64 KB -- a big map's -- turns into nonsense.
+    if (count >= 4 && !M_CheckParm ("-blockmap"))
+    {
+	data = W_CacheLumpNum (lump, PU_STATIC);
+	blockmaplump = Z_Malloc (count * sizeof(*blockmaplump), PU_LEVEL, 0);
+
+	blockmaplump[0] = SHORT(data[0]);
+	blockmaplump[1] = SHORT(data[1]);
+	for (i = 2; i < count; i++)
+	{
+	    unsigned	v = (unsigned short) SHORT(data[i]);
+
+	    blockmaplump[i] = v == 0xffff ? -1 : (int) v;
+	}
+	Z_Free (data);
+
+	if (P_BlockMapValid (count))
+	{
+	    blockmap = blockmaplump+4;
+	    bmaporgx = blockmaplump[0]<<FRACBITS;
+	    bmaporgy = blockmaplump[1]<<FRACBITS;
+	    bmapwidth = blockmaplump[2];
+	    bmapheight = blockmaplump[3];
+	    P_ClearBlockLinks ();
+	    return;
+	}
+
+	Z_Free (blockmaplump);
+	printf ("\nP_LoadBlockMap: the map's blockmap is not usable; making one");
+    }
+
+    // None, or one past fixing: made from the lines, as UZDoom does. It needs
+    // the lines, which are not loaded yet; P_SetupLevel calls again.
+    blockmaplump = NULL;
 }
 
+
+//
+// The REJECT table, one bit per pair of sectors. A lump shorter than the map
+// needs -- or none, which some node builders leave -- was read past its end;
+// what is missing reads as zero now, "may be able to see", as UZDoom has it.
+//
+static void P_LoadReject (int lump)
+{
+    int		need = (numsectors * numsectors + 7) / 8;
+    int		have = W_LumpLength (lump);
+
+    if (have >= need)
+    {
+	rejectmatrix = W_CacheLumpNum (lump, PU_LEVEL);
+	return;
+    }
+
+    rejectmatrix = Z_Malloc (need, PU_LEVEL, 0);
+    memset (rejectmatrix, 0, need);
+    if (have)
+    {
+	byte*	data = W_CacheLumpNum (lump, PU_STATIC);
+
+	memcpy (rejectmatrix, data, have);
+	Z_Free (data);
+    }
+}
 
 
 //
@@ -650,18 +1161,19 @@ P_SetupLevel
 	
     leveltime = 0;
 	
-    // note: most of this ordering is important	
-    P_LoadBlockMap (lumpnum+ML_BLOCKMAP);
+    // note: most of this ordering is important
     P_LoadVertexes (lumpnum+ML_VERTEXES);
     P_LoadSectors (lumpnum+ML_SECTORS);
     P_LoadSideDefs (lumpnum+ML_SIDEDEFS);
 
     P_LoadLineDefs (lumpnum+ML_LINEDEFS);
-    P_LoadSubsectors (lumpnum+ML_SSECTORS);
-    P_LoadNodes (lumpnum+ML_NODES);
-    P_LoadSegs (lumpnum+ML_SEGS);
-	
-    rejectmatrix = W_CacheLumpNum (lumpnum+ML_REJECT,PU_LEVEL);
+
+    // after the lines, which a blockmap's lists name and one made needs
+    P_LoadBlockMap (lumpnum+ML_BLOCKMAP);
+    if (!blockmaplump)
+	P_CreateBlockMap ();
+    P_LoadNodeFormat (lumpnum);
+    P_LoadReject (lumpnum+ML_REJECT);
     P_GroupLines ();
 
     bodyqueslot = 0;

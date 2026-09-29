@@ -24,6 +24,9 @@
 static const char
 rcsid[] = "$Id: z_zone.c,v 1.4 1997/02/03 16:47:58 b1 Exp $";
 
+#include <stdio.h>
+#include <stdlib.h>
+
 #include "z_zone.h"
 #include "i_system.h"
 #include "doomdef.h"
@@ -174,6 +177,57 @@ void Z_Free (void* ptr)
 
 
 //
+// Z_Grow
+// Another chunk of memory for the zone, for when what it has is all in use.
+// Blocks next to each other in the list are merged when free, which only
+// works where they are next to each other in memory too; so the chunk starts
+// with a seam, a block that is always in use, and the free block after it
+// ends at the list's head. Nothing is merged across.
+//
+#define ZONESEAM	((void *)3)	// a seam's user; not a pointer
+#define ZONEGROW	(16*1024*1024)
+
+static void Z_Grow (int size)
+{
+    int			chunk = size + sizeof(memblock_t);
+    byte*		base;
+    memblock_t*		seam;
+    memblock_t*		block;
+
+    if (chunk < ZONEGROW)
+	chunk = ZONEGROW;
+    if (!(base = malloc (chunk)))
+	I_Error ("Z_Malloc: failed on allocation of %i bytes", size);
+
+    seam = (memblock_t *)base;
+    seam->size = sizeof(memblock_t);
+    seam->user = ZONESEAM;
+    seam->tag = PU_STATIC;
+    seam->id = ZONEID;
+
+    block = (memblock_t *)(base + sizeof(memblock_t));
+    block->size = chunk - sizeof(memblock_t);
+    block->user = NULL;
+    block->tag = 0;
+    block->id = 0;
+
+    // at the end of the list: after the last block, before the head
+    seam->prev = mainzone->blocklist.prev;
+    seam->next = block;
+    block->prev = seam;
+    block->next = &mainzone->blocklist;
+    seam->prev->next = seam;
+    mainzone->blocklist.prev = block;
+
+    mainzone->rover = block;
+    mainzone->size += chunk;
+
+    printf ("Z_Malloc: zone grown to %i MB\n", mainzone->size >> 20);
+}
+
+
+
+//
 // Z_Malloc
 // You can pass a NULL user if the tag is < PU_PURGELEVEL.
 //
@@ -216,8 +270,10 @@ Z_Malloc
     {
 	if (rover == start)
 	{
-	    // scanned all the way around the list
-	    I_Error ("Z_Malloc: failed on allocation of %i bytes", size);
+	    // Scanned all the way around the list: id's code gave up
+	    // here, and a big enough map stopped the game. The zone grows.
+	    Z_Grow (size);
+	    return Z_Malloc (size - sizeof(memblock_t), tag, user);
 	}
 	
 	if (rover->user)
@@ -348,7 +404,8 @@ Z_DumpHeap
 	    break;
 	}
 	
-	if ( (byte *)block + block->size != (byte *)block->next)
+	if ( (byte *)block + block->size != (byte *)block->next
+	    && block->next->user != ZONESEAM)
 	    printf ("ERROR: block size does not touch the next block\n");
 
 	if ( block->next->prev != block)
@@ -380,7 +437,8 @@ void Z_FileDumpHeap (FILE* f)
 	    break;
 	}
 	
-	if ( (byte *)block + block->size != (byte *)block->next)
+	if ( (byte *)block + block->size != (byte *)block->next
+	    && block->next->user != ZONESEAM)
 	    fprintf (f,"ERROR: block size does not touch the next block\n");
 
 	if ( block->next->prev != block)
@@ -408,7 +466,8 @@ void Z_CheckHeap (void)
 	    break;
 	}
 	
-	if ( (byte *)block + block->size != (byte *)block->next)
+	if ( (byte *)block + block->size != (byte *)block->next
+	    && block->next->user != ZONESEAM)
 	    I_Error ("Z_CheckHeap: block size does not touch the next block\n");
 
 	if ( block->next->prev != block)

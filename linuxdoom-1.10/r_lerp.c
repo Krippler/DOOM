@@ -47,7 +47,7 @@ int		G_PendingMouseTurn (void);
 
 // p_spec.c: the lines with a special that acts every tic, scrolling walls
 // among them
-extern short	numlinespecials;
+extern int	numlinespecials;
 extern line_t**	linespeciallist;
 
 

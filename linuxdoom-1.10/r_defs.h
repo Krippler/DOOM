@@ -199,7 +199,9 @@ typedef struct line_s
 
     // Visual appearance: SideDefs.
     //  sidenum[1] will be -1 if one sided
-    short	sidenum[2];			
+    // Sidedef numbers, -1 for none. The map stores them in 16 bits, which
+    // id read signed, so no more than 32767 sidedefs; read unsigned, 65535.
+    int		sidenum[2];			
 
     // Neat. Another bounding box, for the extent
     //  of the LineDef.
@@ -233,8 +235,8 @@ typedef struct line_s
 typedef struct subsector_s
 {
     sector_t*	sector;
-    short	numlines;
-    short	firstline;
+    int		numlines;
+    int		firstline;
     
 } subsector_t;
 
@@ -280,7 +282,7 @@ typedef struct
     fixed_t	bbox[2][4];
 
     // If NF_SUBSECTOR its a subsector.
-    unsigned short children[2];
+    unsigned int children[2];
     
 } node_t;
 

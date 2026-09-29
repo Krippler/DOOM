@@ -12,6 +12,48 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [Unreleased]
+
+### Added
+- **Limit-removing, as UZDoom is for maps in DOOM's own format.** The 1993
+  engine's fixed tables are gone, and a map made for a limit-removing port
+  plays here instead of stopping with an error, crashing or drawing garbage
+  once it is bigger or busier than id's maps were:
+  - **Drawing**: visplanes (128), wall segments (256), sprites (128) and the
+    clipping openings grow as a frame needs them.
+  - **Play**: moving floors and platforms (30), crushing ceilings (30),
+    switches waiting to pop back (16), scrolling walls (64), deathmatch
+    starts (10), the Icon of Sin's spawn spots (32), and the WADs and
+    arguments on the command line.
+  - **Maps**: vertices, sides, segs and subsectors counted to 65,535 instead
+    of 32,767; node builders' extended formats, DeePBSP's and ZDBSP's (plain
+    and compressed), for maps past even that; a blockmap past 64 KB, and one
+    made when a map has none or one that does not fit it; a short or missing
+    REJECT.
+  - **Textures**: walls of any height, 256, 96 or 300 rows, tiled at their
+    own height rather than id's fixed 128 (which drew the rest as
+    "tutti-frutti"); patches taller than 254 rows, as DeePsea writes them;
+    textures past 64 KB.
+  - **Mods**: a TEXTURE1 with only a mod's own textures leaves the game's
+    beside it rather than replacing them, and each file's textures are read
+    through its own PNAMES; a mod's sprite frames replace the game's frame by
+    frame, so a monster can be given a new walk without its whole set.
+  - **Memory**: the zone grows when a level needs more than its 32 MB;
+    savegames are sized to the level instead of a fixed 8 MB; a demo being
+    recorded keeps going past `-maxdemo` rather than ending there.
+  - **Sound**: 32 sounds at once instead of 8 (and of 3, id's default, which
+    every existing `.doomrc` has in it).
+
+  The original games play exactly as before: every demo of DOOM, DOOM II,
+  TNT, Plutonia, SIGIL, SIGIL II, No Rest for the Living and the Master
+  Levels ends in the same state as on 1.13.4, down to the random number
+  index. What it does not do is the rest of UZDoom: Boom's line types, UDMF
+  and Hexen-format maps, ACS, DECORATE and ZScript are another engine.
+
+### Changed
+- Building needs zlib (`zlib1g-dev`), for ZDBSP's compressed nodes; the
+  desktop build needs `zlib1g`, which every desktop system has.
+
 ## [1.13.4] — 2026-09-29
 
 ### Fixed

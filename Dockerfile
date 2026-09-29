@@ -24,6 +24,7 @@ RUN apt-get update \
         libxext-dev \
         libpulse-dev \
         libfluidsynth-dev \
+        zlib1g-dev \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src

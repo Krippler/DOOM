@@ -67,6 +67,13 @@ E4M1 in the IWAD itself and identifies the game from that.
 Mods (PWADs) go in the same directory. They are not matched against the table
 above; anything ending in `.wad` shows up in the in-game WAD menu below.
 
+Mods made for the original engine play, and so do those whose text file asks
+for a **limit-removing** port: the engine has no fixed tables left to
+overflow, and reads DeePBSP and ZDBSP nodes, tall and odd-height textures,
+and partial TEXTURE lumps. Mods that need Boom or more (Boom's line types,
+UDMF maps, ACS, DECORATE, ZScript — "Boom-compatible", "MBF21", "GZDoom
+only") do not.
+
 ## The browser client
 
 Two pages are served:

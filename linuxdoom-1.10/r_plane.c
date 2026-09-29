@@ -28,6 +28,7 @@ static const char
 rcsid[] = "$Id: r_plane.c,v 1.4 1997/02/03 16:47:55 b1 Exp $";
 
 #include <stdlib.h>
+#include <stdint.h>
 
 #include "i_system.h"
 #include "z_zone.h"
@@ -91,8 +92,11 @@ static visplane_t* R_NewVisplane (fixed_t height, int picnum, int lightlevel)
 	visplanes = realloc (visplanes, maxvisplanes * sizeof(*visplanes));
 	if (!visplanes)
 	    I_Error ("R_NewVisplane: no memory for %d planes", maxvisplanes);
+	// Zeroed, as id's static array was: a column the plane does not
+	// cover is marked by its top alone, and R_MakeSpans reads its bottom
+	// too -- a bottom of 255 there would be taken for a span on row 255.
 	for (i = numvisplanes; i < maxvisplanes; i++)
-	    if (!(visplanes[i] = malloc (sizeof(visplane_t))))
+	    if (!(visplanes[i] = calloc (1, sizeof(visplane_t))))
 		I_Error ("R_NewVisplane: no memory for %d planes",
 			 maxvisplanes);
     }
@@ -290,7 +294,7 @@ void R_ClearPlanes (void)
 void R_EnsureOpenings (int n)
 {
     int		used = lastopening - openings;
-    short*	old = openings;
+    uintptr_t	old = (uintptr_t) openings;	// compared as an address only
     drawseg_t*	ds;
 
     if (openings && used + n <= maxopenings)
@@ -308,8 +312,14 @@ void R_EnsureOpenings (int n)
 	return;
 
 #define R_MOVEOPENING(p) \
-    if ((p) && (p) + ds->x1 >= old && (p) + ds->x1 <= old + used) \
-	(p) = openings + ((p) - old)
+    if (p) \
+    { \
+	uintptr_t	at = (uintptr_t) (p) + ds->x1 * sizeof(short); \
+ \
+	if (at >= old && at <= old + used * sizeof(short)) \
+	    (p) = openings + ((intptr_t) ((uintptr_t) (p) - old) \
+			      / (intptr_t) sizeof(short)); \
+    }
 
     for (ds = drawsegs; ds < ds_p; ds++)
     {
@@ -493,6 +503,8 @@ void R_DrawPlanes (void)
 		    angle = (viewangle + xtoviewangle[x])>>ANGLETOSKYSHIFT;
 		    dc_x = x;
 		    dc_source = R_GetColumn(R_SkyTexture (pl->picnum), angle);
+		    dc_texheight =
+			textureheight[R_SkyTexture (pl->picnum)]>>FRACBITS;
 		    colfunc ();
 		}
 	    }

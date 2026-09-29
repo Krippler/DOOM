@@ -40,6 +40,9 @@ void P_UnArchiveThinkers (void);
 void P_ArchiveSpecials (void);
 void P_UnArchiveSpecials (void);
 
+// The most the four archive routines can write for the level as it is now.
+int P_ArchiveSize (void);
+
 extern byte*		save_p; 
 
 

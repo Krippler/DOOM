@@ -64,9 +64,8 @@ extern int*		texturetranslation;
 
 
 // Sprite....
-extern int		firstspritelump;
-extern int		lastspritelump;
 extern int		numspritelumps;
+extern int*		spritelumps;	// the lump of each sprite picture
 
 
 

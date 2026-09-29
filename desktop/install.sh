@@ -55,9 +55,9 @@ if [ -n "$missing" ]; then
     for m in $missing; do
         echo "    $m"
     done
-    echo "On Debian or Ubuntu: sudo apt install libx11-6 libxext6 libfluidsynth3 libpulse0"
-    echo "On Fedora:           sudo dnf install libX11 libXext fluidsynth-libs pulseaudio-libs"
-    echo "On Arch:             sudo pacman -S libx11 libxext fluidsynth libpulse"
+    echo "On Debian or Ubuntu: sudo apt install libx11-6 libxext6 zlib1g libfluidsynth3 libpulse0"
+    echo "On Fedora:           sudo dnf install libX11 libXext zlib fluidsynth-libs pulseaudio-libs"
+    echo "On Arch:             sudo pacman -S libx11 libxext zlib fluidsynth libpulse"
     exit 1
 fi
 
