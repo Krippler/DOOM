@@ -12,7 +12,7 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
-## [Unreleased]
+## [1.13.3] — 2026-09-29
 
 ### Fixed
 - **SIGIL II crashed as soon as a level was drawn** (`DOOM died on SIGSEGV`,
