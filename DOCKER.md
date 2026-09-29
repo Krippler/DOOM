@@ -367,8 +367,20 @@ while it runs. So choosing a file restarts the engine with it: a couple of
 seconds, and you land back on the title screen. Anything not yet saved is
 lost, the same as quitting.
 
+**A mod goes on the game it was made for.** Its maps say which: `E1M1`-style
+maps are DOOM's (SIGIL, SIGIL II), `MAP01`-style maps DOOM II's (No Rest for
+the Living, the Master Levels). If the game running now is the right one, the
+mod goes on top of it; if not, the engine restarts on the right one from the
+WAD directory — so SIGIL II chosen while playing DOOM II starts on DOOM. For
+DOOM it takes the copy with the most episodes; for DOOM II, `doom2.wad` before
+TNT or Plutonia. A mod with no maps — new graphics or sounds — stays on the
+game running now. When the right game is not there at all, the menu says
+`NEEDS DOOM, NOT FOUND` or `NEEDS DOOM II, NOT FOUND` and nothing restarts.
+
 Shareware refuses to load mods — that is the engine's own restriction, not the
-container's — and the menu says so instead of restarting into a fatal error.
+container's — so a mod chosen while playing the shareware episode goes on the
+full DOOM if there is one, and otherwise the menu says so instead of
+restarting into a fatal error.
 
 **A WAD the engine cannot run** — a texture it does not have, a map in a format
 it cannot read — ends in a fatal error, as it always did. It used to take the

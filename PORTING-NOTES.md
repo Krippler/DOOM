@@ -889,6 +889,27 @@ tables were raised eightfold: `MAXVISPLANES`, `MAXOPENINGS`, `MAXDRAWSEGS`,
 Only memory depends on them. The scrolling-wall list, which the original
 filled with no check at all, stops at its end now.
 
+## Which game a mod goes on
+
+`M_RelaunchWith` dropped `-iwad` along with any `-file` when it rebuilt the
+arguments, meaning only not to pile up earlier choices. For a PWAD that left
+the engine's own `IdentifyVersion` to choose the game, and it tries DOOM II
+before DOOM -- so SIGIL II, chosen while playing DOOM, started on DOOM II:
+`UMAPINFO: ... not a map of this game's, passed over: E6M1`, then
+`R_InitTextures: Missing patch in texture BRNBIGC`, and back.
+
+`M_IwadFor` now reads the PWAD's directory (`M_WadMaps`): an `ExMy` lump makes
+it DOOM's, a `MAPxx` lump DOOM II's. The running IWAD, `wadfiles[0]`, is kept
+when it fits -- DOOM II for `MAPxx`; for `ExMy`, retail, or registered when the
+mod stays within three episodes -- or for a mod with no maps at all. Otherwise
+the WAD directory and `DOOMWADDIR` are searched for an IWAD with the right kind
+of map: for DOOM the one with the most episodes, and never a one-episode
+(shareware) IWAD, which the engine will not load a PWAD on; for DOOM II a file
+named `doom2*` before TNT or Plutonia. None means a message on the Load WAD
+page and no restart. Tested with a stand-in for SIGIL II (E1M1's lumps as
+E6M1, and a UMAPINFO) and `nerve.wad`, each chosen from both DOOM and DOOM II,
+and with no DOOM installed.
+
 ## x11vnc's timing, once there is more than 35 to send
 
 At 35 frames a second the picture was already within a frame of the engine,

@@ -1901,6 +1901,159 @@ static boolean M_IsIwad (char* path)
 }
 
 
+//
+// Which maps a WAD holds, from its directory: ExMy maps are DOOM's, MAPxx
+// maps DOOM II's. *episodes is the highest episode among the ExMy ones.
+// Neither, for a WAD that only changes graphics or sounds.
+//
+#define WADMAPS_DOOM	1
+#define WADMAPS_DOOM2	2
+
+static int M_WadMaps (char* path, int* episodes)
+{
+    FILE*		f;
+    unsigned char	head[12];
+    unsigned char*	dir;
+    char*		name;
+    int			numlumps, infotableofs;
+    int			i;
+    int			maps = 0;
+
+    *episodes = 0;
+
+    f = fopen (path, "rb");
+    if (!f)
+	return 0;
+
+    if (fread (head, 1, 12, f) != 12
+	|| (memcmp (head, "IWAD", 4) && memcmp (head, "PWAD", 4)))
+    {
+	fclose (f);
+	return 0;
+    }
+
+    numlumps = head[4] | head[5] << 8 | head[6] << 16 | head[7] << 24;
+    infotableofs = head[8] | head[9] << 8 | head[10] << 16 | head[11] << 24;
+
+    if (numlumps <= 0 || numlumps > (1 << 20) || infotableofs < 12
+	|| fseek (f, infotableofs, SEEK_SET)
+	|| !(dir = malloc (numlumps * 16)))
+    {
+	fclose (f);
+	return 0;
+    }
+
+    if (fread (dir, 16, numlumps, f) != (size_t) numlumps)
+	numlumps = 0;
+    fclose (f);
+
+    for (i = 0; i < numlumps; i++)
+    {
+	name = (char*) dir + i * 16 + 8;
+
+	if (toupper (name[0]) == 'E' && name[1] >= '1' && name[1] <= '9'
+	    && toupper (name[2]) == 'M' && name[3] >= '0' && name[3] <= '9'
+	    && (name[4] == 0 || (name[4] >= '0' && name[4] <= '9' && !name[5])))
+	{
+	    maps |= WADMAPS_DOOM;
+	    if (name[1] - '0' > *episodes)
+		*episodes = name[1] - '0';
+	}
+	else if (!strncasecmp (name, "MAP", 3)
+		 && name[3] >= '0' && name[3] <= '9'
+		 && name[4] >= '0' && name[4] <= '9' && !name[5])
+	    maps |= WADMAPS_DOOM2;
+    }
+
+    free (dir);
+    return maps;
+}
+
+
+//
+// The game a mod is to be loaded on.
+//
+// A PWAD goes on top of an IWAD, and has to go on top of the right one:
+// SIGIL II's maps are E6M1 to E6M9 and its walls are built from DOOM's
+// graphics, so on DOOM II it is a missing texture and a fatal error. Load WAD
+// used to drop the running game's -iwad and let the engine pick, which it
+// does in id's order, DOOM II first -- so SIGIL II, chosen while playing
+// DOOM, started on DOOM II.
+//
+// Now: a mod with no maps, or with maps for the game already running, keeps
+// that game. Otherwise the installed game that fits is found -- for DOOM
+// maps the one with the most episodes, never the shareware one, which will
+// not load a mod at all; for DOOM II maps DOOM II itself if it is there,
+// then TNT or Plutonia. NULL if there is none.
+//
+static char* M_IwadFor (char* pwad)
+{
+    static char	best[256];
+    char	cand[256];
+    char*	dirs[2];
+    int		pwadeps, eps;
+    int		want;
+    int		score, bestscore = 0;
+    int		d, len;
+    DIR*	dp;
+    struct dirent* e;
+
+    want = M_WadMaps (pwad, &pwadeps);
+
+    // The game running now, if it will do.
+    if (!want && gamemode != shareware)
+	return wadfiles[0];
+    if (want & WADMAPS_DOOM2 && gamemode == commercial)
+	return wadfiles[0];
+    if (want == WADMAPS_DOOM
+	&& (gamemode == retail || (gamemode == registered && pwadeps <= 3)))
+	return wadfiles[0];
+
+    dirs[0] = M_WadDir ();
+    dirs[1] = getenv ("DOOMWADDIR");
+
+    for (d = 0; d < 2; d++)
+    {
+	if (!dirs[d] || !*dirs[d] || !(dp = opendir (dirs[d])))
+	    continue;
+
+	while ((e = readdir (dp)))
+	{
+	    len = strlen (e->d_name);
+	    if (len < 5 || strcasecmp (e->d_name + len - 4, ".wad"))
+		continue;
+
+	    snprintf (cand, sizeof(cand), "%s/%s", dirs[d], e->d_name);
+	    if (!M_IsIwad (cand))
+		continue;
+
+	    score = 0;
+	    switch (M_WadMaps (cand, &eps))
+	    {
+	      case WADMAPS_DOOM:
+		// shareware has one episode, and loads no mods
+		if ((want == WADMAPS_DOOM || !want) && eps > 1)
+		    score = 10 + eps;
+		break;
+	      case WADMAPS_DOOM2:
+		if (want & WADMAPS_DOOM2)
+		    score = strncasecmp (e->d_name, "doom2", 5) ? 10 : 20;
+		break;
+	    }
+
+	    if (score > bestscore)
+	    {
+		bestscore = score;
+		snprintf (best, sizeof(best), "%s", cand);
+	    }
+	}
+	closedir (dp);
+    }
+
+    return bestscore ? best : NULL;
+}
+
+
 static void M_ScanWads (void)
 {
     DIR*		d;
@@ -1950,12 +2103,11 @@ static void M_ScanWads (void)
 // loaded at startup. So the engine hands itself the new arguments and starts
 // again, which takes a couple of seconds and lands back on the title screen.
 //
-static void M_RelaunchWith (char* path)
+static void M_RelaunchWith (char* path, char* iwad)
 {
     char*	newargv[MAX_WADS + 8];
     int		argc = 0;
     int		i;
-    boolean	iwad = M_IsIwad (path);
 
     newargv[argc++] = myargv[0];
 
@@ -1974,7 +2126,15 @@ static void M_RelaunchWith (char* path)
 	newargv[argc++] = myargv[i];
     }
 
-    newargv[argc++] = iwad ? "-iwad" : "-file";
+    // A game on its own, or a mod on the game M_IwadFor chose for it.
+    if (iwad)
+    {
+	newargv[argc++] = "-iwad";
+	newargv[argc++] = iwad;
+	newargv[argc++] = "-file";
+    }
+    else
+	newargv[argc++] = "-iwad";
     newargv[argc++] = path;
     newargv[argc] = NULL;
 
@@ -2040,20 +2200,38 @@ void M_WadSelect (int choice)
 
 void M_LoadWad (int choice)
 {
+    char*	iwad;
+
     if (choice < 0 || choice >= numWads)
 	return;
 
-    // The engine refuses -file under shareware and exits, which from the
-    // menu would look like the game simply vanished. Say no here instead.
-    if (gamemode == shareware && !M_IsIwad (wadPaths[choice]))
+    if (M_IsIwad (wadPaths[choice]))
     {
-	snprintf (wadMessage, sizeof(wadMessage),
-		  "SHAREWARE CANNOT LOAD MODS");
+	M_RelaunchWith (wadPaths[choice], NULL);
+	return;
+    }
+
+    // A mod needs a game under it, and the right one. When there is none,
+    // say so here: restarting would only end in an error. That includes
+    // shareware, which the engine refuses to load any mod on.
+    iwad = M_IwadFor (wadPaths[choice]);
+    if (!iwad)
+    {
+	int	eps;
+	int	maps = M_WadMaps (wadPaths[choice], &eps);
+
+	if (maps & WADMAPS_DOOM2)
+	    snprintf (wadMessage, sizeof(wadMessage), "NEEDS DOOM II, NOT FOUND");
+	else if (maps)
+	    snprintf (wadMessage, sizeof(wadMessage), "NEEDS DOOM, NOT FOUND");
+	else
+	    snprintf (wadMessage, sizeof(wadMessage),
+		      "SHAREWARE CANNOT LOAD MODS");
 	S_StartSound (NULL, sfx_oof);
 	return;
     }
 
-    M_RelaunchWith (wadPaths[choice]);
+    M_RelaunchWith (wadPaths[choice], iwad);
 }
 
 

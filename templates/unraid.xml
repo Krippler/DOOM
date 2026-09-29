@@ -39,6 +39,11 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.13.1
+- SIGIL II, and any other mod, chosen from Load WAD now starts on the game it
+  was made for. SIGIL II went onto DOOM II and failed with a missing texture.
+  If that game is not installed, the menu says so instead of restarting.
+
 ### 1.13.0
 - Max FPS 60 now reaches the browser: the picture went out at no more than
   about 55 a second before.
