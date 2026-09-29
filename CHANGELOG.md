@@ -12,6 +12,31 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [Unreleased]
+
+### Changed
+- **Max FPS 60 reaches the browser.** x11vnc waited 5 ms and then deferred
+  5 ms more before sending each picture, which held the browser to about 55 a
+  second whatever the engine drew. Both are 3 now: 60 a second at Max FPS 60,
+  for one point more of a core while nothing moves. `DOOM_VNC_WAIT=1` and
+  `DOOM_VNC_DEFER=1` get about 100 a second to a faster screen, at 13% of a
+  core idle against 5%. From the Quake container, which uses 1.
+- **`play.html?compression=N` and `?quality=N`**, 0 to 9, set what the page
+  asks x11vnc for, as in the Quake container. Unset, they are noVNC's own;
+  Quake's page asks for 1, which at DOOM's size costs 44% more bandwidth and
+  gets no more pictures through. (1.10.29 said these settings did nothing.
+  They do now: 830 KB/s at 2 against 1230 at 1, at 35 frames a second.)
+
+### Added
+- **Quick Save and Quick Load can be bound**, on Options → Setup → Controls,
+  as in the Quake container. They are F6 and F9 until set otherwise — keys a
+  browser may keep for itself, and a laptop reaches only with Fn. A controller
+  button can do either too, under Options → Setup → Controller → Buttons.
+- **Enter answers yes to a question** — quitting, ending the game, loading
+  the quick save — as in the Quake container, where Y and N were all that
+  would. Only a press that starts after the question is asked: Enter is what
+  chose QUIT GAME, and a key held down a moment too long repeats.
+
 ## [1.12.0] — 2026-09-29
 
 ### Added

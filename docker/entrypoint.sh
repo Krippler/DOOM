@@ -442,13 +442,29 @@ fi
 # which is the state of a DOOM screen in the moment before you press fire, and
 # -wait and -defer each hold 20 ms in reserve for a slow link.
 #
-# None of that measured as worth anything here -- keypress to pixels is about
-# 140 ms either way, and moving these from 20 to 5 to 1 changed nothing
-# outside the noise. They are set anyway because the defaults are wrong in
-# principle for something being played rather than administered, and left
-# adjustable because the next person to look at this will want to try them.
-# What the delay actually is, and everything that was ruled out, is in
+# At the engine's 35 frames a second none of that measured as worth anything --
+# keypress to pixels is about 140 ms either way, and moving these from 20 to 5
+# to 1 changed nothing outside the noise. Above 35 it does: x11vnc waits
+# -wait, then -defer, before it answers, and at 5 and 5 that holds the picture
+# to about 55 a second whatever the engine draws. Measured with the real page
+# in Chromium, the player turning without pause, Options -> Setup -> Gameplay ->
+# Max FPS at 60 and at 120:
+#
+#   wait, defer   pictures at 60   at 120   x11vnc idle   x11vnc at 35 fps
+#   5 (before)          54.5         55         4%              17%
+#   3                   60           69         5%              19%
+#   2                   60           88         8%
+#   1 (Quake's)         60          100        13%              24%
+#
+# 3 gets a 60 Hz screen every frame for a point of CPU when nothing moves. 1 is
+# what a 120 Hz one wants, at nine points more on every container all the
+# time, so it is DOOM_VNC_WAIT=1 DOOM_VNC_DEFER=1 for whoever has one. What
+# the delay at 35 actually is, and everything that was ruled out, is in
 # PORTING-NOTES.md.
+#
+# -noxdamage, which the Quake container turns on, is not on here: it was
+# tried twice, once against the stalls this was chased for and once against
+# the rate above, and changed nothing either time. DOOM_VNC_ARGS=-noxdamage.
 #
 # Catch the option that is not one before x11vnc does.
 #
@@ -495,7 +511,7 @@ fi
 x11vnc -display "$DISP" -rfbport "$VNC_PORT" -forever -shared -quiet \
        $vnc_8to24 \
        -nowireframe -noscrollcopyrect \
-       -nonap -wait "${DOOM_VNC_WAIT:-5}" -defer "${DOOM_VNC_DEFER:-5}" \
+       -nonap -wait "${DOOM_VNC_WAIT:-3}" -defer "${DOOM_VNC_DEFER:-3}" \
        ${DOOM_VNC_ARGS:-} \
        $vnc_auth >"$STATE/x11vnc.log" 2>&1 &
 VNC_PID=$!

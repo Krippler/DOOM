@@ -110,6 +110,11 @@ int			messageLastMenuActive;
 // timed message = no input from user
 boolean			messageNeedsInput;     
 
+// Enter has been let go since the message went up: only then does it answer.
+static boolean		messageEnterUp;
+static boolean		enterHeld;
+static double		enterUpMs;
+
 void    (*messageRoutine)(int response);
 
 #define SAVESTRINGSIZE 	24
@@ -1039,6 +1044,12 @@ extern int	mousebforward;
 extern int	grabMouse;
 
 
+// Quick save and quick load: F6 and F9, as id had them, until the Controls
+// page says otherwise. A browser keeps some function keys for itself, and a
+// laptop needs Fn to reach them at all.
+int	key_quicksave = KEY_F6;
+int	key_quickload = KEY_F9;
+
 typedef struct
 {
     char*	label;
@@ -1059,7 +1070,9 @@ static binding_t bindings[] =
     {"RUN",		&key_speed},
     {"NEXT WEAPON",	&key_nextweapon},
     {"PREV WEAPON",	&key_prevweapon},
-    {"MENU",		&key_menu}
+    {"MENU",		&key_menu},
+    {"QUICK SAVE",	&key_quicksave},
+    {"QUICK LOAD",	&key_quickload}
 };
 
 #define NUM_BINDINGS	(sizeof(bindings)/sizeof(bindings[0]))
@@ -1201,20 +1214,22 @@ menuitem_t ControlsMenu[] =
     {1,"",M_ChangeBinding,0}, {1,"",M_ChangeBinding,0},
     {1,"",M_ChangeBinding,0}, {1,"",M_ChangeBinding,0},
     {1,"",M_ChangeBinding,0}, {1,"",M_ChangeBinding,0},
+    {1,"",M_ChangeBinding,0}, {1,"",M_ChangeBinding,0},
     {1,"",M_ChangeBinding,0}
 };
 
-// Thirteen rows at the small font's 13 pixels reach into the status bar,
-// so these are packed at 11, as the controller's buttons are at 10.
+// Fifteen rows at the small font's 13 pixels reach well into the status bar,
+// so these are packed at 10 under a title moved up, as the controller's
+// buttons are.
 menu_t ControlsDef =
 {
     NUM_BINDINGS,
     &SetupDef,
     ControlsMenu,
     M_DrawControls,
-    56,26,
+    56,16,
     0,
-    11
+    10
 };
 
 
@@ -1241,18 +1256,21 @@ void M_DrawControls (void)
     unsigned	i;
     int		y;
 
-    M_WriteText (56, 14, "CONTROLS");
+    M_WriteText (56, 4, "CONTROLS");
 
     y = ControlsDef.y;
 
+    // A line down from the row, as on the controller's page, so the text
+    // sits in the middle of the skull beside it at this spacing.
     for (i = 0; i < NUM_BINDINGS; i++)
     {
-	M_WriteText (ControlsDef.x, y, bindings[i].label);
+	M_WriteText (ControlsDef.x, y + 1, bindings[i].label);
 
 	if (bindingWait && i == (unsigned)itemOn)
-	    M_WriteText (ControlsDef.x + 148, y, "???");
+	    M_WriteText (ControlsDef.x + 148, y + 1, "???");
 	else
-	    M_WriteText (ControlsDef.x + 148, y, M_KeyName(*bindings[i].key));
+	    M_WriteText (ControlsDef.x + 148, y + 1,
+			 M_KeyName(*bindings[i].key));
 
 	y += ControlsDef.lineheight;
     }
@@ -1455,7 +1473,8 @@ static char* padactionnames[PA_COUNT] =
     "WEAPON 1", "WEAPON 2", "WEAPON 3", "WEAPON 4",
     "WEAPON 5", "WEAPON 6", "WEAPON 7",
     "AUTOMAP", "MENU",
-    "NEXT WEAPON", "PREV WEAPON"
+    "NEXT WEAPON", "PREV WEAPON",
+    "QUICK SAVE", "QUICK LOAD"
 };
 
 // The buttons that can be set, in the order the page lists them. Start is
@@ -2381,6 +2400,7 @@ M_StartMessage
     messageString = string;
     messageRoutine = routine;
     messageNeedsInput = input;
+    messageEnterUp = !enterHeld;
     menuactive = true;
     return;
 }
@@ -2549,6 +2569,16 @@ boolean M_Responder (event_t* ev)
     static  int     lastx = 0;
 	
     ch = -1;
+
+    // Where Enter is, for answering a question with it (below).
+    if (ev->type == ev_keydown && ev->data1 == KEY_ENTER)
+	enterHeld = true;
+    if (ev->type == ev_keyup && ev->data1 == KEY_ENTER)
+    {
+	enterHeld = false;
+	enterUpMs = I_NowMs ();
+	messageEnterUp = true;
+    }
 	
     if (ev->type == ev_joystick && joywait < I_GetTime())
     {
@@ -2728,6 +2758,20 @@ boolean M_Responder (event_t* ev)
 	if (ch == KEY_BACKSPACE)
 	    ch = KEY_ESCAPE;
 
+	// And Enter yes, as in the Quake container -- but only a press that
+	// began after the question was asked. Enter is what chose QUIT GAME,
+	// and a key held a moment too long repeats, which would answer for a
+	// slow finger. Behind VNC the browser repeats the press alone, with no
+	// release between; X repeats a release and a press together, so a
+	// release in the last 50 ms does not count either -- no finger lets go
+	// and presses again that fast.
+	if (ch == KEY_ENTER && messageNeedsInput)
+	{
+	    if (!messageEnterUp || I_NowMs () - enterUpMs < 50)
+		return true;
+	    ch = 'y';
+	}
+
 	if (messageNeedsInput == true &&
 	    !(ch == ' ' || ch == 'n' || ch == 'y' || ch == KEY_ESCAPE))
 	    return false;
@@ -2777,6 +2821,25 @@ boolean M_Responder (event_t* ev)
     {
 	G_ScreenShot ();
 	return true;
+    }
+
+    // Quick save and quick load, on whatever keys the Controls page gave
+    // them. Not while a chat message is being typed, in case either is a
+    // letter.
+    if (!menuactive && !chat_on && ch > 0)
+    {
+	if (ch == key_quicksave)
+	{
+	    S_StartSound(NULL,sfx_swtchn);
+	    M_QuickSave();
+	    return true;
+	}
+	if (ch == key_quickload)
+	{
+	    S_StartSound(NULL,sfx_swtchn);
+	    M_QuickLoad();
+	    return true;
+	}
     }
 		
     
@@ -2834,11 +2897,8 @@ boolean M_Responder (event_t* ev)
 	    S_StartSound(NULL,sfx_swtchn);
 	    return true;
 				
-	  case KEY_F6:            // Quicksave
-	    S_StartSound(NULL,sfx_swtchn);
-	    M_QuickSave();
-	    return true;
-				
+	  // F6, quick save, and F9, quick load, are bindings now: above.
+
 	  case KEY_F7:            // End game
 	    S_StartSound(NULL,sfx_swtchn);
 	    M_EndGame(0);
@@ -2847,11 +2907,6 @@ boolean M_Responder (event_t* ev)
 	  case KEY_F8:            // Toggle messages
 	    M_ChangeMessages(0);
 	    S_StartSound(NULL,sfx_swtchn);
-	    return true;
-				
-	  case KEY_F9:            // Quickload
-	    S_StartSound(NULL,sfx_swtchn);
-	    M_QuickLoad();
 	    return true;
 				
 	  case KEY_F10:           // Quit DOOM

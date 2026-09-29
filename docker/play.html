@@ -365,6 +365,29 @@ if (new URLSearchParams(location.search).get('encoding') === 'hextile') {
 }
 
 //
+// ?compression=N and ?quality=N, 0 to 9, set what the page asks x11vnc for,
+// as in the Quake container. Unset, they are noVNC's own, 2 and 6.
+//
+// Quake's page asks for compression 1, which at its 1920x1200 got twice the
+// pictures out of x11vnc. At DOOM's size it gets no more -- 60 a second either
+// way at Max FPS 60, 69 against 73 at 120 -- and costs 44% more bandwidth for
+// x11vnc's CPU: 1.4 MB/s against 2.0 at 60, 830 KB/s against 1230 at 35. A
+// link that is short of bandwidth is a thing players here have had, so the
+// default stays; ?compression=1 is there for a fast local one, and 9 for a
+// slow one where bytes cost more than x11vnc's time.
+//
+(function () {
+  const params = new URLSearchParams(location.search);
+  const level = (name) => {
+    const v = parseInt(params.get(name), 10);
+    return Number.isInteger(v) && v >= 0 && v <= 9 ? v : null;
+  };
+  const c = level('compression'), q = level('quality');
+  if (c !== null) rfb.compressionLevel = c;
+  if (q !== null) rfb.qualityLevel = q;
+})();
+
+//
 // What the decoding above costs, measured where it matters.
 //
 // videoDecodeWorst is the longest a single picture took between being handed

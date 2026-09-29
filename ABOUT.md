@@ -66,7 +66,7 @@ because a confident answer turned out to be an artefact of how it was measured.
 Five pages under **Options → Setup**, none of which the 1997 release had any
 equivalent of:
 
-- **Controls** — rebind the thirteen movement, action and menu keys, the mouse
+- **Controls** — rebind the fifteen movement, action and menu keys, the mouse
   wheel among them. Saved to `.doomrc`.
 - **Mouse** — turn the mouse on and off, assign its buttons, and capture the
   pointer so it cannot slide out of the window while you turn.

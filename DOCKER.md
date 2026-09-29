@@ -192,7 +192,11 @@ Click into the canvas first — the browser only sends keys to a focused canvas.
 | Open, use | E |
 | Weapons | `1`–`7`, or the mouse wheel for the next and the one before |
 | Map | Tab |
+| Quick save, quick load | F6 and F9 |
 | Menu | `` ` `` or Backspace, or Esc when the browser lets it through |
+
+A question the game asks — quit, end the game, load the quick save — takes Y or
+Enter for yes, and N or Backspace for no.
 
 That is WASD, as the Quake container has, written into `.doomrc` the first time
 the container starts on an empty state directory. id's own keys — the arrows to
@@ -201,7 +205,8 @@ away, and only on a state directory with no `.doomrc` yet: from then on the file
 is the game's, and what you change in it stays.
 
 All of these can be changed from the game: **` → Options → Setup →
-Controls**, next and previous weapon included. Pick a line, press Return, then
+Controls**, next and previous weapon and quick save and load included. Pick a
+line, press Return, then
 press the key you want — the mouse wheel counts, as WHEEL UP and WHEEL DOWN;
 **Delete** on a line clears it, leaving that control with no key. Backspace goes
 back a page, in every menu, and out of the menus from the top. It is the one key
@@ -222,7 +227,7 @@ pistol reaches the super shotgun; the shotgun is the one going back from it.
 | Crosshair red, green, blue | its colour, 0–8 each, drawn as the nearest in DOOM's palette |
 | HUD style | the status bar, or **minimal**: the view fills the screen, with the face and health in the bottom left, armour after them, the ammunition in hand in the bottom right and the keys above |
 | Weapon on pickup | change to a weapon picked up **always**, **only if new** (id's), or **never**. Demos and net games always play id's way |
-| Max FPS | **35** (id's, the default), 60, 72, 90, 120, 144, 165, 240 or **no limit**. Above 35, frames are drawn between the game's tics too, for smoother motion |
+| Max FPS | **35** (id's, the default), 60, 72, 90, 120, 144, 165, 240 or **no limit**. Above 35, frames are drawn between the game's tics too, for smoother motion. Up to 60 reach the browser; above that, see `DOOM_VNC_WAIT` |
 
 **Max FPS.** DOOM runs 35 times a second and always will — demos and net games
 depend on it — and it used to draw 35 times a second too, so everything that
@@ -292,7 +297,8 @@ In menus the d-pad and left stick move the cursor, LB and RB change a setting,
 A chooses and B goes back. Y is Delete: on **Buttons…** it sets the highlighted
 button to do nothing, and on **Controls** it clears a key. A button is set to an *action*, not a key, so
 rebinding a key under **Controls** needs nothing changing here: a button set to
-*Fire* presses whatever fire is bound to.
+*Fire* presses whatever fire is bound to. *Quick save* and *quick load* are
+among the actions, set to no button to begin with.
 
 **Vibration** comes on firing — each weapon has its own kick, the super shotgun
 hardest — and on being hurt, harder for more damage. The damage half goes
@@ -407,8 +413,8 @@ Everything is set through the environment:
 | `DOOM_WEB_PORT` | `6080` | noVNC HTTP port. |
 | `DOOM_VNC_PORT` | `5900` | VNC port. |
 | `DOOM_VNC_PASSWORD` | unset | If set, the VNC session requires this password. |
-| `DOOM_VNC_WAIT` | `5` | Milliseconds between x11vnc screen polls. |
-| `DOOM_VNC_DEFER` | `5` | Milliseconds x11vnc holds an update back. |
+| `DOOM_VNC_WAIT` | `3` | Milliseconds between x11vnc screen polls. `1`, with `DOOM_VNC_DEFER=1`, for Max FPS above 60. |
+| `DOOM_VNC_DEFER` | `3` | Milliseconds x11vnc holds an update back. |
 | `DOOM_VNC_ARGS` | unset | Extra flags passed to x11vnc. |
 | `DOOM_SOUND` | `1` | Set to `0` for no sound at all. |
 | `DOOM_AUDIO_RATE` | `22050` | Rate the sound reaches the browser at. `11025` or `44100` also work. |
@@ -672,9 +678,18 @@ smaller `DOOM_AUDIO_RATE` moves less data, and serving the page over HTTPS
 gets the `AudioWorklet` path, which runs on the audio thread rather than
 competing with noVNC for the main one.
 
-`DOOM_VNC_WAIT`, `DOOM_VNC_DEFER` and `DOOM_VNC_ARGS` tune x11vnc's timing,
-though none of them measured as worth anything: the picture is already within
-a frame of the engine. `PORTING-NOTES.md` has the measurements.
+`DOOM_VNC_WAIT`, `DOOM_VNC_DEFER` and `DOOM_VNC_ARGS` tune x11vnc's timing.
+At the game's own 35 frames a second none of them measured as worth anything:
+the picture is already within a frame of the engine. Above 35 — **Max FPS** —
+wait and defer are what hold it back: at 3 each, the default, 60 a second
+reach the browser; for 120, set both to 1, which costs x11vnc about 13% of a
+core while nothing moves against 5%. `PORTING-NOTES.md` has the measurements.
+
+`play.html?compression=N` and `?quality=N` (0 to 9) set what the page asks
+x11vnc for; unset, they are noVNC's 2 and 6. `?compression=1` costs about 44%
+more bandwidth for less of x11vnc's CPU, and gets no more pictures through at
+this size; `?compression=9` is for a slow link. They go with `?encoding=` and
+`?stats=` if you use those: `play.html?compression=9&stats=1`.
 | `sound: to PulseAudio` in the log | It went to a host audio server rather than to you. Unset `PULSE_SERVER`. |
 | `Sound: on … N s received` (with `?stats=1`) and still silent | It is arriving and being played, so the problem is past the browser: a muted tab, or the machine's output device. |
 
