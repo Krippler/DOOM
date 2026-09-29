@@ -43,6 +43,8 @@ rcsid[] = "$Id: r_data.c,v 1.4 1997/02/03 16:47:55 b1 Exp $";
 
 #ifdef LINUX
 #include  <alloca.h>
+#include  <ctype.h>
+#include  <strings.h>
 #endif
 
 
@@ -138,9 +140,12 @@ typedef struct
 
 
 
-int		firstflat;
-int		lastflat;
 int		numflats;
+
+// The lump each flat number stands for, and the other way round (-1 for a
+// lump that is not a flat). See R_InitFlats.
+int*		flatlumps;
+static int*	lumpflat;
 
 int		firstpatch;
 int		lastpatch;
@@ -590,14 +595,96 @@ void R_InitTextures (void)
 //
 // R_InitFlats
 //
+//
+// Every flat, from every file.
+//
+// id's code took the flats to be the lumps between the last F_START and the
+// last F_END, which holds only while the IWAD is the one file with them. A
+// PWAD with floors of its own in an F_START/F_END pair of its own -- a new
+// episode, SIGIL II among them -- made its markers the last ones: the engine
+// saw its handful of flats and nothing else, every one of the IWAD's got a
+// negative number, the sky flat included, and the renderer read far outside
+// the arrays indexed by it. Where that landed decided whether it drew
+// garbage or crashed, in R_GetColumn from R_DrawPlanes. id's answer was for
+// mod authors to merge their flats into the IWAD's with a tool.
+//
+// Here the lumps between each F_START or FF_START and the F_END or FF_END
+// after it, in every file, are the flats: a name seen before replaces that
+// flat where it stands, so the IWAD's animated sequences stay in order, and a
+// new one goes on the end. Everything between the markers counts, the
+// markers inside (F1_START and so on) included, as it did for id: a savegame
+// stores each floor as its flat number, so with no mod loaded the numbers
+// have to come out exactly as they always did.
+//
+static boolean R_IsFlatMarker (char* name, char* which)
+{
+    char	n[9];
+
+    memcpy (n, name, 8);
+    n[8] = 0;
+
+    if (!strcasecmp (n, which))
+	return true;
+
+    // FF_START and FF_END, as DeuTex writes them into a PWAD
+    return toupper (n[0]) == 'F' && !strcasecmp (n + 1, which);
+}
+
 void R_InitFlats (void)
 {
-    int		i;
-	
-    firstflat = W_GetNumForName ("F_START") + 1;
-    lastflat = W_GetNumForName ("F_END") - 1;
-    numflats = lastflat - firstflat + 1;
-	
+    int		i, j;
+    boolean	inflats = false;
+    boolean	later = false;		// past the first F_START/F_END
+    int		replaced = 0, added = 0;
+
+    flatlumps = Z_Malloc (numlumps * sizeof(*flatlumps), PU_STATIC, 0);
+    lumpflat = Z_Malloc (numlumps * sizeof(*lumpflat), PU_STATIC, 0);
+    numflats = 0;
+
+    for (i = 0; i < numlumps; i++)
+    {
+	lumpflat[i] = -1;
+
+	if (R_IsFlatMarker (lumpinfo[i].name, "F_START"))
+	{
+	    inflats = true;
+	    continue;
+	}
+	if (R_IsFlatMarker (lumpinfo[i].name, "F_END"))
+	{
+	    inflats = false;
+	    later = true;
+	    continue;
+	}
+	if (!inflats)
+	    continue;
+
+	for (j = 0; j < numflats; j++)
+	    if (!strncasecmp (lumpinfo[flatlumps[j]].name,
+			      lumpinfo[i].name, 8))
+		break;
+
+	if (j == numflats)
+	{
+	    numflats++;
+	    added += later;
+	}
+	else
+	    replaced += later;
+	flatlumps[j] = i;
+    }
+
+    // Worth a line when a mod brings floors: what reading them used to break.
+    if (replaced || added)
+	printf ("\nR_InitFlats: %d flats, %d replaced and %d added by later files",
+		numflats, replaced, added);
+
+    if (!numflats)
+	I_Error ("R_InitFlats: no flats between F_START and F_END");
+
+    for (j = 0; j < numflats; j++)
+	lumpflat[flatlumps[j]] = j;
+
     // Create translation table for global animation.
     flattranslation = Z_Malloc ((numflats+1)*sizeof(*flattranslation), PU_STATIC, 0);
     
@@ -681,12 +768,30 @@ void R_InitData (void)
 // R_FlatNumForName
 // Retrieval, get a flat number for a flat name.
 //
+int R_CheckFlatNumForName (char* name)
+{
+    int		i;
+
+    // The last lump of the name is nearly always the flat; a later lump
+    // that happens to share it is not, and then the list is searched.
+    i = W_CheckNumForName (name);
+
+    if (i >= 0 && lumpflat[i] >= 0)
+	return lumpflat[i];
+
+    for (i = numflats - 1; i >= 0; i--)
+	if (!strncasecmp (lumpinfo[flatlumps[i]].name, name, 8))
+	    return i;
+
+    return -1;
+}
+
 int R_FlatNumForName (char* name)
 {
     int		i;
     char	namet[9];
 
-    i = W_CheckNumForName (name);
+    i = R_CheckFlatNumForName (name);
 
     if (i == -1)
     {
@@ -694,7 +799,7 @@ int R_FlatNumForName (char* name)
 	memcpy (namet, name,8);
 	I_Error ("R_FlatNumForName: %s not found",namet);
     }
-    return i - firstflat;
+    return i;
 }
 
 
@@ -786,7 +891,7 @@ void R_PrecacheLevel (void)
     {
 	if (flatpresent[i])
 	{
-	    lump = firstflat + i;
+	    lump = flatlumps[i];
 	    flatmemory += lumpinfo[lump].size;
 	    W_CacheLumpNum(lump, PU_CACHE);
 	}

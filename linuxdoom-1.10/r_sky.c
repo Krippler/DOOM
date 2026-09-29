@@ -149,11 +149,11 @@ void R_InitSkyDefs (void)
 	if (R_SkyDefString (p, close, "flat", flat)
 	    && R_SkyDefString (p, close, "sky", sky))
 	{
-	    f = W_CheckNumForName (flat);
+	    f = R_CheckFlatNumForName (flat);
 	    t = R_CheckTextureNumForName (sky);
-	    if (f >= firstflat && f <= lastflat && t >= 0)
+	    if (f >= 0 && t >= 0)
 	    {
-		flatskytexture[f - firstflat] = t;
+		flatskytexture[f] = t;
 		found++;
 	    }
 	    else

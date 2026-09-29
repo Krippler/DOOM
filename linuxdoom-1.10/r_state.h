@@ -55,9 +55,8 @@ extern int		viewwidth;
 extern int		scaledviewwidth;
 extern int		viewheight;
 
-extern int		firstflat;
-extern int		lastflat;
 extern int		numflats;
+extern int*		flatlumps;	// the lump of each flat number
 
 // for global animation
 extern int*		flattranslation;	

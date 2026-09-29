@@ -347,16 +347,18 @@ void F_TextWrite (void)
     
     // erase the entire screen to a tiled background: a flat, or a picture
     // when UMAPINFO names something that is not one
-    x = W_CheckNumForName (finaleflat);
-    if (x >= 0 && (x < firstflat || x > lastflat))
+    x = R_CheckFlatNumForName (finaleflat);
+    if (x < 0 && W_CheckNumForName (finaleflat) >= 0)
     {
 	memset (screens[0], 0, SCREENWIDTH*SCREENHEIGHT);
-	V_DrawPatch (0, 0, 0, W_CacheLumpNum (x, PU_CACHE));
+	V_DrawPatch (0, 0, 0,
+		     W_CacheLumpNum (W_GetNumForName (finaleflat), PU_CACHE));
 	y = SCREENHEIGHT;
     }
     else
     {
-	src = W_CacheLumpNum (x >= 0 ? x : W_GetNumForName ("FLOOR4_8"),
+	src = W_CacheLumpNum (flatlumps[x >= 0 ? x
+					: R_FlatNumForName ("FLOOR4_8")],
 			      PU_CACHE);
 	y = 0;
     }
