@@ -12,7 +12,7 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
-## [Unreleased]
+## [1.15.0] — 2026-09-29
 
 ### Added
 - **New Game asks what to play, then how hard.** It opens the list of WADs
