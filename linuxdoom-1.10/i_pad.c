@@ -57,6 +57,7 @@
 #include "i_pad.h"
 
 extern int	key_right, key_left, key_up, key_down;
+extern int	key_quicksave, key_quickload;
 extern int	key_strafeleft, key_straferight;
 extern int	key_fire, key_use, key_strafe, key_speed;
 extern fixed_t	forwardmove[2];
@@ -468,6 +469,8 @@ static int PAD_GameKey (int b)
       case PA_MENU:		return KEY_ESCAPE;
       case PA_NEXTWEAPON:	return KEY_WEAPNEXT;
       case PA_PREVWEAPON:	return KEY_WEAPPREV;
+      case PA_QUICKSAVE:	return key_quicksave;
+      case PA_QUICKLOAD:	return key_quickload;
     }
     if (a >= PA_WEAPON1 && a <= PA_WEAPON7)
 	return '1' + a - PA_WEAPON1;

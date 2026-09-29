@@ -889,6 +889,56 @@ tables were raised eightfold: `MAXVISPLANES`, `MAXOPENINGS`, `MAXDRAWSEGS`,
 Only memory depends on them. The scrolling-wall list, which the original
 filled with no check at all, stops at its end now.
 
+## x11vnc's timing, once there is more than 35 to send
+
+At 35 frames a second the picture was already within a frame of the engine,
+and `-wait`/`-defer` measured as nothing (below). Max FPS changed that. x11vnc
+answers a request after its poll wait and its defer, and at 5 and 5 those
+held the browser to about 55 pictures a second -- 54.5 at Max FPS 60, 55 at
+120. Measured with the real page in headless Chromium through `doom-wsproxy`,
+the engine turning without pause, 15 to 20 seconds a run, twice each:
+
+| wait, defer | compression | at 35 | at 60 | at 120 | x11vnc idle | KB/s at 60 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 5 | 2 (noVNC's) | 35 | 54.5 | 55 | 4% | 1240 |
+| 3 | 2 | 35 | 59.7 | 69 | 5% | 1375 |
+| 3 | 1 | | 59.9 | 73 | 5% | 1980 |
+| 2 | 1 | | 60.1 | 88 | 8% | 2000 |
+| 1 | 2 | 35 | 60.3 | 99 | | 1460 |
+| 1 | 1 (Quake's) | 35 | 60.4 | 102-108 | 13% | 2020 |
+
+Idle is the game paused, which the engine still draws 35 times a second. The
+rows at wait 1 and 2, and at 3 with compression 1, ran with `-noxdamage`, which
+made no difference wherever it was measured both ways.
+3 is the default: a 60 Hz screen gets every frame for a point of idle CPU.
+Compression 1, which Quake's page asks for, gets no more pictures through at
+this size and costs 44% more bandwidth, so the page keeps noVNC's 2 unless
+`?compression=` says otherwise. `-noxdamage`, also Quake's, made no difference
+to the rate here, as it made none to the stalls below.
+
+## Quick save on any key, and Enter for yes
+
+F6 and F9 were cases in `M_Responder`'s function-key switch. They are
+`key_quicksave` and `key_quickload` now, F6 and F9 by default and saved in
+`.doomrc`, tested just above that switch -- only outside the menus and never
+while a chat message is being typed, since either may be a letter now. The
+Controls page has fifteen rows, which fit above the status bar at 10 pixels a
+row under a title moved to the top, as on the controller's Buttons page.
+`PA_QUICKSAVE` and `PA_QUICKLOAD` come after every other pad action, so the
+numbers already saved for the others keep their meaning.
+
+**Enter at a question.** `M_Responder` turns Enter into `y` when the message
+wants an answer -- but not a press that began before the question was asked.
+The question is usually opened by Enter, on QUIT GAME, and a held key repeats.
+Two ways, as it turns out: X repeats a held key as a release and a press with
+the same timestamp, 35 pairs in two seconds of Xvfb; behind VNC, x11vnc turns
+the server's repeat off and the browser repeats the press alone, with no
+release. So Enter counts only after a release since the question went up
+(`messageEnterUp`, which starts true if Enter was not down then), and not
+within 50 ms of that release, which no finger letting go and pressing again
+comes near. Held for two seconds through the quit question on Xvfb, the game
+stays; pressed again, it quits.
+
 ## Drawing between tics: Max FPS
 
 The game runs at 35 tics a second and must: demos are a tic command per tic,

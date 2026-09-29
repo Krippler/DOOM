@@ -39,6 +39,13 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.13.0
+- Max FPS 60 now reaches the browser: the picture went out at no more than
+  about 55 a second before.
+- Quick Save and Quick Load can be set to any key under Options - Setup -
+  Controls (F6 and F9 until you do), and to a controller button.
+- Enter answers yes to the game's questions, as Y does.
+
 ### 1.12.0
 - Smoother motion: Options - Setup - Gameplay - Max FPS draws frames between
   the game's 35 a second, with everything part of the way to where it is

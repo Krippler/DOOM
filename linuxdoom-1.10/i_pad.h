@@ -32,6 +32,7 @@ enum
     PA_WEAPON5, PA_WEAPON6, PA_WEAPON7,
     PA_AUTOMAP, PA_MENU,
     PA_NEXTWEAPON, PA_PREVWEAPON,	// after the rest, so saved numbers keep
+    PA_QUICKSAVE, PA_QUICKLOAD,
     PA_COUNT
 };
 
