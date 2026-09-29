@@ -37,7 +37,15 @@ extern fixed_t		dc_iscale;
 extern fixed_t		dc_texturemid;
 
 // first pixel in a column
-extern byte*		dc_source;		
+extern byte*		dc_source;
+
+// How tall the column's source is, for wrapping: id's drawers wrapped every
+// source at 128, which tiles a 128-tall wall texture right and anything else
+// wrong -- a 64 or 256 repeats wrongly, a 72 or 96 reads past its own
+// column (the "tutti-frutti" effect). A power of two wraps by mask, anything
+// else by division, and 0 does not wrap: a sprite's or masked texture's post,
+// drawn from where it starts.
+extern int		dc_texheight;		
 
 
 // The span blitting interface.

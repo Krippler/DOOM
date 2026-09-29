@@ -133,7 +133,7 @@ R_InstallSpriteLump
 	sprtemp[frame].rotate = false;
 	for (r=0 ; r<8 ; r++)
 	{
-	    sprtemp[frame].lump[r] = lump - firstspritelump;
+	    sprtemp[frame].lump[r] = lump;
 	    sprtemp[frame].flip[r] = (byte)flipped;
 	}
 	return;
@@ -153,7 +153,7 @@ R_InstallSpriteLump
 		 "has two lumps mapped to it",
 		 spritename, 'A'+frame, '1'+rotation);
 		
-    sprtemp[frame].lump[rotation] = lump - firstspritelump;
+    sprtemp[frame].lump[rotation] = lump;
     sprtemp[frame].flip[rotation] = (byte)flipped;
 }
 
@@ -185,7 +185,6 @@ void R_InitSpriteDefs (char** namelist)
     int		rotation;
     int		start;
     int		end;
-    int		patched;
 		
     // count the number of sprite names
     check = namelist;
@@ -199,8 +198,9 @@ void R_InitSpriteDefs (char** namelist)
 		
     sprites = Z_Malloc(numsprites *sizeof(*sprites), PU_STATIC, NULL);
 	
-    start = firstspritelump-1;
-    end = lastspritelump+1;
+    // pictures are numbered by their place in spritelumps (r_data.c)
+    start = -1;
+    end = numspritelumps;
 	
     // scan all the lump names for each of the names,
     //  noting the highest frame letter.
@@ -217,22 +217,18 @@ void R_InitSpriteDefs (char** namelist)
 	//  filling in the frames for whatever is found
 	for (l=start+1 ; l<end ; l++)
 	{
-	    if (*(int *)lumpinfo[l].name == intname)
+	    char*	nm = lumpinfo[spritelumps[l]].name;
+
+	    if (*(int *)nm == intname)
 	    {
-		frame = lumpinfo[l].name[4] - 'A';
-		rotation = lumpinfo[l].name[5] - '0';
+		frame = nm[4] - 'A';
+		rotation = nm[5] - '0';
+		R_InstallSpriteLump (l, frame, rotation, false);
 
-		if (modifiedgame)
-		    patched = W_GetNumForName (lumpinfo[l].name);
-		else
-		    patched = l;
-
-		R_InstallSpriteLump (patched, frame, rotation, false);
-
-		if (lumpinfo[l].name[6])
+		if (nm[6])
 		{
-		    frame = lumpinfo[l].name[6] - 'A';
-		    rotation = lumpinfo[l].name[7] - '0';
+		    frame = nm[6] - 'A';
+		    rotation = nm[7] - '0';
 		    R_InstallSpriteLump (l, frame, rotation, true);
 		}
 	    }
@@ -287,8 +283,12 @@ void R_InitSpriteDefs (char** namelist)
 //
 // GAME FUNCTIONS
 //
-vissprite_t	vissprites[MAXVISSPRITES];
+// The sprites seen this frame. id's 128 (raised here to 1024) left the rest
+// undrawn; this grows instead. Nothing points into it until the frame's
+// sprites are sorted, after the last is added.
+vissprite_t*	vissprites;
 vissprite_t*	vissprite_p;
+static int	maxvissprites;
 int		newvissprite;
 
 
@@ -328,9 +328,17 @@ vissprite_t	overflowsprite;
 
 vissprite_t* R_NewVisSprite (void)
 {
-    if (vissprite_p == &vissprites[MAXVISSPRITES])
-	return &overflowsprite;
-    
+    if (vissprite_p - vissprites == maxvissprites)
+    {
+	int	n = vissprite_p - vissprites;
+
+	maxvissprites = maxvissprites ? maxvissprites * 2 : 128;
+	vissprites = realloc (vissprites, maxvissprites * sizeof(*vissprites));
+	if (!vissprites)
+	    I_Error ("R_NewVisSprite: no memory for %d sprites", maxvissprites);
+	vissprite_p = vissprites + n;
+    }
+
     vissprite_p++;
     return vissprite_p-1;
 }
@@ -354,19 +362,28 @@ void R_DrawMaskedColumn (column_t* column)
     int		topscreen;
     int 	bottomscreen;
     fixed_t	basetexturemid;
-	
+    int		top = -1;
+
     basetexturemid = dc_texturemid;
-	
-    for ( ; column->topdelta != 0xff ; ) 
+
+    for ( ; column->topdelta != 0xff ; )
     {
+	// Tall patches, as DeePsea writes them: a post's one-byte offset
+	// can say no more than 254, so one at or above the last is counted
+	// from the last. No patch of id's has a post that does that.
+	if (column->topdelta <= top)
+	    top += column->topdelta;
+	else
+	    top = column->topdelta;
+
 	// calculate unclipped screen coordinates
 	//  for post
-	topscreen = sprtopscreen + spryscale*column->topdelta;
+	topscreen = sprtopscreen + spryscale*top;
 	bottomscreen = topscreen + spryscale*column->length;
 
 	dc_yl = (topscreen+FRACUNIT-1)>>FRACBITS;
 	dc_yh = (bottomscreen-1)>>FRACBITS;
-		
+
 	if (dc_yh >= mfloorclip[dc_x])
 	    dc_yh = mfloorclip[dc_x]-1;
 	if (dc_yl <= mceilingclip[dc_x])
@@ -375,19 +392,21 @@ void R_DrawMaskedColumn (column_t* column)
 	if (dc_yl <= dc_yh)
 	{
 	    dc_source = (byte *)column + 3;
-	    dc_texturemid = basetexturemid - (column->topdelta<<FRACBITS);
-	    // dc_source = (byte *)column + 3 - column->topdelta;
+	    dc_texturemid = basetexturemid - (top<<FRACBITS);
+
+	    // A post up to 128 long is drawn as id's code drew it, wrapped
+	    // at 128; a longer one would wrap into itself, so it is not.
+	    dc_texheight = column->length <= 128 ? 128 : 0;
 
 	    // Drawn by either R_DrawColumn
 	    //  or (SHADOW) R_DrawFuzzColumn.
-	    colfunc ();	
+	    colfunc ();
 	}
 	column = (column_t *)(  (byte *)column + column->length + 4);
     }
-	
+
     dc_texturemid = basetexturemid;
 }
-
 
 
 //
@@ -406,7 +425,7 @@ R_DrawVisSprite
     patch_t*		patch;
 	
 	
-    patch = W_CacheLumpNum (vis->patch+firstspritelump, PU_CACHE);
+    patch = W_CacheLumpNum (spritelumps[vis->patch], PU_CACHE);
 
     dc_colormap = vis->colormap;
     

@@ -248,12 +248,17 @@ typedef struct
 #define MAXSWITCHES		50
 
  // 4 players, 4 buttons each at once, max.
-#define MAXBUTTONS		128	// 16; see MAXVISPLANES in r_plane.c
+// Buttons, lifts and crushers in motion: as many as a map sets going. id's
+// tables held 16, 30 and 30 (raised here to 128, 240 and 240), and went past
+// them with "no button slots left", "no more plats", or for crushers by
+// silently losing track of one, which then could not be stopped. They grow
+// now, filling the first free slot as id's did.
 
  // 1 second, in ticks. 
 #define BUTTONTIME      35             
 
-extern button_t	buttonlist[MAXBUTTONS]; 
+extern button_t**	buttonlist;	// each allocated once: sounds play from them
+extern int		maxbuttons; 
 
 void
 P_ChangeSwitchTexture
@@ -310,10 +315,11 @@ typedef struct
 
 #define PLATWAIT		3
 #define PLATSPEED		FRACUNIT
-#define MAXPLATS		240	// 30; see MAXVISPLANES in r_plane.c
 
 
-extern plat_t*	activeplats[MAXPLATS];
+
+extern plat_t**	activeplats;
+extern int	maxplats;
 
 void    T_PlatRaise(plat_t*	plat);
 
@@ -522,9 +528,14 @@ typedef struct
 
 #define CEILSPEED		FRACUNIT
 #define CEILWAIT		150
-#define MAXCEILINGS		240	// 30; see MAXVISPLANES in r_plane.c
 
-extern ceiling_t*	activeceilings[MAXCEILINGS];
+
+extern ceiling_t**	activeceilings;
+extern int		maxceilings;
+
+// The index of a free slot in a table of n pointers, which is doubled (the new
+// half empty) when there is none. p_plats.c.
+int P_FreeSlot (void*** table, int* n);
 
 int
 EV_DoCeiling

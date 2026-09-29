@@ -86,7 +86,9 @@ Unraid users: the Community Applications template is
 docker build -t doom .
 ```
 
-Or without a container, on any Linux X display:
+Or without a container, on any Linux X display, with the X11, Xext, zlib,
+PulseAudio and FluidSynth headers installed (on Debian or Ubuntu:
+`libx11-dev libxext-dev zlib1g-dev libpulse-dev libfluidsynth-dev`):
 
 ```
 make -C linuxdoom-1.10

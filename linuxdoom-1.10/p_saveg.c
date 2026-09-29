@@ -42,6 +42,42 @@ byte*		save_p;
 
 
 //
+// P_ArchiveSize
+// id's savegame buffer was a fixed size, and the code checked it had not
+// been overrun after writing the whole game into it. The level decides now:
+// a player, a sector, a line with both its sides, and a thinker of the
+// biggest kind for every thinker there is, each with its type byte and the
+// padding PADSAVEP can add.
+//
+int P_ArchiveSize (void)
+{
+    thinker_t*	th;
+    int		thinkers = 0;
+    int		biggest = MOBJ_SAVESIZE;
+
+    for (th = thinkercap.next ; th != &thinkercap ; th=th->next)
+	thinkers++;
+
+#define BIGGEST(t)	if ((int)sizeof(t) > biggest) biggest = sizeof(t)
+    BIGGEST(ceiling_t);
+    BIGGEST(vldoor_t);
+    BIGGEST(floormove_t);
+    BIGGEST(plat_t);
+    BIGGEST(lightflash_t);
+    BIGGEST(strobe_t);
+    BIGGEST(glow_t);
+#undef BIGGEST
+
+    return MAXPLAYERS * (3 + (int)sizeof(player_t))
+	+ numsectors * 7 * 2
+	+ numlines * (3 + 2*5) * 2
+	+ thinkers * (4 + biggest)
+	+ 2;				// the two end markers
+}
+
+
+
+//
 // P_ArchivePlayers
 //
 void P_ArchivePlayers (void)
@@ -373,11 +409,11 @@ void P_ArchiveSpecials (void)
     {
 	if (th->function.acv == (actionf_v)NULL)
 	{
-	    for (i = 0; i < MAXCEILINGS;i++)
+	    for (i = 0; i < maxceilings;i++)
 		if (activeceilings[i] == (ceiling_t *)th)
 		    break;
 	    
-	    if (i<MAXCEILINGS)
+	    if (i<maxceilings)
 	    {
 		*save_p++ = tc_ceiling;
 		PADSAVEP();

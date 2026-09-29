@@ -19,9 +19,9 @@ Then start DOOM from your desktop's menu, or run `doom` (~/.local/bin/doom if
 It runs on Ubuntu 22.04, Debian 12, Fedora 36 or anything newer, under X11
 or XWayland, and needs these libraries:
 
-    Debian, Ubuntu:  sudo apt install libx11-6 libxext6 libfluidsynth3 libpulse0
-    Fedora:          sudo dnf install libX11 libXext fluidsynth-libs pulseaudio-libs
-    Arch:            sudo pacman -S libx11 libxext fluidsynth libpulse
+    Debian, Ubuntu:  sudo apt install libx11-6 libxext6 zlib1g libfluidsynth3 libpulse0
+    Fedora:          sudo dnf install libX11 libXext zlib fluidsynth-libs pulseaudio-libs
+    Arch:            sudo pacman -S libx11 libxext zlib fluidsynth libpulse
 
 Music needs a General MIDI soundfont (fluid-soundfont-gm on Debian, Ubuntu
 and Fedora, soundfont-fluid on Arch). Game controllers need SDL2

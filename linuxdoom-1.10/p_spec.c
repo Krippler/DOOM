@@ -138,10 +138,11 @@ anim_t*		lastanim;
 //
 //      Animating line specials
 //
-#define MAXLINEANIMS            512	// 64; see MAXVISPLANES in r_plane.c
+// The lines that act every tic -- scrolling walls. id's list held 64 (raised
+// here to 512) and ignored the rest, which then stood still; it grows now.
 
-extern  short	numlinespecials;
-extern  line_t*	linespeciallist[MAXLINEANIMS];
+extern  int	numlinespecials;
+extern  line_t**	linespeciallist;
 
 
 
@@ -1176,31 +1177,31 @@ void P_UpdateSpecials (void)
 
     
     //	DO BUTTONS
-    for (i = 0; i < MAXBUTTONS; i++)
-	if (buttonlist[i].btimer)
+    for (i = 0; i < maxbuttons; i++)
+	if (buttonlist[i]->btimer)
 	{
-	    buttonlist[i].btimer--;
-	    if (!buttonlist[i].btimer)
+	    buttonlist[i]->btimer--;
+	    if (!buttonlist[i]->btimer)
 	    {
-		switch(buttonlist[i].where)
+		switch(buttonlist[i]->where)
 		{
 		  case top:
-		    sides[buttonlist[i].line->sidenum[0]].toptexture =
-			buttonlist[i].btexture;
+		    sides[buttonlist[i]->line->sidenum[0]].toptexture =
+			buttonlist[i]->btexture;
 		    break;
 		    
 		  case middle:
-		    sides[buttonlist[i].line->sidenum[0]].midtexture =
-			buttonlist[i].btexture;
+		    sides[buttonlist[i]->line->sidenum[0]].midtexture =
+			buttonlist[i]->btexture;
 		    break;
 		    
 		  case bottom:
-		    sides[buttonlist[i].line->sidenum[0]].bottomtexture =
-			buttonlist[i].btexture;
+		    sides[buttonlist[i]->line->sidenum[0]].bottomtexture =
+			buttonlist[i]->btexture;
 		    break;
 		}
-		S_StartSound((mobj_t *)&buttonlist[i].soundorg,sfx_swtchn);
-		memset(&buttonlist[i],0,sizeof(button_t));
+		S_StartSound((mobj_t *)buttonlist[i]->soundorg,sfx_swtchn);
+		memset(buttonlist[i],0,sizeof(button_t));
 	    }
 	}
 	
@@ -1282,8 +1283,9 @@ int EV_DoDonut(line_t*	line)
 // After the map has been loaded, scan for specials
 //  that spawn thinkers
 //
-short		numlinespecials;
-line_t*		linespeciallist[MAXLINEANIMS];
+int		numlinespecials;
+line_t**	linespeciallist;
+static int	maxlinespecials;
 
 
 // Parses command line parameters.
@@ -1392,22 +1394,31 @@ void P_SpawnSpecials (void)
 	  case 48:
 	    // EFFECT FIRSTCOL SCROLL+
 	    // The original wrote on past the end of the list.
-	    if (numlinespecials < MAXLINEANIMS)
-		linespeciallist[numlinespecials++] = &lines[i];
+	    if (numlinespecials == maxlinespecials)
+	    {
+		maxlinespecials = maxlinespecials ? maxlinespecials * 2 : 64;
+		linespeciallist = realloc (linespeciallist,
+					   maxlinespecials
+					   * sizeof(*linespeciallist));
+		if (!linespeciallist)
+		    I_Error ("P_SpawnSpecials: no memory for %d lines",
+			     maxlinespecials);
+	    }
+	    linespeciallist[numlinespecials++] = &lines[i];
 	    break;
 	}
     }
 
     
     //	Init other misc stuff
-    for (i = 0;i < MAXCEILINGS;i++)
+    for (i = 0;i < maxceilings;i++)
 	activeceilings[i] = NULL;
 
-    for (i = 0;i < MAXPLATS;i++)
+    for (i = 0;i < maxplats;i++)
 	activeplats[i] = NULL;
     
-    for (i = 0;i < MAXBUTTONS;i++)
-	memset(&buttonlist[i],0,sizeof(button_t));
+    for (i = 0;i < maxbuttons;i++)
+	memset(buttonlist[i],0,sizeof(button_t));
 
     // UNUSED: no horizonal sliders.
     //	P_InitSlidingDoorFrames();

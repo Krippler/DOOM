@@ -76,7 +76,10 @@ rcsid[] = "$Id: g_game.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 // 180K in 1994, and taken from the screen buffers, past the end of which
 // a bigger map's savegame went on writing before this was checked. Its own
 // buffer now, and room for any map there is.
-#define SAVEGAMESIZE	(8*1024*1024)
+// What G_DoSaveGame writes before the archive: description, version,
+// skill, episode, map, the players in the game, leveltime -- and the marker
+// after it
+#define SAVEGAMEHEAD	(SAVESTRINGSIZE + VERSIONSIZE + 3 + MAXPLAYERS + 3 + 1)
 #define SAVESTRINGSIZE	24
 
 
@@ -1508,10 +1511,20 @@ void G_DoSaveGame (void)
     description = savedescription; 
 	 
     {
+	// big enough for this level, whatever it has in it; id's was a
+	// fixed size, overrun by a big enough map and checked only after
 	static byte*	buffer;
+	static int	buffersize;
+	int		needed = SAVEGAMEHEAD + P_ArchiveSize ();
 
-	if (!buffer && !(buffer = malloc (SAVEGAMESIZE)))
-	    I_Error ("G_DoSaveGame: no memory for the savegame");
+	if (needed > buffersize)
+	{
+	    free (buffer);
+	    if (!(buffer = malloc (needed)))
+		I_Error ("G_DoSaveGame: no memory for a %i byte savegame",
+			 needed);
+	    buffersize = needed;
+	}
 	save_p = savebuffer = buffer;
     }
 	 
@@ -1539,8 +1552,6 @@ void G_DoSaveGame (void)
     *save_p++ = 0x1d;		// consistancy marker 
 	 
     length = save_p - savebuffer; 
-    if (length > SAVEGAMESIZE) 
-	I_Error ("Savegame buffer overrun"); 
     M_WriteFile (name, savebuffer, length); 
     gameaction = ga_nothing; 
     savedescription[0] = 0;		 
@@ -1722,9 +1733,19 @@ void G_WriteDemoTiccmd (ticcmd_t* cmd)
     demo_p -= 4; 
     if (demo_p > demoend - 16)
     {
-	// no more space 
-	G_CheckDemoStatus (); 
-	return; 
+	// Out of room: id's code ended the recording there, a few minutes
+	// in by default. The buffer doubles instead, as long as memory
+	// lasts; -maxdemo still sets where it starts.
+	int	size = demoend - demobuffer;
+	int	used = demo_p - demobuffer;
+	byte*	bigger = Z_Malloc (size * 2, PU_STATIC, NULL);
+
+	// the tic just written, and read back below, too
+	memcpy (bigger, demobuffer, used + 4);
+	Z_Free (demobuffer);
+	demobuffer = bigger;
+	demo_p = demobuffer + used;
+	demoend = demobuffer + size * 2;
     } 
 	
     G_ReadDemoTiccmd (cmd);         // make SURE it is exactly the same 
@@ -1747,6 +1768,8 @@ void G_RecordDemo (char* name)
     i = M_CheckParm ("-maxdemo");
     if (i && i<myargc-1)
 	maxsize = atoi(myargv[i+1])*1024;
+    if (maxsize < 1024)
+	maxsize = 1024;		// room for the header; it grows from there
     demobuffer = Z_Malloc (maxsize,PU_STATIC,NULL); 
     demoend = demobuffer + maxsize;
 	

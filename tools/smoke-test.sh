@@ -32,9 +32,10 @@
 #             itself is tools/umapinfo-test.c's)
 #   flats     a mod's own F_START/F_END flats join the game's rather than
 #             replace them, and E1M1 stays up with them
-#   ogg       a level whose music is an Ogg Vorbis lump, as SIGIL II's are,
-#             is heard at the tone's own pitch (needs oggenc, from
-#             vorbis-tools, and a soundfont; skipped without)
+#   limits    E1M1 as a limit-removing map brings it: compressed ZDBSP
+#             nodes with children past 15 bits, no BLOCKMAP, walls in a
+#             256-tall texture from a TEXTURE1 of its own, a sprite range of
+#             its own; it stays up and the texture is drawn
 #   ogg       a level whose music is an Ogg Vorbis lump, as SIGIL II's are,
 #             is heard at the tone's own pitch (needs oggenc, from
 #             vorbis-tools, and a soundfont; skipped without)
@@ -353,6 +354,131 @@ kill -0 "$game_pid" 2>/dev/null \
 grep -q "R_InitFlats: 57 flats, 1 replaced and 1 added" "$work/flats.log" \
     || die "the mod's flats were not merged with the game's; see $work/flats.log"
 say "the game's flats and the mod's are one list: 57, one replaced, one added"
+kill "$game_pid" 2>/dev/null
+wait_game 10
+stop_x
+
+# ------------------------------------------------------------------- limits
+# What a limit-removing map brings, the way a node builder or a mod writes it,
+# into E1M1: its nodes in ZDBSP's compressed format, with 40000 empty
+# subsectors first so node children go past the 15 bits the classic format
+# has; no BLOCKMAP, so one has to be made; its walls in a 256-tall texture
+# drawn from two posts, from a TEXTURE1 that has only that texture (the game's
+# own have to be found in the IWAD's); and a sprite range of its own that
+# replaces one frame. 1.13 stopped on every one of these.
+say "limits: E1M1 with compressed ZDBSP nodes, no blockmap, a tall texture"
+mkdir -p "$work/limits"
+python3 - "$wad" "$work/limits" <<'EOF' || die "could not make the limits map"
+import os, struct, sys, zlib
+src, out = sys.argv[1], sys.argv[2]
+d = open(src, 'rb').read()
+n, ofs = struct.unpack('<ii', d[4:12])
+lumps = [struct.unpack('<ii8s', d[ofs + 16 * i:ofs + 16 * i + 16]) for i in range(n)]
+lumps = [(nm.rstrip(b'\0').decode(), d[fp:fp + sz]) for fp, sz, nm in lumps]
+i = [nm for nm, _ in lumps].index('E1M1')
+m = dict(lumps[i + 1:i + 11])
+g = lambda data, fmt: [list(r) for r in struct.iter_unpack(fmt, data)]
+lines = g(m['LINEDEFS'], '<7H')
+sides = g(m['SIDEDEFS'], '<hh8s8s8sH')
+verts = g(m['VERTEXES'], '<hh')
+segs = g(m['SEGS'], '<HHhHhh')
+ssecs = g(m['SSECTORS'], '<HH')
+nodes = g(m['NODES'], '<12h2H')
+pad = 40000
+child = lambda c: (c & 0x7fff | 0x80000000) + pad if c & 0x8000 else c
+used = max(max(l[0], l[1]) for l in lines) + 1
+body = struct.pack('<II', used, len(verts) - used)
+body += b''.join(struct.pack('<ii', x << 16, y << 16) for x, y in verts[used:])
+body += struct.pack('<I', pad + len(ssecs))
+body += struct.pack('<I', 0) * pad + b''.join(struct.pack('<I', c) for c, _ in ssecs)
+body += struct.pack('<I', len(segs)) + b''.join(
+    struct.pack('<IIHB', a, b, ln, sd) for a, b, _, ln, sd, _ in segs)
+body += struct.pack('<I', len(nodes)) + b''.join(
+    struct.pack('<12h2I', *r[:12], child(r[12]), child(r[13])) for r in nodes)
+m['NODES'] = b'ZNOD' + zlib.compress(body)
+m['SSECTORS'] = m['SEGS'] = m['BLOCKMAP'] = b''
+m['VERTEXES'] = b''.join(struct.pack('<hh', *v) for v in verts[:used])
+for l in lines:
+    if l[6] == 0xffff:
+        sides[l[5]][4] = b'SMOKTALL'
+m['SIDEDEFS'] = b''.join(struct.pack('<hh8s8s8sH', *s) for s in sides)
+# 64 by 256 in two posts of 128: 32-row bands, red (176) at the top
+cols = []
+for x in range(64):
+    c = b''
+    for top in (0, 128):
+        px = bytes((176, 112, 200, 231)[(top + r) // 32 % 4] for r in range(128))
+        c += bytes([top, 128, px[0]]) + px + px[-1:]
+    cols.append(c + b'\xff')
+patch = struct.pack('<4h', 64, 256, 0, 0)
+at = 8 + 4 * 64
+for c in cols:
+    patch += struct.pack('<i', at)
+    at += len(c)
+patch += b''.join(cols)
+tex = lambda name, h, p: name.ljust(8, b'\0') + struct.pack('<ihhihhhhhh', 0, 64, h, 0, 1, 0, 0, p, 1, 0)
+texture1 = struct.pack('<iii', 2, 12, 12 + 32) + tex(b'AASTINKY', 128, 0) + tex(b'SMOKTALL', 256, 0)
+put = {'marker': b'', 'pnames': struct.pack('<i', 1) + b'SMOKPAT\0', 'texture1': texture1,
+       'patch': patch, 'sprite': dict(lumps)['BAR1A0']}
+put.update({k: m[k] for k in m})
+for k, v in put.items():
+    open(os.path.join(out, k), 'wb').write(v)
+EOF
+L="$work/limits"
+add_lumps "$wad" "$L/doom1.wad" \
+    PNAMES "$L/pnames" TEXTURE1 "$L/texture1" \
+    P_START "$L/marker" SMOKPAT "$L/patch" P_END "$L/marker" \
+    SS_START "$L/marker" TROOA0 "$L/sprite" SS_END "$L/marker" \
+    E1M1 "$L/marker" THINGS "$L/THINGS" LINEDEFS "$L/LINEDEFS" \
+    SIDEDEFS "$L/SIDEDEFS" VERTEXES "$L/VERTEXES" SEGS "$L/SEGS" \
+    SSECTORS "$L/SSECTORS" NODES "$L/NODES" SECTORS "$L/SECTORS" \
+    REJECT "$L/REJECT" BLOCKMAP "$L/BLOCKMAP" \
+    || die "could not add the limits map"
+start_x 24
+rm -f "$work/.doomrc"
+game_iwad="$L/doom1.wad" start_game limits.log -warp 1 1 -nojoy
+game_iwad=
+i=0
+until grep -q "I_InitGraphics" "$work/limits.log" 2>/dev/null; do
+    i=$((i + 1))
+    [ "$i" -gt 200 ] && { tail -20 "$work/limits.log" >&2; die "the engine never opened its window; see $work/limits.log"; }
+    sleep 0.1
+done
+sleep 3
+kill -0 "$game_pid" 2>/dev/null \
+    || { tail -20 "$work/limits.log" >&2; die "E1M1 with the limits map did not stay up; see $work/limits.log"; }
+grep -q "P_SetupLevel: ZDBSP extended nodes, compressed" "$work/limits.log" \
+    || die "the ZDBSP nodes were not read as such; see $work/limits.log"
+grep -q "P_CreateBlockMap: [0-9]* by [0-9]* blocks" "$work/limits.log" \
+    || die "no blockmap was made for a map without one; see $work/limits.log"
+grep -q "R_InitTextures: 124 textures from other files added" "$work/limits.log" \
+    || die "the game's textures were not found beside the mod's; see $work/limits.log"
+# The tall texture on the screen: its bands are red, green, blue and
+# yellow, lit as the room is. Green is the test: E1M1's own start view has
+# under a hundred green pixels (and thousands of blue, its pool).
+python3 - "$work/fb24/Xvfb_screen0" <<'EOF' \
+    || die "the 256-tall texture is not on the screen; see $work/limits.log"
+import struct, sys
+d = open(sys.argv[1], 'rb').read()
+hsize, = struct.unpack('>I', d[:4])
+w, h = struct.unpack('>II', d[16:24])
+bpl, = struct.unpack('>I', d[48:52])
+ncolors, = struct.unpack('>I', d[76:80])
+px = d[hsize + ncolors * 12:]
+blue = green = 0
+for y in range(h):
+    row = px[y * bpl:y * bpl + 4 * w]
+    for x in range(0, 4 * w, 4):
+        b, g, r = row[x], row[x + 1], row[x + 2]
+        if b > 60 and b > 2 * max(r, g):
+            blue += 1
+        if g > 60 and g > 2 * max(r, b):
+            green += 1
+print('[smoke] %d blue and %d green pixels' % (blue, green))
+sys.exit(0 if green > 1000 else 1)
+EOF
+cp "$work/fb24/Xvfb_screen0" "$work/limits.xwd"
+say "compressed ZDBSP nodes, a made blockmap, a 256-tall texture: E1M1 stays up and draws it"
 kill "$game_pid" 2>/dev/null
 wait_game 10
 stop_x

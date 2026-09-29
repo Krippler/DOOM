@@ -284,6 +284,7 @@ void R_RenderSegLoop (void)
 	    dc_yh = yh;
 	    dc_texturemid = rw_midtexturemid;
 	    dc_source = R_GetColumn(midtexture,texturecolumn);
+	    dc_texheight = textureheight[midtexture]>>FRACBITS;
 	    colfunc ();
 	    ceilingclip[rw_x] = viewheight;
 	    floorclip[rw_x] = -1;
@@ -306,6 +307,7 @@ void R_RenderSegLoop (void)
 		    dc_yh = mid;
 		    dc_texturemid = rw_toptexturemid;
 		    dc_source = R_GetColumn(toptexture,texturecolumn);
+		    dc_texheight = textureheight[toptexture]>>FRACBITS;
 		    colfunc ();
 		    ceilingclip[rw_x] = mid;
 		}
@@ -336,6 +338,7 @@ void R_RenderSegLoop (void)
 		    dc_texturemid = rw_bottomtexturemid;
 		    dc_source = R_GetColumn(bottomtexture,
 					    texturecolumn);
+		    dc_texheight = textureheight[bottomtexture]>>FRACBITS;
 		    colfunc ();
 		    floorclip[rw_x] = mid;
 		}
@@ -382,9 +385,23 @@ R_StoreWallRange
     fixed_t		vtop;
     int			lightnum;
 
-    // don't overflow and crash
-    if (ds_p == &drawsegs[MAXDRAWSEGS])
-	return;		
+    // room for one more segment, and for the clipping it may keep
+    {
+	extern int	maxdrawsegs;
+
+	if (ds_p - drawsegs == maxdrawsegs)
+	{
+	    int		n = ds_p - drawsegs;
+
+	    maxdrawsegs = maxdrawsegs ? maxdrawsegs * 2 : 256;
+	    drawsegs = realloc (drawsegs, maxdrawsegs * sizeof(*drawsegs));
+	    if (!drawsegs)
+		I_Error ("R_StoreWallRange: no memory for %d segments",
+			 maxdrawsegs);
+	    ds_p = drawsegs + n;
+	}
+	R_EnsureOpenings (3 * (stop - start + 1));
+    }		
 		
 #ifdef RANGECHECK
     if (start >=viewwidth || start > stop)

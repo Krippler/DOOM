@@ -50,8 +50,12 @@ line_t*		linedef;
 sector_t*	frontsector;
 sector_t*	backsector;
 
-drawseg_t	drawsegs[MAXDRAWSEGS];
+// The wall segments drawn this frame, for sprites to be clipped against.
+// id's 256 (raised here to 2048) dropped the rest silently, which shows as
+// sprites drawn through walls; this grows instead.
+drawseg_t*	drawsegs;
 drawseg_t*	ds_p;
+int		maxdrawsegs;
 
 
 void

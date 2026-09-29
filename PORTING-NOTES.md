@@ -889,6 +889,120 @@ tables were raised eightfold: `MAXVISPLANES`, `MAXOPENINGS`, `MAXDRAWSEGS`,
 Only memory depends on them. The scrolling-wall list, which the original
 filled with no check at all, stops at its end now.
 
+## Limit-removing, as UZDoom is for classic maps
+
+"Limit-removing" is the level of support a map's text file asks for when it
+uses nothing but DOOM's own line types and things, and is bigger or busier
+than the 1993 engine's fixed tables allow. UZDoom is one such engine, among
+much else. This one now is too, for maps in DOOM's own format; UZDoom's
+Boom line types, UDMF and Hexen maps, ACS, DECORATE and ZScript are not
+here and are not the same kind of work.
+
+The rule throughout: nothing the original games do may change. Every table
+that grows starts at id's size and doubles, and keeps id's order, so the same
+things happen in the same order; `rndindex`, `prndindex`, `leveltime`, the
+player's position, angle, health and tallies at the end of every demo of
+DOOM, DOOM II, TNT, Plutonia, SIGIL, SIGIL II, No Rest for the Living and the
+Master Levels (21 demos) are what 1.13.4 leaves. Timedemo gametic counts are
+not evidence of that -- a demo plays its full length whether it desyncs or
+not, which is how an early version of the blockmap work looked right and was
+not.
+
+**Drawing.** `visplanes` (128) is a list of planes allocated one at a time,
+found through a hash of height, flat and light (128 chains, each in the
+order the planes were made, so the one `R_FindPlane` returns is the one a
+linear search would have). They are `calloc`ed: `R_MakeSpans` reads the
+`bottom` of columns the plane does not cover, which id's static array left
+at zero, and a 255 there from `malloc` is a span on row 255.
+`drawsegs` (256) and `vissprites` (128) are arrays that `realloc`; the
+openings array too, where the drawsegs already made point into it --
+`R_EnsureOpenings` moves those pointers with it.
+
+**Play.** The active plats and ceilings (30 each) keep their slots -- a
+savegame records ceilings by walking the list -- and grow;
+`buttonlist` (16) became a list of separately allocated buttons, since a
+switch's sound plays from the button's `soundorg` and moving it would move
+the sound's origin mid-play (the vanilla quirk of playing from
+`buttonlist->soundorg` is kept through `P_FirstButtonOrigin`). The scrolling
+lines (64), deathmatch starts (10), the Icon of Sin's targets (32), the
+WAD file list and the response file's arguments grow.
+
+**Map format.** Indices are read unsigned: 65,535 vertices, sides and segs
+instead of 32,767, with `0xFFFF` still "no side". Past that, node builders
+write their own formats, read by `P_LoadNodeFormat`:
+
+- DeePBSP (`xNd4\0\0\0\0` at the start of NODES): 32-bit node children, and
+  SSECTORS and SEGS with 32-bit fields.
+- ZDBSP (`XNOD`, or `ZNOD` zlib-compressed, in NODES): the node builder's
+  own vertices after the map's, subsectors as seg counts, segs without angle
+  or offset (computed as the classic loader's source would have). The
+  inflating is `p_inflate.c`, on its own because `zlib.h` declares `close`
+  and `p_spec.h` has a door type of that name.
+
+Node children are 32-bit internally (`NF_SUBSECTOR` 0x80000000; the classic
+format's 0x8000 is converted on load). GL-only nodes, and a map with none,
+stop with a message saying so rather than a crash. The blockmap is read
+unsigned, so it can pass 64 KB, and checked (`P_BlockMapValid`: every
+offset inside the lump, every list ending in -1, every line number real);
+one that fails, or is missing, is built from the lines (`P_CreateBlockMap`,
+as UZDoom does, lists starting with a 0 as id's node builder wrote them) --
+`-blockmap` builds one always. A map's own valid blockmap is always used,
+since the one built may differ from it in which lines a block lists, and
+that changes play: all 180 maps of the IWADs and add-ons above load their
+own. A REJECT shorter than the map needs is padded with zeroes (nothing
+rejected) instead of read past.
+
+**Textures.** Wall columns were drawn with `&127`: a texture 256 tall
+repeated its top half, one 96 tall read 32 rows past its own column into
+whatever came next ("tutti-frutti"). `dc_texheight` says how tall the source
+is: 128 keeps id's exact loop, a power of two masks, anything else wraps by
+division, and 0 -- a sprite's or masked texture's post -- does not wrap. A
+one-patch column of a taller or odd-height texture that is not one full post
+from the top is composited, since reading it straight would show what lies
+between its posts. Patches past 254 rows use DeePsea's convention, a post
+offset no greater than the last being relative to it; it is read by the
+masked drawer, the compositor and the masked composite, which writes it too.
+Composite offsets are 32-bit, so a texture can pass 64 KB, and composites
+start zeroed.
+
+**Mods' textures and sprites.** id's texture list -- the last TEXTURE1, then
+the last TEXTURE2 -- is kept exactly, as savegames store texture numbers.
+Each TEXTURE lump is read through its own file's PNAMES (the nearest, where
+merged WADs have more than one), and textures only other TEXTURE lumps
+define are added after, the latest file's first. Sprites are gathered from
+every S_START/S_END (or SS_) range; a range's frame replaces the earlier
+ranges' of that frame, all its rotations, so a mod's one-picture `TROOA0`
+replaces the IWAD's eight `TROOA1`..`TROOA8` instead of meeting them in
+`R_InstallSpriteLump`'s "has rotations and a rot=0 lump".
+
+**Memory.** The zone grows: when `Z_Malloc` has been all the way round and
+purged what it can, `Z_Grow` adds a chunk of 16 MB (or what is asked, if
+more). Blocks next to each other in the list are merged when free, which is
+only right if they are next to each other in memory, so a chunk starts with
+a seam, a block always in use, and ends at the list's head; `Z_CheckHeap`
+does not expect a seam to touch the block before it. A savegame's buffer is
+sized from the level (`P_ArchiveSize`: every player, sector, line, and
+thinker at the biggest kind's size) instead of a fixed 8 MB checked only
+after writing. A demo being recorded doubles its buffer when full instead of
+ending; `-maxdemo` sets where it starts.
+
+**Sound.** `NUM_CHANNELS` in the mixer is 32, and so is `snd_channels`; a
+`.doomrc` saying fewer than 8 -- 3 was id's default, and so is in every
+config written since -- is taken as the default.
+
+**Verified by:** the 21 demos' end state, old engine against new; the same
+7 demos of DOOM and DOOM II with every map converted to DeePBSP, ZDBSP,
+compressed ZDBSP, and the classic format padded past 32,767 of everything,
+against the originals (identical, and the pictures byte-identical; with no
+REJECT, play changes, as it should); a build starting its zone at 256 KB and
+growing 64 KB at a time with `Z_CheckHeap` every tic, through all 21; a demo
+recorded from a 1 KB buffer, which plays back to the recording's end state;
+savegames of each game within their computed size, and loading; test mods
+with 256-, 96- and 300-row walls, a masked texture of overlapping tall
+patches, a partial TEXTURE1 and a sprite range (1.13.3 stops on the first
+and ignores the last); every map of every IWAD and add-on above, warped to.
+The smoke test's `limits` phase builds such a map from the shareware E1M1.
+
 ## SIGIL II, and the limits a "limit-removing" map needs gone
 
 SIGIL II's own text file says "Advanced engine needed: Limit-removing.

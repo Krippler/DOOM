@@ -337,7 +337,7 @@ default_t	defaults[] =
     {"screenblocks",&screenblocks, 9},
     {"detaillevel",&detailLevel, 0},
 
-    {"snd_channels",&numChannels, 3},
+    {"snd_channels",&numChannels, 32},
 
 
 

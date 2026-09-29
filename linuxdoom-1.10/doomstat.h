@@ -221,9 +221,10 @@ extern  boolean		playeringame[MAXPLAYERS];
 
 
 // Player spawn spots for deathmatch.
-#define MAX_DM_STARTS   10
-extern  mapthing_t      deathmatchstarts[MAX_DM_STARTS];
+// grows past id's 10; p_mobj.c
+extern  mapthing_t*     deathmatchstarts;
 extern  mapthing_t*	deathmatch_p;
+extern  int		maxdeathmatchstarts;
 
 // Player spawn spots.
 extern  mapthing_t      playerstarts[MAXPLAYERS];

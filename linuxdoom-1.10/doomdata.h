@@ -175,7 +175,11 @@ typedef struct
 // BSP node structure.
 
 // Indicate a leaf.
-#define	NF_SUBSECTOR	0x8000
+// In the classic NODES lump a child with this bit is a subsector. Inside the
+// engine the flag is the top bit of 32, so a map can have more than 32768
+// subsectors -- the extended node formats (p_setup.c) have 32-bit children.
+#define	NF_SUBSECTOR_CLASSIC	0x8000
+#define	NF_SUBSECTOR	0x80000000
 
 typedef struct
 {
