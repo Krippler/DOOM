@@ -39,6 +39,11 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.14.2
+- No more vertical lines flickering through the view: walls seen far off
+  and nearly edge-on, common in SIGIL II, are drawn at their real size
+  instead of as a column from the top of the view to the bottom.
+
 ### 1.14.1
 - Sound effects work after choosing a WAD from Load WAD. Before, they went
   silent, and after a few minutes of play the game froze while the music
