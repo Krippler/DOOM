@@ -12,6 +12,19 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [Unreleased]
+
+### Fixed
+- **SIGIL II, loaded from Load WAD, started on DOOM II and failed.** Load WAD
+  dropped the game that was running and let the engine choose one, which it
+  does in id's order, DOOM II first. SIGIL II is an episode for DOOM (E6M1 to
+  E6M9), so on DOOM II its maps were passed over and it stopped at a missing
+  texture, `BRNBIGC`; 1.12.0's recovery then went back to the game before. A
+  mod now goes on the game its maps are for: the one running if it fits,
+  otherwise the right one from the WAD directory — SIGIL and SIGIL II on
+  DOOM, No Rest for the Living and the Master Levels on DOOM II. If that game
+  is not there, the menu says so rather than restarting.
+
 ## [1.13.0] — 2026-09-29
 
 ### Changed
