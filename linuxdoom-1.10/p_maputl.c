@@ -32,6 +32,7 @@ rcsid[] = "$Id: p_maputl.c,v 1.5 1997/02/03 22:45:11 b1 Exp $";
 
 
 #include "m_bbox.h"
+#include "i_system.h"
 
 #include "doomdef.h"
 #include "p_local.h"
@@ -541,7 +542,28 @@ P_BlockThingsIterator
 //
 // INTERCEPT ROUTINES
 //
-intercept_t	intercepts[MAXINTERCEPTS];
+//
+// Every line and thing a trace crosses: a shot, an autoaim, a sight check
+// through a blockmap cell. id's array held 128 and nothing checked, so a
+// shot across a big open map -- SIGIL II's are 4000 lines and more --
+// wrote on over whatever the linker put next. It grows now instead.
+//
+intercept_t*	intercepts;
+static int	maxintercepts;
+
+static void P_RoomForIntercept (void)
+{
+    int		n = intercept_p - intercepts;
+
+    if (intercepts && n < maxintercepts)
+	return;
+
+    maxintercepts = maxintercepts ? maxintercepts * 2 : MAXINTERCEPTS;
+    intercepts = realloc (intercepts, maxintercepts * sizeof(*intercepts));
+    if (!intercepts)
+	I_Error ("P_RoomForIntercept: no memory for %d", maxintercepts);
+    intercept_p = intercepts + n;
+}
 intercept_t*	intercept_p;
 
 divline_t 	trace;
@@ -600,6 +622,7 @@ PIT_AddLineIntercepts (line_t* ld)
     }
     
 	
+    P_RoomForIntercept ();
     intercept_p->frac = frac;
     intercept_p->isaline = true;
     intercept_p->d.line = ld;
@@ -665,6 +688,7 @@ boolean PIT_AddThingIntercepts (mobj_t* thing)
     if (frac < 0)
 	return true;		// behind source
 
+    P_RoomForIntercept ();
     intercept_p->frac = frac;
     intercept_p->isaline = false;
     intercept_p->d.thing = thing;
@@ -772,6 +796,7 @@ P_PathTraverse
     earlyout = flags & PT_EARLYOUT;
 		
     validcount++;
+    P_RoomForIntercept ();
     intercept_p = intercepts;
 	
     if ( ((x1-bmaporgx)&(MAPBLOCKSIZE-1)) == 0)

@@ -85,7 +85,10 @@ typedef	struct
 } cliprange_t;
 
 
-#define MAXSEGS		32
+// The screen's columns split into ranges that are already walled off. id's 32
+// is nowhere near what a wide, detailed view makes -- a range per two
+// columns at worst -- and R_ClipSolidWallSegment wrote past it unchecked.
+#define MAXSEGS		(SCREENWIDTH/2+2)
 
 // newend is one past the last valid seg
 cliprange_t*	newend;

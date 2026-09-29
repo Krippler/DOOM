@@ -47,6 +47,9 @@ void R_PrecacheLevel (void);
 // Floor/ceiling opaque texture tiles,
 // lookup by name. For animation?
 int R_FlatNumForName (char* name);
+
+// A texture column in posts, for see-through middle textures.
+column_t* R_GetMaskedColumn (int tex, int col);
 int R_CheckFlatNumForName (char* name);	// -1 if there is no such flat
 
 

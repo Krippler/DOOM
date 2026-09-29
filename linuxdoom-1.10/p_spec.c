@@ -338,7 +338,17 @@ P_FindNextHighestFloor
     fixed_t		height = currentheight;
 
     
-    fixed_t		heightlist[MAX_ADJOINING_SECTORS];		
+    // one height per line at most, so as many as the sector has lines
+    static fixed_t*	heightlist;
+    static int		heightmax;
+
+    if (sec->linecount > heightmax)
+    {
+	heightmax = sec->linecount;
+	heightlist = realloc (heightlist, heightmax * sizeof(*heightlist));
+	if (!heightlist)
+	    I_Error ("P_FindNextHighestFloor: no memory");
+    }
 
     for (i=0, h=0 ;i < sec->linecount ; i++)
     {
@@ -351,13 +361,6 @@ P_FindNextHighestFloor
 	if (other->floorheight > height)
 	    heightlist[h++] = other->floorheight;
 
-	// Check for overflow. Exit.
-	if ( h >= MAX_ADJOINING_SECTORS )
-	{
-	    fprintf( stderr,
-		     "Sector with more than 20 adjoining sectors\n" );
-	    break;
-	}
     }
     
     // Find lowest height in list

@@ -66,8 +66,11 @@ line_t*		ceilingline;
 // but don't process them until the move is proven valid
 #define MAXSPECIALCROSS		8
 
-line_t*		spechit[MAXSPECIALCROSS];
+// The special lines a move touches. id's array held 8, unchecked; a move
+// across a detailed floor can touch more. It grows instead.
+line_t**	spechit;
 int		numspechit;
+static int	maxspechit;
 
 
 
@@ -239,6 +242,13 @@ boolean PIT_CheckLine (line_t* ld)
     // if contacted a special line, add it to the list
     if (ld->special)
     {
+	if (numspechit >= maxspechit)
+	{
+	    maxspechit = maxspechit ? maxspechit * 2 : MAXSPECIALCROSS;
+	    spechit = realloc (spechit, maxspechit * sizeof(*spechit));
+	    if (!spechit)
+		I_Error ("PIT_CheckLine: no memory for %d lines", maxspechit);
+	}
 	spechit[numspechit] = ld;
 	numspechit++;
     }

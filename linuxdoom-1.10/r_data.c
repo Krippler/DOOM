@@ -237,6 +237,147 @@ R_DrawColumnInCache
 
 
 //
+// Masked textures made of more than one patch: the "Medusa effect".
+//
+// A see-through middle texture is drawn post by post, the runs of opaque
+// pixels a patch column is made of, so a column that is one patch's is drawn
+// straight from that patch. A column where two patches overlap has no patch
+// of its own: id's code composited it into plain pixels for walls and handed
+// the masked drawer those same pixels, which it then read as posts -- run
+// lengths and offsets made of colours. It draws garbage, and can go on doing
+// so for a very long time or into memory it should not touch: the stall, the
+// freeze or the crash known as the Medusa effect. Classic maps avoid such
+// textures on two-sided lines; SIGIL II has them on E6M2 (SW1LION) and E6M7
+// (WOOD1, WOOD5), and its own demo of E6M2 ran ten times slower for it.
+//
+// So for masked drawing a multi-patch column gets posts of its own, built from
+// where each patch actually has pixels. Walls go on using the plain
+// composite; nothing about them changes.
+//
+static byte**	texturemasked;		// per texture, NULL until first needed
+static int**	texturemaskedofs;	// where each column's posts start
+
+static void R_GenerateMaskedComposite (int texnum)
+{
+    texture_t*	texture = textures[texnum];
+    texpatch_t*	patch;
+    patch_t*	realpatch;
+    column_t*	patchcol;
+    byte*	pixels;
+    byte*	opaque;
+    byte*	block;
+    byte*	out;
+    int		height = texture->height;
+    int		rows;
+    int		x, x1, x2, i, y, start, len, pos, count;
+    int		size = 0;
+
+    // Worst case per column: every other row opaque, 4 bytes of post
+    // around each single pixel, and the end marker. A post can only start
+    // above row 255, where its one-byte offset runs out.
+    rows = height < 255 ? height : 255;
+    for (x = 0; x < texture->width; x++)
+	if (texturecolumnlump[texnum][x] < 0)
+	    size += rows + 4 * ((rows + 1) / 2) + 1;
+
+    texturemaskedofs[texnum] = Z_Malloc (texture->width * sizeof(int),
+					  PU_STATIC, 0);
+    block = Z_Malloc (size + 1, PU_STATIC, 0);
+    pixels = Z_Malloc (height, PU_STATIC, 0);
+    opaque = Z_Malloc (height, PU_STATIC, 0);
+    out = block;
+
+    for (x = 0; x < texture->width; x++)
+    {
+	texturemaskedofs[texnum][x] = out - block;
+	if (texturecolumnlump[texnum][x] >= 0)
+	    continue;
+
+	memset (opaque, 0, height);
+
+	for (i = 0, patch = texture->patches; i < texture->patchcount;
+	     i++, patch++)
+	{
+	    realpatch = W_CacheLumpNum (patch->patch, PU_CACHE);
+	    x1 = patch->originx;
+	    x2 = x1 + SHORT(realpatch->width);
+	    if (x < x1 || x >= x2)
+		continue;
+
+	    patchcol = (column_t *)((byte *)realpatch
+				    + LONG(realpatch->columnofs[x-x1]));
+	    while (patchcol->topdelta != 0xff)
+	    {
+		pos = patch->originy + patchcol->topdelta;
+		count = patchcol->length;
+		for (y = 0; y < count; y++)
+		    if (pos + y >= 0 && pos + y < height)
+		    {
+			pixels[pos + y] = ((byte *)patchcol)[3 + y];
+			opaque[pos + y] = 1;
+		    }
+		patchcol = (column_t *)((byte *)patchcol + patchcol->length + 4);
+	    }
+	}
+
+	// The opaque runs as posts: offset, length, a pad byte, the pixels,
+	// another pad byte, as a patch column is laid out.
+	for (y = 0; y < rows; )
+	{
+	    if (!opaque[y])
+	    {
+		y++;
+		continue;
+	    }
+	    for (start = y; y < height && opaque[y] && y - start < 255; y++)
+		;
+	    len = y - start;
+	    *out++ = start;
+	    *out++ = len;
+	    *out++ = pixels[start];
+	    memcpy (out, pixels + start, len);
+	    out += len;
+	    *out++ = pixels[start + len - 1];
+	}
+	*out++ = 0xff;
+    }
+
+    Z_Free (pixels);
+    Z_Free (opaque);
+    texturemasked[texnum] = block;
+}
+
+//
+// A column as the masked drawer wants it: posts, whatever the texture is
+// made of.
+//
+column_t* R_GetMaskedColumn (int tex, int col)
+{
+    int		lump;
+
+    col &= texturewidthmask[tex];
+    lump = texturecolumnlump[tex][col];
+
+    if (lump > 0)
+	return (column_t *)((byte *)W_CacheLumpNum (lump, PU_CACHE)
+			    + texturecolumnofs[tex][col] - 3);
+
+    if (!texturemasked)
+    {
+	texturemasked = Z_Malloc (numtextures * sizeof(*texturemasked),
+				  PU_STATIC, 0);
+	texturemaskedofs = Z_Malloc (numtextures * sizeof(*texturemaskedofs),
+				     PU_STATIC, 0);
+	memset (texturemasked, 0, numtextures * sizeof(*texturemasked));
+    }
+    if (!texturemasked[tex])
+	R_GenerateMaskedComposite (tex);
+
+    return (column_t *)(texturemasked[tex] + texturemaskedofs[tex][col]);
+}
+
+
+//
 // R_GenerateComposite
 // Using the texture definition,
 //  the composite texture is created from the patches,
