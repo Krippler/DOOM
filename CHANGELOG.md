@@ -12,7 +12,7 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
-## [Unreleased]
+## [1.13.0] — 2026-09-29
 
 ### Changed
 - **Max FPS 60 reaches the browser.** x11vnc waited 5 ms and then deferred
@@ -24,7 +24,7 @@ patch whatever was in it.
 - **`play.html?compression=N` and `?quality=N`**, 0 to 9, set what the page
   asks x11vnc for, as in the Quake container. Unset, they are noVNC's own;
   Quake's page asks for 1, which at DOOM's size costs 44% more bandwidth and
-  gets no more pictures through. (1.10.29 said these settings did nothing.
+  gets no more pictures through. (1.10.30 said these settings did nothing.
   They do now: 830 KB/s at 2 against 1230 at 1, at 35 frames a second.)
 
 ### Added
