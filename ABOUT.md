@@ -79,7 +79,8 @@ equivalent of:
 - **Load WAD** — list the `.wad` files you mounted, marked `GAME` or `MOD`,
   and load one. The engine builds its textures, sprites and sound cache once
   at startup, so choosing a file restarts it: a couple of seconds back to the
-  title screen.
+  title screen. **New Game** opens the same list first, and goes on from the
+  file chosen to the difficulty, restarting on it if need be.
 
 And under the menus, the engine is **limit-removing**, as UZDoom is for maps
 in DOOM's own format: the 1993 engine's fixed tables grow, node builders'

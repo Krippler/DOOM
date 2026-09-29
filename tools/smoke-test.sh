@@ -44,6 +44,8 @@
 #             controller, and says why
 #   loadwad   Load WAD, walked through with keys, restarts the engine, and
 #             the controller's port is listened on again (needs xdotool)
+#   newgame   New Game offers the WAD folder first; another file restarts
+#             the engine on it and on to the difficulty menu (needs xdotool)
 #   pointer   with capture on, the pointer is held at the centre in a level
 #             and let go in the menu (needs xdotool; skipped without it)
 #   crash     SIGSEGV prints "DOOM died on" and a backtrace with names in it
@@ -642,6 +644,49 @@ if command -v xdotool >/dev/null 2>&1; then
     say "the engine restarted, listens for the controller again, and is heard"
 else
     say "loadwad: skipped, xdotool is not installed"
+fi
+
+# ------------------------------------------------------------------ newgame
+# New Game asks what to play before how hard: the WAD folder's files, in
+# alphabetical order. Choosing one that is not running restarts the engine
+# on it, and the new engine opens straight onto the difficulty. A second
+# copy of the shareware WAD, a different file, is the other game here.
+if command -v xdotool >/dev/null 2>&1; then
+    say "newgame: New Game, another WAD, and straight on to the new game"
+    cp "$wad" "$work/wads/doom1b.wad"
+    start_x 24
+    rm -f "$work/.doomrc"
+    start_game newgame.log
+    i=0
+    until grep -q "I_InitGraphics" "$work/newgame.log" 2>/dev/null; do
+        i=$((i + 1))
+        [ "$i" -gt 200 ] && die "the engine never opened its window; see $work/newgame.log"
+        sleep 0.1
+    done
+    sleep 2
+    # the menu, New Game, then the second file in the list
+    for k in Escape Return Down Return; do
+        DISPLAY="$disp" xdotool key "$k"
+        sleep 0.5
+    done
+    i=0
+    # the shareware episode menu lists all three -- id's advert for the
+    # rest -- so it is the episodes here, the difficulty for a mod
+    until grep -q "^New game: on to the \(episodes\|difficulty\)" "$work/newgame.log"; do
+        i=$((i + 1))
+        [ "$i" -gt 200 ] && { tail -20 "$work/newgame.log" >&2;
+            die "New Game did not restart on to the episodes or difficulty; see $work/newgame.log"; }
+        sleep 0.1
+    done
+    grep -q "^ adding .*/doom1b.wad" "$work/newgame.log" \
+        || die "New Game restarted, but not on the WAD chosen; see $work/newgame.log"
+    kill "$game_pid" 2>/dev/null
+    wait_game 10
+    stop_x
+    rm -f "$work/wads/doom1b.wad"
+    say "the list, the restart on the file chosen, and on with the new game"
+else
+    say "newgame: skipped, xdotool is not installed"
 fi
 
 # ------------------------------------------------------------ pointer, crash

@@ -12,6 +12,21 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [Unreleased]
+
+### Added
+- **New Game asks what to play, then how hard.** It opens the list of WADs
+  you mounted, in alphabetical order, with the one running marked
+  `PLAYING` and the cursor on it. Keep that one and it goes straight on to
+  the difficulty as before; pick another and the game restarts with it and
+  opens on the difficulty menu by itself. A mod whose maps are one episode
+  — SIGIL, SIGIL II, any `MAP01` mod — starts on its own first map, with no
+  episode menu listing the game's episodes as well. No more Options, Setup,
+  Load WAD, restart, New Game, episode. Load WAD is still under Setup for
+  loading without starting a game.
+- The WAD list takes as many files as the folder has, ten rows at a time
+  with `MORE` and `UP` to say there are others. It was ten files at most.
+
 ## [1.14.2] — 2026-09-29
 
 ### Fixed

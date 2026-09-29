@@ -365,14 +365,25 @@ can vibrate, and whether it reached the game.
 
 ## Loading WADs from the game
 
-**Options → Setup → Load WAD** lists everything in the mounted WAD directory,
-marked `GAME` for an IWAD and `MOD` for a PWAD, and loads whichever you pick.
+**New Game** first asks what to play: everything in the mounted WAD
+directory, in alphabetical order, marked `GAME` for an IWAD and `MOD` for a
+PWAD, with the one running now marked `PLAYING` and the cursor on it. Pick
+that one and you go straight on to the difficulty, as before. Pick another
+and the engine restarts with it and opens on the difficulty menu itself.
+A mod whose maps are all one episode — SIGIL, SIGIL II, any `MAP01`-style
+mod — starts on its own first map, with no episode menu in between; a game
+with episodes to choose from (DOOM, The Ultimate DOOM) still offers them.
+The list shows ten files at a time and scrolls; `MORE` and `UP` say there is
+more below or above.
+
+**Options → Setup → Load WAD** is the same list for loading a file without
+starting a game: it restarts on the title screen.
 
 The engine builds its textures, sprites, sound cache and every zone allocation
 once at startup around the files it was given, and none of that can be swapped
-while it runs. So choosing a file restarts the engine with it: a couple of
-seconds, and you land back on the title screen. Anything not yet saved is
-lost, the same as quitting.
+while it runs. So choosing a file other than the one running restarts the
+engine with it: a couple of seconds. Anything not yet saved is lost, the same
+as quitting.
 
 **A mod goes on the game it was made for.** Its maps say which: `E1M1`-style
 maps are DOOM's (SIGIL, SIGIL II), `MAP01`-style maps DOOM II's (No Rest for
