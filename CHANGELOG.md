@@ -12,6 +12,20 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [1.13.3] — 2026-09-29
+
+### Fixed
+- **SIGIL II crashed as soon as a level was drawn** (`DOOM died on SIGSEGV`,
+  in `R_GetColumn` from `R_DrawPlanes`). That is where a mod with floors of its
+  own, between an `F_START` and `F_END` of its own, sends the 1993 engine,
+  which took the last such pair to be all the floors there were: DOOM's own, the sky's included, got
+  numbers below zero, and drawing read far outside the tables they index.
+  Whether that crashed or drew rubbish depended on what lay there. id's answer
+  was for authors to merge their floors into the game's with a tool; now the
+  engine does it: every file's floors make one list, a mod's floor replacing
+  the game's of the same name and new ones added. With no mod loaded the
+  floors are numbered exactly as before, which savegames depend on.
+
 ## [1.13.2] — 2026-09-29
 
 ### Changed

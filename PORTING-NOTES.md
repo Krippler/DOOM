@@ -889,6 +889,38 @@ tables were raised eightfold: `MAXVISPLANES`, `MAXOPENINGS`, `MAXDRAWSEGS`,
 Only memory depends on them. The scrolling-wall list, which the original
 filled with no check at all, stops at its end now.
 
+## Flats from more than one file
+
+`R_InitFlats` took the flats to be the lumps between `W_GetNumForName
+("F_START")` and `("F_END")` -- the last of each name, so the last file's. A
+PWAD with an `F_START`/`F_END` of its own therefore became the only flats: in
+a test copy of the shareware IWAD with two flats added that way, `numflats`
+was 2 and `skyflatnum` -4, and every sector's floor and ceiling numbers were
+negative. `flattranslation[]`, `flatskytexture[]` and the cache reads indexed
+by them then read before their arrays. SIGIL II died in the field in
+`R_GetColumn` from `R_DrawPlanes`, at the first read of `texturewidthmask[tex]`
+-- the sky branch taking a garbage entry of `flatskytexture` for a texture
+number, which is what this does; the WAD itself was not to hand. Here it happened not
+to crash, which is why the smoke test checks the list and not the crash.
+
+Now `flatlumps[]` holds the lump for each flat number, built from every
+`F_START`..`F_END` range (and DeuTex's `FF_START`/`FF_END`) in load order. A
+name already in the list is replaced where it stands, so the IWAD's animated
+sequences stay contiguous and in order; a new name is appended. The markers
+inside a range (`F1_START` and so on) are kept as entries, as id's counting
+kept them, because savegames store `floorpic` and `ceilingpic` as flat
+numbers: with no PWAD flats the numbering is id's exactly -- 111 for DOOM,
+158 for DOOM II, 149 for TNT and Plutonia, 56 for shareware, `F_SKY1` at 54
+in all of them. `R_CheckFlatNumForName` looks a name up through the list;
+`R_DrawPlanes`, `R_PrecacheLevel`, the SKYDEFS reader and the finale's
+background all go through it or `flatlumps` instead of `firstflat + n`.
+Start-up logs `R_InitFlats: N flats, R replaced and A added by later files`
+when a mod brings any.
+
+Sprites have the same 1993 limitation (`S_START`/`S_END`), but a mod that
+trips it stops with `R_InitSprites` naming the sprite rather than crashing,
+and SIGIL II's log showed no such stop.
+
 ## Which game a mod goes on
 
 `M_RelaunchWith` dropped `-iwad` along with any `-file` when it rebuilt the

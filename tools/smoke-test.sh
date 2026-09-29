@@ -30,6 +30,8 @@
 #   umapinfo  a level starts with a UMAPINFO lump naming it, its sky and its
 #             music, and the lump is read without complaint (the reader
 #             itself is tools/umapinfo-test.c's)
+#   flats     a mod's own F_START/F_END flats join the game's rather than
+#             replace them, and E1M1 stays up with them
 #   ogg       a level whose music is an Ogg Vorbis lump, as SIGIL II's are,
 #             is heard at the tone's own pitch (needs oggenc, from
 #             vorbis-tools, and a soundfont; skipped without)
@@ -317,6 +319,43 @@ kill "$game_pid" 2>/dev/null
 wait_game 10
 stop_x
 say "the lump is read, and E1M1 plays by it"
+
+# -------------------------------------------------------------------- flats
+# A mod with floors of its own, between an F_START and F_END of its own, as a
+# new episode brings them -- SIGIL II does. The engine used to take the last
+# F_START/F_END pair as the only flats, so every one of the game's got a
+# negative number, the sky's included, and drawing a level read far outside
+# the arrays; in the field it crashed in R_GetColumn. Added to a copy of the
+# shareware IWAD: one flat that replaces FLOOR4_8, one new.
+say "flats: a mod's own F_START/F_END, one flat replaced and one added"
+mkdir -p "$work/flats"
+: >"$work/flats/marker"
+python3 -c "import sys; sys.stdout.buffer.write(bytes([96]) * 4096)" >"$work/flats/grey"
+python3 -c "import sys; sys.stdout.buffer.write(bytes([176]) * 4096)" >"$work/flats/red"
+add_lumps "$wad" "$work/flats/doom1.wad" \
+    F_START "$work/flats/marker" FLOOR4_8 "$work/flats/grey" \
+    SMOKEFLT "$work/flats/red" F_END "$work/flats/marker" \
+    || die "could not add the flats"
+start_x 24
+rm -f "$work/.doomrc"
+game_iwad="$work/flats/doom1.wad" start_game flats.log -warp 1 1 -nojoy
+game_iwad=
+i=0
+until grep -q "I_InitGraphics" "$work/flats.log" 2>/dev/null; do
+    i=$((i + 1))
+    [ "$i" -gt 200 ] && { tail -20 "$work/flats.log" >&2; die "the engine never opened its window; see $work/flats.log"; }
+    sleep 0.1
+done
+sleep 3
+kill -0 "$game_pid" 2>/dev/null \
+    || { tail -20 "$work/flats.log" >&2; die "E1M1 with a mod's own flats did not stay up; see $work/flats.log"; }
+# 56 flats in the shareware IWAD, counted as id counted them, and one more
+grep -q "R_InitFlats: 57 flats, 1 replaced and 1 added" "$work/flats.log" \
+    || die "the mod's flats were not merged with the game's; see $work/flats.log"
+say "the game's flats and the mod's are one list: 57, one replaced, one added"
+kill "$game_pid" 2>/dev/null
+wait_game 10
+stop_x
 
 # ---------------------------------------------------------------------- ogg
 if [ -z "$soundfont" ] || ! command -v oggenc >/dev/null 2>&1; then

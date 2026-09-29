@@ -39,6 +39,10 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.13.3
+- SIGIL II no longer crashes as soon as a level is drawn. Mods that bring
+  floor and ceiling graphics of their own now work alongside the game's.
+
 ### 1.13.2
 - A DOOM II mod chosen from Load WAD goes on DOOM II even while TNT or
   Plutonia is running (on TNT or Plutonia only if there is no DOOM II).
