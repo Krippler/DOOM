@@ -30,6 +30,8 @@ rcsid[] = "$Id: r_segs.c,v 1.3 1997/01/29 20:10:19 b1 Exp $";
 
 
 #include <stdlib.h>
+#include <math.h>
+#include <stdint.h>
 
 #include "i_system.h"
 
@@ -67,6 +69,11 @@ int		rw_stopx;
 angle_t		rw_centerangle;
 fixed_t		rw_offset;
 fixed_t		rw_distance;
+
+// The wall's direction, and the viewer's place against it, in doubles:
+// see R_StoreWallRange and R_ScaleFromGlobalAngle.
+double		rw_ux, rw_uy, rw_cross, rw_along;
+double		rw_mindepth, rw_maxdepth;
 fixed_t		rw_scale;
 fixed_t		rw_scalestep;
 fixed_t		rw_midtexturemid;
@@ -379,9 +386,6 @@ R_StoreWallRange
 ( int	start,
   int	stop )
 {
-    fixed_t		hyp;
-    fixed_t		sineval;
-    angle_t		distangle, offsetangle;
     fixed_t		vtop;
     int			lightnum;
 
@@ -414,17 +418,70 @@ R_StoreWallRange
     // mark the segment as visible for auto map
     linedef->flags |= ML_MAPPED;
     
-    // calculate rw_distance for scale calculation
-    rw_normalangle = curline->angle + ANG90;
-    offsetangle = abs(rw_normalangle-rw_angle1);
-    
-    if (offsetangle > ANG90)
-	offsetangle = ANG90;
+    // Where the wall is, from the viewer, exactly. id's code took the
+    // wall's direction from the seg's angle as the map stores it, to 16
+    // bits, and the distance and offset from the 8192-entry sine table; for
+    // a long wall seen far off and nearly edge-on the error outweighed the
+    // answer, and R_ScaleFromGlobalAngle, dividing one such small number by
+    // another, gave up and drew the column at the largest scale there is:
+    // a line of wall from the top of the view to the bottom, for a frame
+    // (id's own attempt at "the stretched line bug" is below, never used).
+    // SIGIL II, made for engines that render in floating point, has walls
+    // long enough to show it every few seconds. The wall's own line gives
+    // its direction, the seg says which way along it, and the rest is
+    // arithmetic in doubles.
+    {
+	double	ux = (double) linedef->dx;
+	double	uy = (double) linedef->dy;
+	double	len = sqrt (ux*ux + uy*uy);
+	double	relx = (double) viewx - curline->v1->x;
+	double	rely = (double) viewy - curline->v1->y;
 
-    distangle = ANG90 - offsetangle;
-    hyp = R_PointToDist (curline->v1->x, curline->v1->y);
-    sineval = finesine[distangle>>ANGLETOFINESHIFT];
-    rw_distance = FixedMul (hyp, sineval);
+	if (len <= 0)
+	{
+	    ux = (double) curline->v2->x - curline->v1->x;
+	    uy = (double) curline->v2->y - curline->v1->y;
+	    len = sqrt (ux*ux + uy*uy);
+	}
+	if (len > 0)
+	{
+	    ux /= len;
+	    uy /= len;
+	}
+	else
+	    ux = 1, uy = 0;
+
+	// a seg on the line's back side runs the other way
+	if (ux * ((double) curline->v2->x - curline->v1->x)
+	    + uy * ((double) curline->v2->y - curline->v1->y) < 0)
+	{
+	    ux = -ux;
+	    uy = -uy;
+	}
+
+	rw_ux = ux;
+	rw_uy = uy;
+	rw_cross = ux*rely - uy*relx;		// signed, in fixed units
+	rw_along = ux*relx + uy*rely;		// the viewer's foot on the wall
+
+	// how deep the seg's two ends are along the view: every column of
+	// it is between the two
+	{
+	    double	a = (double) viewangle * (2*M_PI / 4294967296.0);
+	    double	vc = cos (a), vs = sin (a);
+	    double	d1 = -(relx*vc + rely*vs);
+	    double	d2 = ((double) curline->v2->x - viewx) * vc
+			     + ((double) curline->v2->y - viewy) * vs;
+
+	    rw_mindepth = d1 < d2 ? d1 : d2;
+	    rw_maxdepth = d1 < d2 ? d2 : d1;
+	}
+
+	rw_distance = fabs (rw_cross) < 2147483647.0
+	    ? (fixed_t) fabs (rw_cross) : 2147483647;
+	rw_normalangle = (angle_t) (int64_t)
+	    floor (atan2 (uy, ux) * (4294967296.0 / (2*M_PI)) + 0.5) + ANG90;
+    }
 		
 	
     ds_p->x1 = rw_x = start;
@@ -635,20 +692,9 @@ R_StoreWallRange
 
     if (segtextured)
     {
-	offsetangle = rw_normalangle-rw_angle1;
-	
-	if (offsetangle > ANG180)
-	    offsetangle = -offsetangle;
-
-	if (offsetangle > ANG90)
-	    offsetangle = ANG90;
-
-	sineval = finesine[offsetangle >>ANGLETOFINESHIFT];
-	rw_offset = FixedMul (hyp, sineval);
-
-	if (rw_normalangle-rw_angle1 < ANG180)
-	    rw_offset = -rw_offset;
-
+	// how far along the wall, from the seg's start, the viewer's
+	// perpendicular meets it (see above)
+	rw_offset = (fixed_t) rw_along;
 	rw_offset += sidedef->textureoffset + curline->offset;
 	rw_centerangle = ANG90 + viewangle - rw_normalangle;
 	

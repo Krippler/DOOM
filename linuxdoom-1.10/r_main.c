@@ -450,57 +450,49 @@ void R_InitPointToAngle (void)
 // Returns the texture mapping scale
 //  for the current line (horizontal span)
 //  at the given angle.
-// rw_distance must be calculated first.
+// R_StoreWallRange must have placed the wall first.
 //
 fixed_t R_ScaleFromGlobalAngle (angle_t visangle)
 {
-    fixed_t		scale;
-    int			anglea;
-    int			angleb;
-    int			sinea;
-    int			sineb;
-    fixed_t		num;
-    int			den;
+    // Where this column's ray meets the wall's line, and how deep that is
+    // along the view: the scale is the projection over the depth. id's
+    // version went by rw_distance and the sine table, and see
+    // R_StoreWallRange for what that did to walls seen nearly edge-on.
+    //
+    // A seg seen almost exactly edge-on is narrower than a column, and id's
+    // choice of columns (R_AddLine, from the angle table) can still give it
+    // one whose ray misses it, or meets its line behind the viewer. It is
+    // somewhere between its two ends, though, so that is where it is drawn:
+    // the depth is kept between theirs.
+    extern double	rw_ux, rw_uy, rw_cross, rw_mindepth, rw_maxdepth;
+    const double	tobam = 2*M_PI / 4294967296.0;
+    double		a = (double) visangle * tobam;
+    double		rx = cos (a);
+    double		ry = sin (a);
+    double		denom = rw_ux*ry - rw_uy*rx;
+    double		t, depth, scale;
 
-    // UNUSED
-#if 0
-{
-    fixed_t		dist;
-    fixed_t		z;
-    fixed_t		sinv;
-    fixed_t		cosv;
-	
-    sinv = finesine[(visangle-rw_normalangle)>>ANGLETOFINESHIFT];	
-    dist = FixedDiv (rw_distance, sinv);
-    cosv = finecosine[(viewangle-visangle)>>ANGLETOFINESHIFT];
-    z = abs(FixedMul (dist, cosv));
-    scale = FixedDiv(projection, z);
-    return scale;
-}
-#endif
-
-    anglea = ANG90 + (visangle-viewangle);
-    angleb = ANG90 + (visangle-rw_normalangle);
-
-    // both sines are allways positive
-    sinea = finesine[anglea>>ANGLETOFINESHIFT];	
-    sineb = finesine[angleb>>ANGLETOFINESHIFT];
-    num = FixedMul(projection,sineb)<<detailshift;
-    den = FixedMul(rw_distance,sinea);
-
-    if (den > num>>16)
-    {
-	scale = FixedDiv (num, den);
-
-	if (scale > 64*FRACUNIT)
-	    scale = 64*FRACUNIT;
-	else if (scale < 256)
-	    scale = 256;
-    }
+    t = denom != 0 ? -rw_cross / denom : -1;	// along the ray, fixed units
+    if (t > 0)
+	depth = t * cos ((double) (int) (visangle - viewangle) * tobam);
     else
-	scale = 64*FRACUNIT;
-	
-    return scale;
+	depth = rw_mindepth;		// no meeting in front: the nearer end
+
+    if (depth < rw_mindepth)
+	depth = rw_mindepth;
+    if (depth > rw_maxdepth)
+	depth = rw_maxdepth;
+
+    if (depth <= 0)
+	return 64*FRACUNIT;
+
+    scale = (double) projection * (1 << detailshift) * FRACUNIT / depth;
+
+    if (scale > 64*FRACUNIT)
+	return 64*FRACUNIT;
+    if (scale < 256)
+	return 256;
+    return (fixed_t) scale;
 }
 
 

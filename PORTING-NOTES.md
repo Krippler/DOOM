@@ -889,6 +889,41 @@ tables were raised eightfold: `MAXVISPLANES`, `MAXOPENINGS`, `MAXDRAWSEGS`,
 Only memory depends on them. The scrolling-wall list, which the original
 filled with no check at all, stops at its end now.
 
+## Walls placed exactly: the flickering vertical lines
+
+The 1997 source has the bug and an abandoned attempt at it:
+`R_StoreWallRange` carries an `#if 0` block headed "UNUSED: try to fix the
+stretched line bug". A seg's size on screen came from
+`R_ScaleFromGlobalAngle`, which divides `projection * sin(angleb)` by
+`rw_distance * sin(anglea)`. `rw_distance` came from the seg's angle as the
+map stores it (16 bits) and the distance to its first vertex through the
+8192-entry sine table; for a long wall far off and nearly edge-on, both
+products are small and mostly rounding, and when the denominator came out
+too small the function returned its ceiling, 64: a one-column seg drawn
+floor to ceiling. It lasts one frame, until the view moves on.
+
+Measured by counting segs one to three columns wide drawn at scale 64,
+under `-timedemo`: SIGIL II's four demos had 50, 4, 58 and 38 on 1.14.1;
+DOOM's, DOOM II's and Plutonia's none. Per-frame dumps of 1.13.4 and 1.14.1
+showed the lines themselves, in both versions, in different frames.
+
+Now, in doubles, from the linedef's own vertices (so every seg of a wall
+agrees about where it is): its direction and so `rw_normalangle`; the
+viewer's signed perpendicular distance to it, `rw_distance`; and where the
+viewer's foot falls along it, which is `rw_offset` before the texture
+offsets. `R_ScaleFromGlobalAngle` intersects the column's ray with the
+wall's line, takes that point's depth along the view, and divides the
+projection by it. That left 13 columns across the four demos, every one a
+short wall 30 to 770 units away with the viewer within half a unit of its
+line: narrower than a column, but given one by `R_AddLine`'s table-based
+angles, whose ray then met the line behind the viewer. The depth is now
+kept between the depths of the seg's two ends, which it is by definition;
+that left none.
+
+Play does not touch any of this; every demo ends where it did. The
+pictures differ from 1.14.1's by 2 to 3% of pixels a frame, all of it
+texture positions moved by a fraction of a texel.
+
 ## The mixer's socket outlived the engine, and then froze the next one
 
 The WAD menu restarts the engine with `execv`, and file descriptors survive

@@ -12,6 +12,22 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [1.14.2] — 2026-09-29
+
+### Fixed
+- **Vertical lines flickering through the view, in SIGIL II above all.**
+  For a frame at a time, one column of a distant wall was drawn from the
+  top of the view to the bottom, through the sky. The 1993 renderer works
+  out how big a wall is on screen from 16-bit angles and a table of sines,
+  and for a long wall seen far off and nearly edge-on the rounding outgrew
+  the answer, so it drew that sliver at the largest size there is. id's
+  own maps are small enough that it was rare; SIGIL II, made for engines
+  that render in floating point, has walls long enough to show it every
+  few seconds. Walls are now placed with exact arithmetic, and a column of
+  wall is never drawn nearer than the wall's own nearer end. In SIGIL II's
+  four demos such columns went from 150 to none. Play is unaffected, and
+  the picture is otherwise the same, give or take a fraction of a texel.
+
 ## [1.14.1] — 2026-09-29
 
 ### Fixed
