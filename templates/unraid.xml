@@ -39,6 +39,22 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.12.0
+- Smoother motion: Options - Setup - Gameplay - Max FPS draws frames between
+  the game's 35 a second, with everything part of the way to where it is
+  going, and the mouse turning the view every frame. 35, as before, is the
+  default here.
+- Options - Setup - Gameplay also has a crosshair, a minimal HUD over a view
+  that fills the screen, and whether picking up a weapon changes to it.
+- The mouse wheel changes weapon, as LB and RB do on a controller.
+- WASD to move and E to use on a first start (Modern controls, on by
+  default). Backspace opens the menu.
+- The controller has Turn Curve, Move Deadzone and Turn Deadzone.
+- A WAD from Load WAD that the game cannot run no longer stops the
+  container: the game goes back to what it was running and says why.
+- Load WAD no longer loses the browser's controller.
+- The start-up log says how long each step took.
+
 ### 1.11.0
 - Version numbers change scheme: the middle number now moves when something
   is added, the last when something is fixed. The game is the same as
