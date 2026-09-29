@@ -57,6 +57,9 @@ void M_LoadFailed (char* wad, char* why);
 // does nothing if menu is already up.
 void M_StartControlPanel (void);
 
+// Just restarted from New Game's WAD list: open the menus on the difficulty.
+void M_NewGameAfterRestart (void);
+
 
 
 

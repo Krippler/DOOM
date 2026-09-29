@@ -265,6 +265,7 @@ void M_ChangeMouseFire(int choice);
 void M_ChangeMouseStrafe(int choice);
 void M_ChangeMouseForward(int choice);
 void M_LoadWad(int choice);
+static void M_ChooseWadToPlay (void);
 void M_DrawControls(void);
 void M_DrawMouseOptions(void);
 void M_DrawWadSelect(void);
@@ -940,15 +941,10 @@ void M_NewGame(int choice)
 	M_StartMessage(NEWGAME,NULL,false);
 	return;
     }
-	
-    // No choice to make with one episode, or with DOOM II's none.
-    if ( EpiDef.numitems <= 1 )
-    {
-	epi = 0;
-	M_SetupNextMenu(&NewDef);
-    }
-    else
-	M_SetupNextMenu(&EpiDef);
+
+    // What to play first, from the WAD folder; then how hard. With nothing
+    // in the folder to choose from, straight on with the game running.
+    M_ChooseWadToPlay ();
 }
 
 
@@ -961,10 +957,15 @@ void M_DrawEpisode(void)
     V_DrawPatchDirect (54,38,0,W_CacheLumpName("M_EPISOD",PU_CACHE));
 }
 
+// A mod's own first map, when New Game went straight to it (M_NewGameFor).
+static int	modepisode, modmap;
+
 // The chosen episode, or DOOM II's MAP01 when there is none to choose.
 static void M_StartEpisode (int skill)
 {
-    if (epi < EpiDef.numitems)
+    if (epi < 0 && modepisode)
+	G_DeferedInitNew (skill, modepisode, modmap);
+    else if (epi < EpiDef.numitems)
 	G_DeferedInitNew (skill, epiepisode[epi], epimap[epi]);
     else
 	G_DeferedInitNew (skill, 1, 1);
@@ -1849,13 +1850,24 @@ void M_DrawGameplay (void)
 //
 // WAD selection.
 //
-#define MAX_WADS	10
+// As many files as the folder has, up to this; ten rows at a time show,
+// and the list scrolls under the cursor.
+#define MAX_WADS	256
 #define WAD_NAMELEN	64
+#define WAD_ROWS	10
 
 static char	wadNames[MAX_WADS][WAD_NAMELEN];
 static char	wadPaths[MAX_WADS][256];
+static boolean	wadIsIwad[MAX_WADS];
 static int	numWads = 0;
+static int	wadTop = 0;		// the first row shown
 static char	wadMessage[48] = "";
+
+menuitem_t	WadMenu[MAX_WADS];		// filled in by M_ScanWads
+
+// New Game shows the same list, to choose what to play before how hard;
+// Load WAD, under Options, only loads.
+static boolean	wadNewGame = false;
 
 
 //
@@ -2102,10 +2114,43 @@ static void M_ScanWads (void)
 	    continue;
 
 	snprintf (wadNames[numWads], WAD_NAMELEN, "%s", e->d_name);
+	wadIsIwad[numWads] = M_IsIwad (wadPaths[numWads]);
 	numWads++;
     }
 
     closedir (d);
+
+    // In alphabetical order, whatever order the folder keeps them in.
+    {
+	int	i, j;
+
+	for (i = 1; i < numWads; i++)
+	    for (j = i; j > 0 && strcasecmp (wadNames[j-1], wadNames[j]) > 0; j--)
+	    {
+		char	name[WAD_NAMELEN];
+		char	path[256];
+		boolean	iwad = wadIsIwad[j];
+
+		memcpy (name, wadNames[j], WAD_NAMELEN);
+		memcpy (path, wadPaths[j], 256);
+		memcpy (wadNames[j], wadNames[j-1], WAD_NAMELEN);
+		memcpy (wadPaths[j], wadPaths[j-1], 256);
+		wadIsIwad[j] = wadIsIwad[j-1];
+		memcpy (wadNames[j-1], name, WAD_NAMELEN);
+		memcpy (wadPaths[j-1], path, 256);
+		wadIsIwad[j-1] = iwad;
+	    }
+    }
+
+    for (len = 0; len < MAX_WADS; len++)
+    {
+	WadMenu[len].status = 1;
+	WadMenu[len].name[0] = 0;
+	WadMenu[len].routine = M_LoadWad;
+	WadMenu[len].alphaKey = 0;
+	WadMenu[len].text = NULL;
+    }
+    wadTop = 0;
 
     if (!numWads)
 	snprintf (wadMessage, sizeof(wadMessage), "NO WAD FILES IN %s", dir);
@@ -2186,13 +2231,6 @@ static void M_RelaunchWith (char* path, char* iwad)
 }
 
 
-menuitem_t WadMenu[MAX_WADS] =
-{
-    {1,"",M_LoadWad,0}, {1,"",M_LoadWad,0}, {1,"",M_LoadWad,0},
-    {1,"",M_LoadWad,0}, {1,"",M_LoadWad,0}, {1,"",M_LoadWad,0},
-    {1,"",M_LoadWad,0}, {1,"",M_LoadWad,0}, {1,"",M_LoadWad,0},
-    {1,"",M_LoadWad,0}
-};
 
 menu_t WadDef =
 {
@@ -2206,9 +2244,162 @@ menu_t WadDef =
 };
 
 
+//
+// New Game: the game or mod first, then the difficulty.
+//
+// Choosing a mod used to mean Options, Setup, Load WAD, the restart, and
+// then New Game and an episode menu that listed the game's episodes as well
+// as the mod's. New Game now opens the WAD list; what is already running
+// goes straight on, anything else restarts the engine (the only way to
+// change WADs, see M_RelaunchWith) and the new engine opens the difficulty
+// menu itself -- DOOM_NEWGAME says to.
+//
+// A mod whose maps are all one episode -- SIGIL, SIGIL II, any MAPxx mod --
+// needs no episode menu: it starts on its own first map. A game with
+// episodes to choose between still offers them.
+//
+
+static boolean M_SameFile (char* a, char* b)
+{
+    struct stat	sa, sb;
+
+    if (!a || !b || stat (a, &sa) || stat (b, &sb))
+	return false;
+    return sa.st_dev == sb.st_dev && sa.st_ino == sb.st_ino;
+}
+
+// whether this row of the list is what is running now: the game on its own,
+// or the one mod on top of it
+static boolean M_WadIsRunning (int i)
+{
+    if (wadIsIwad[i])
+	return M_SameFile (wadPaths[i], wadfiles[0]) && !wadfiles[1];
+    return wadfiles[1] && !wadfiles[2] && M_SameFile (wadPaths[i], wadfiles[1]);
+}
+
+// A map lump's episode and map, from its name; 0 when it is not one.
+static int M_MapName (char* name, int* episode, int* map)
+{
+    if (toupper (name[0]) == 'E' && name[1] >= '1' && name[1] <= '9'
+	&& toupper (name[2]) == 'M' && name[3] >= '0' && name[3] <= '9'
+	&& (name[4] == 0 || (name[4] >= '0' && name[4] <= '9' && !name[5])))
+    {
+	*episode = name[1] - '0';
+	*map = atoi (name + 3);
+	return 1;
+    }
+    if (!strncasecmp (name, "MAP", 3) && name[3] >= '0' && name[3] <= '9'
+	&& name[4] >= '0' && name[4] <= '9' && !name[5])
+    {
+	*episode = 1;
+	*map = atoi (name + 3);
+	return 1;
+    }
+    return 0;
+}
+
+//
+// The first map of the mods loaded (everything after the IWAD), and how
+// many episodes their maps are in; 0 when they have none.
+//
+static int M_ModMaps (int* firstepisode, int* firstmap)
+{
+    int		i, e, m;
+    int		episodes = 0;
+    int		seen[10] = { 0 };
+    char	name[9];
+
+    *firstepisode = *firstmap = 0;
+    for (i = 0; i < numlumps; i++)
+    {
+	if (lumpinfo[i].handle == lumpinfo[0].handle)
+	    continue;
+	memcpy (name, lumpinfo[i].name, 8);
+	name[8] = 0;
+	if (!M_MapName (name, &e, &m))
+	    continue;
+	if (!seen[e])
+	    seen[e] = 1, episodes++;
+	if (!*firstepisode || e < *firstepisode
+	    || (e == *firstepisode && m < *firstmap))
+	    *firstepisode = e, *firstmap = m;
+    }
+    return episodes;
+}
+
+//
+// On from the choice of what to play, with it running: the difficulty for
+// a mod of one episode or a game of none, else the episodes. back is where
+// Escape goes from there.
+//
+static void M_NewGameFor (menu_t* back)
+{
+    int		e, m;
+
+    if (M_ModMaps (&e, &m) == 1)
+    {
+	epi = -1;
+	modepisode = e;
+	modmap = m;
+	NewDef.prevMenu = back;
+	M_SetupNextMenu (&NewDef);
+    }
+    else if (EpiDef.numitems <= 1)
+    {
+	// No choice to make with one episode, or with DOOM II's none.
+	epi = 0;
+	modepisode = 0;
+	NewDef.prevMenu = back;
+	M_SetupNextMenu (&NewDef);
+    }
+    else
+    {
+	modepisode = 0;
+	EpiDef.prevMenu = back;
+	NewDef.prevMenu = &EpiDef;
+	M_SetupNextMenu (&EpiDef);
+    }
+}
+
+static void M_ChooseWadToPlay (void)
+{
+    int		i;
+
+    M_ScanWads ();
+    if (!numWads)
+    {
+	M_NewGameFor (&MainDef);
+	return;
+    }
+
+    wadNewGame = true;
+    WadDef.prevMenu = &MainDef;
+    WadDef.numitems = numWads;
+    WadDef.lastOn = 0;
+    for (i = 0; i < numWads; i++)
+	if (M_WadIsRunning (i))
+	    WadDef.lastOn = i;
+    M_SetupNextMenu (&WadDef);
+}
+
+//
+// Just restarted from New Game's list: menus open, on the difficulty (or the
+// episodes). From D_DoomMain.
+//
+void M_NewGameAfterRestart (void)
+{
+    M_StartControlPanel ();
+    M_NewGameFor (&MainDef);
+    fprintf (stderr, "New game: on to %s\n",
+	     currentMenu == &EpiDef ? "the episodes" : "the difficulty");
+}
+
+
 void M_WadSelect (int choice)
 {
     choice = 0;
+    wadNewGame = false;
+    WadDef.prevMenu = &SetupDef;
     M_ScanWads ();
     // Only offer as many rows as there are files.
     WadDef.numitems = numWads ? numWads : 1;
@@ -2224,7 +2415,18 @@ void M_LoadWad (int choice)
     if (choice < 0 || choice >= numWads)
 	return;
 
-    if (M_IsIwad (wadPaths[choice]))
+    if (wadNewGame)
+    {
+	// what is running already: no restart, on to the difficulty
+	if (M_WadIsRunning (choice))
+	{
+	    M_NewGameFor (&WadDef);
+	    return;
+	}
+	setenv ("DOOM_NEWGAME", "1", 1);
+    }
+
+    if (wadIsIwad[choice])
     {
 	M_RelaunchWith (wadPaths[choice], NULL);
 	return;
@@ -2247,6 +2449,7 @@ void M_LoadWad (int choice)
 	    snprintf (wadMessage, sizeof(wadMessage),
 		      "SHAREWARE CANNOT LOAD MODS");
 	S_StartSound (NULL, sfx_oof);
+	unsetenv ("DOOM_NEWGAME");
 	return;
     }
 
@@ -2258,26 +2461,45 @@ void M_DrawWadSelect (void)
 {
     int		i;
     int		y;
+    int		top = 38;
 
-    M_WriteText (40, 14, "LOAD WAD");
+    M_WriteText (40, 14, wadNewGame ? "NEW GAME" : "LOAD WAD");
     // Above the list: with ten files the rows reach y=152, and anything
     // below 168 would be drawn onto the status bar and stay there.
-    M_WriteText (40, 28, wadMessage[0] ? wadMessage : "THE GAME RESTARTS TO LOAD");
+    M_WriteText (40, 28, wadMessage[0] ? wadMessage
+		 : wadNewGame ? "PLAY WHICH GAME OR MOD?"
+		 : "THE GAME RESTARTS TO LOAD");
 
     if (!numWads)
     {
+	WadDef.y = top;
 	M_WriteText (40, WadDef.y, "NO WAD FILES FOUND");
 	return;
     }
 
-    y = WadDef.y;
+    // Ten rows at a time, following the cursor. M_Drawer puts the skull at
+    // WadDef.y + itemOn rows, so WadDef.y moves up with the list.
+    if (itemOn < wadTop)
+	wadTop = itemOn;
+    if (itemOn >= wadTop + WAD_ROWS)
+	wadTop = itemOn - WAD_ROWS + 1;
+    WadDef.y = top - wadTop * WadDef.lineheight;
 
-    for (i = 0; i < numWads; i++)
+    y = top;
+    for (i = wadTop; i < numWads && i < wadTop + WAD_ROWS; i++)
     {
 	M_WriteText (WadDef.x, y, wadNames[i]);
-	M_WriteText (WadDef.x + 180, y, M_IsIwad(wadPaths[i]) ? "GAME" : "MOD");
+	M_WriteText (WadDef.x + 180, y, M_WadIsRunning (i) ? "PLAYING"
+		     : wadIsIwad[i] ? "GAME" : "MOD");
 	y += WadDef.lineheight;
     }
+
+    // more above or below
+    if (wadTop > 0)
+	M_WriteText (WadDef.x + 250, top, "UP");
+    if (wadTop + WAD_ROWS < numWads)
+	M_WriteText (WadDef.x + 250, top + (WAD_ROWS - 1) * WadDef.lineheight,
+		     "MORE");
 }
 
 

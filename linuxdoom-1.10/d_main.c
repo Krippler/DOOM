@@ -1182,6 +1182,14 @@ void D_DoomMain (void)
 {
     int             p;
     char                    file[256];
+    boolean		newgame_restart;
+
+    // Restarted by New Game's WAD list, to go on to the difficulty. Taken
+    // out of the environment at once: should this start fail, the engine
+    // goes back to the game before (I_ErrorGoBack), which is to open on
+    // its title screen as usual.
+    newgame_restart = getenv ("DOOM_NEWGAME") != NULL;
+    unsetenv ("DOOM_NEWGAME");
 
     FindResponseFile ();
 	
@@ -1559,8 +1567,13 @@ void D_DoomMain (void)
 	if (autostart || netgame)
 	    G_InitNew (startskill, startepisode, startmap);
 	else
+	{
 	    D_StartTitle ();                // start up intro loop
 
+	    // restarted by New Game, on the game or mod it chose
+	    if (newgame_restart)
+		M_NewGameAfterRestart ();
+	}
     }
 
     D_DoomLoop ();  // never returns

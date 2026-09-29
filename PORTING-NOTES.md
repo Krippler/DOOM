@@ -889,6 +889,38 @@ tables were raised eightfold: `MAXVISPLANES`, `MAXOPENINGS`, `MAXDRAWSEGS`,
 Only memory depends on them. The scrolling-wall list, which the original
 filled with no check at all, stops at its end now.
 
+## New Game chooses the WAD
+
+`M_NewGame` opens `WadDef`, the Load WAD list, with `wadNewGame` set: the
+title and the prompt change, the row running now is marked `PLAYING` (the
+same file, by device and inode, as `wadfiles[0]` with nothing after it, or as
+`wadfiles[1]` with nothing after that) and the cursor starts there.
+
+Choosing that row calls `M_NewGameFor`, which goes on in this engine. Any
+other sets `DOOM_NEWGAME=1` and restarts through `M_RelaunchWith` as Load WAD
+does; `D_DoomMain` reads the variable and clears it at once, so a start that
+fails and goes back to the game before (`I_ErrorGoBack`) opens on the title
+as usual, and after `D_StartTitle` calls `M_NewGameAfterRestart`, which opens
+the menus and calls `M_NewGameFor` in the new engine. It logs where it went,
+"New game: on to the difficulty" or "... the episodes", which the smoke
+test's `newgame` phase waits for.
+
+`M_NewGameFor` looks at the maps of the files after the IWAD (`M_ModMaps`,
+from `lumpinfo`): all in one episode, or all `MAPxx`, and it goes to the
+difficulty with the mod's lowest map remembered, which `M_StartEpisode`
+starts (`epi` -1). SIGIL II's UMAPINFO adds its episode to DOOM's four
+rather than replacing them, so the episode menu would have offered five.
+Otherwise, a game of one episode or none goes to the difficulty and a game
+of several to the episodes, as id's New Game did. Backing out from there
+(the menu's back key; Escape closes the menus) leads to the list, or to the
+main menu after a restart.
+
+The list is sorted case-insensitively after `readdir`, keeps whether each
+file is an IWAD (the draw routine used to open every file every frame to
+find out), and holds up to 256 files. Ten rows show: the draw routine moves
+`WadDef.y` up by the rows scrolled past, since `M_Drawer` puts the skull at
+`y + itemOn * lineheight`.
+
 ## Walls placed exactly: the flickering vertical lines
 
 The 1997 source has the bug and an abandoned attempt at it:
