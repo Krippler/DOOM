@@ -39,6 +39,11 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.13.2
+- A DOOM II mod chosen from Load WAD goes on DOOM II even while TNT or
+  Plutonia is running (on TNT or Plutonia only if there is no DOOM II).
+- A mod with maps for both DOOM and DOOM II stays on the game you are playing.
+
 ### 1.13.1
 - SIGIL II, and any other mod, chosen from Load WAD now starts on the game it
   was made for. SIGIL II went onto DOOM II and failed with a missing texture.

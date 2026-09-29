@@ -12,6 +12,18 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [1.13.2] — 2026-09-29
+
+### Changed
+- **A DOOM II mod goes on DOOM II, even from TNT or Plutonia.** Load WAD kept
+  a `MAP01`-style mod on TNT or Plutonia when one of them was running, since
+  the engine runs all three as the same game; nearly every such mod was made
+  for DOOM II, and No Rest for the Living, loaded while playing TNT, ran on
+  TNT. It now goes on `doom2.wad` when there is one, and on TNT or Plutonia —
+  the one running first — only when there is not.
+- **A mod with both kinds of map stays on the game running**, DOOM or DOOM
+  II, where it went to DOOM II before.
+
 ## [1.13.1] — 2026-09-29
 
 ### Fixed
