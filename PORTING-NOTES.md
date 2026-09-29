@@ -889,6 +889,39 @@ tables were raised eightfold: `MAXVISPLANES`, `MAXOPENINGS`, `MAXDRAWSEGS`,
 Only memory depends on them. The scrolling-wall list, which the original
 filled with no check at all, stops at its end now.
 
+## The mixer's socket outlived the engine, and then froze the next one
+
+The WAD menu restarts the engine with `execv`, and file descriptors survive
+an exec unless marked `FD_CLOEXEC`. The controller's listening socket was
+found that way in 1.13 (the new engine could not bind its port); the sound
+mixer's connection was not, because nothing failed loudly. The old
+connection stayed open in the new process, unused. `audiostream` served one
+engine connection at a time and only looked for another once the current
+one closed, which it never did -- so after any Load WAD the new engine's
+connection sat in the listen backlog, accepted by the kernel and never read.
+
+Its sound commands went into that connection's buffer. A unix stream socket
+charges each small `write` for far more than its 10 bytes, so the buffer
+fills within minutes of play -- under one minute of firing, in the
+reproduction -- and then `fflush` in `I_StartSound` blocks for ever. The main loop stops;
+the music thread, writing its own pipe that the mixer does read, carries on.
+Reproduced exactly by holding a stale connection open before the engine
+starts: silence, then a backtrace in `write` from `I_StartSound`.
+
+Three changes, any one of which would have prevented it:
+
+- `i_sound.c` connects with `FD_CLOEXEC`, and `I_ShutdownSound` closes the
+  socket after its "q". The music pipe opens `O_CLOEXEC` too.
+- Sound commands go out with `send(..., MSG_DONTWAIT | MSG_NOSIGNAL)`
+  instead of through stdio: a mixer that is not reading loses sounds, and
+  the game does not wait for it.
+- `audiostream` accepts on every period, and a new connection replaces the
+  current one: a new connection is a new engine. "q" hangs up.
+
+The smoke test's `loadwad` phase now runs the mixer and has to hear the
+menu's sounds after the restart; against 1.14.0's engine and mixer it fails
+with a peak of 1.
+
 ## Limit-removing, as UZDoom is for classic maps
 
 "Limit-removing" is the level of support a map's text file asks for when it

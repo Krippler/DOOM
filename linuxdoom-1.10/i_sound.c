@@ -76,6 +76,24 @@ void I_FluidSetGain (int volume);
 // Separate sound server process.
 FILE*	sndserver=0;
 char*	sndserver_filename = "./sndserver ";
+
+// The mixer's socket, when audiostream does the mixing (DOOM_SFX_SOCKET).
+// Written to directly and never waited on: a mixer that stops reading costs
+// the sounds it misses, not the game. Through stdio, a full socket blocked
+// the whole engine in fflush -- the picture froze, the music, which goes
+// another way, played on.
+static int	sndsock = -1;
+
+static void I_SendSound (const char* cmd, int len)
+{
+  if (sndsock >= 0)
+    send (sndsock, cmd, len, MSG_DONTWAIT | MSG_NOSIGNAL);
+  else if (sndserver)
+  {
+    fwrite (cmd, 1, len, sndserver);
+    fflush (sndserver);
+  }
+}
 #elif SNDINTR
 
 // Update all 30 millisecs, approx. 30fps synchronized.
@@ -498,10 +516,12 @@ I_StartSound
   priority = 0;
   
 #ifdef SNDSERV 
-    if (sndserver)
     {
-	fprintf(sndserver, "p%2.2x%2.2x%2.2x%2.2x\n", id, pitch, vol, sep);
-	fflush(sndserver);
+	char	cmd[16];
+
+	snprintf (cmd, sizeof(cmd), "p%2.2x%2.2x%2.2x%2.2x\n",
+		  id & 0xff, pitch & 0xff, vol & 0xff, sep & 0xff);
+	I_SendSound (cmd, 10);
     }
     // warning: control reaches end of non-void function.
     return id;
@@ -713,11 +733,17 @@ I_UpdateSoundParams
 void I_ShutdownSound(void)
 {    
 #ifdef SNDSERV
-  if (sndserver)
+  // Send a "quit" command.
+  I_SendSound ("q\n", 2);
+
+  // And hang up. The WAD menu restarts the engine with exec, and a socket
+  // left open went with it into the new engine, where nothing used it: the
+  // mixer went on listening to that dead connection, the new engine's
+  // waited unanswered, and there were no sound effects after any Load WAD.
+  if (sndsock >= 0)
   {
-    // Send a "quit" command.
-    fprintf(sndserver, "q\n");
-    fflush(sndserver);
+    close (sndsock);
+    sndsock = -1;
   }
 #else
   // Wait till all pending sounds are finished.
@@ -802,13 +828,12 @@ I_InitSound()
       }
       else
       {
-	sndserver = fdopen(fd, "w");
-
-	if (!sndserver)
-	  close(fd);
-	else
-	  fprintf(stderr, "sound: mixing in audiostream, commands to %s\n",
-		  sockpath);
+	// not into whatever this process execs, should it not get to
+	// I_ShutdownSound first
+	fcntl (fd, F_SETFD, FD_CLOEXEC);
+	sndsock = fd;
+	fprintf(stderr, "sound: mixing in audiostream, commands to %s\n",
+		sockpath);
       }
     }
   }
@@ -826,6 +851,8 @@ I_InitSound()
     {
       strcat(buffer, " -quiet");
       sndserver = popen(buffer, "w");
+      if (sndserver)
+	fcntl (fileno (sndserver), F_SETFD, FD_CLOEXEC);
     }
     else
       fprintf(stderr, "Could not start sound server [%s]\n", buffer);
@@ -1355,7 +1382,7 @@ void I_InitMusic(void)
     {
 	// The reader holds a write end of its own, so this does not wait for
 	// one to appear.
-	fl_pipe_fd = open (pipepath, O_WRONLY);
+	fl_pipe_fd = open (pipepath, O_WRONLY | O_CLOEXEC);
 
 	if (fl_pipe_fd < 0)
 	{

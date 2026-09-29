@@ -12,6 +12,22 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [1.14.1] — 2026-09-29
+
+### Fixed
+- **No sound effects after Load WAD, and then a frozen game.** Load WAD
+  restarts the engine in place, and the old engine's connection to the
+  sound mixer went along into the new one, still open and never used
+  again. The mixer kept listening to that dead connection, so the new
+  engine's sounds went unheard; and every sound it played queued up
+  unread until the connection was full, when the engine stopped dead
+  waiting to write the next one. The picture froze while the music, which
+  travels separately, played on. This had been the case since Load WAD
+  was added, and it is likely what froze SIGIL II earlier on too. The
+  engine now closes its connection before restarting, never waits on the
+  mixer (a sound the mixer cannot take is dropped, not waited for), and
+  the mixer always follows the newest engine to connect.
+
 ## [1.14.0] — 2026-09-29
 
 ### Added

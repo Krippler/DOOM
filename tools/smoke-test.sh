@@ -589,12 +589,19 @@ say "it went back to the game before, and listens for the controller again"
 # it into the new one, the controller's listening socket included, so the
 # new engine could not listen on the same port: "cannot listen on port ...
 # (Address already in use)", and no controller from the browser until the
-# container was restarted. The menu is walked with keys, as a player would.
+# container was restarted. The connection to the mixer went too, open and
+# unused, and the mixer went on listening to it instead of the new engine:
+# no sound effects after a Load WAD, and once the new engine had filled its
+# own connection's buffer, a game frozen writing to it (up to 1.14.0). The
+# menu is walked with keys, as a player would; after the restart, working
+# the menu has to be heard.
 if command -v xdotool >/dev/null 2>&1; then
-    say "loadwad: Load WAD restarts the engine, controller and all"
+    say "loadwad: Load WAD restarts the engine, controller, sound and all"
     start_x 24
-    rm -f "$work/.doomrc"
-    DOOM_PAD_PORT="$pad_port" start_game loadwad.log
+    start_mixer
+    printf 'music_volume 0\nsfx_volume 15\n' >"$work/.doomrc"
+    DOOM_SFX_SOCKET="$work/sfx.sock" DOOM_MUSIC_PIPE="$work/music.pipe" \
+    DOOM_AUDIO_RATE=22050 DOOM_PAD_PORT="$pad_port" start_game loadwad.log
     i=0
     until grep -q "I_InitGraphics" "$work/loadwad.log" 2>/dev/null; do
         i=$((i + 1))
@@ -618,10 +625,21 @@ if command -v xdotool >/dev/null 2>&1; then
         && die "after Load WAD the controller's port was still held; see $work/loadwad.log"
     [ "$(grep -c "^Controller: from the browser, port $pad_port" "$work/loadwad.log")" = 2 ] \
         || die "after Load WAD nothing listened for the controller; see $work/loadwad.log"
+    sleep 2
+    python3 "$client" peak --audio "$audio_port" --secs 4 &
+    listener=$!
+    sleep 1
+    for k in Escape Down Down Up Escape Escape Down Escape; do
+        DISPLAY="$disp" xdotool key "$k"
+        sleep 0.3
+    done
+    wait "$listener" \
+        || die "after Load WAD the menu's sounds were not heard; see $work/loadwad.log"
     kill "$game_pid" 2>/dev/null
     wait_game 10
+    stop_mixer
     stop_x
-    say "the engine restarted, and listens for the controller again"
+    say "the engine restarted, listens for the controller again, and is heard"
 else
     say "loadwad: skipped, xdotool is not installed"
 fi

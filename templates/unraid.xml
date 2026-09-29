@@ -39,6 +39,11 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.14.1
+- Sound effects work after choosing a WAD from Load WAD. Before, they went
+  silent, and after a few minutes of play the game froze while the music
+  played on.
+
 ### 1.14.0
 - Limit-removing, for maps in DOOM's own format: maps made for newer
   engines no longer stop with an error, crash or draw garbage when they are

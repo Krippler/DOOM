@@ -356,19 +356,27 @@ OpenCommands (const char* path)
 static void
 ReadCommands (void)
 {
-    if (cmd_fd < 0)
+    // A new connection is a new engine, and the one before is finished with
+    // whether or not its connection says so. The WAD menu restarts the
+    // engine with exec, and up to 1.14.0 the old connection went with it,
+    // open and silent: listening to it alone meant never hearing the new
+    // engine, which then filled its end and stopped dead writing to it.
+    int		conn = accept (cmd_lfd, NULL, NULL);
+
+    if (conn >= 0)
     {
-	cmd_fd = accept (cmd_lfd, NULL, NULL);
-
-	if (cmd_fd < 0)
-	    return;
-
+	if (cmd_fd >= 0)
+	    close (cmd_fd);
+	cmd_fd = conn;
 	fcntl (cmd_fd, F_SETFL, O_NONBLOCK);
 	cmd_have = 0;
 
 	if (verbose)
 	    fprintf (stderr, "audiostream: engine connected\n");
     }
+
+    if (cmd_fd < 0)
+	return;
 
     for (;;)
     {
@@ -428,7 +436,12 @@ ReadCommands (void)
 	    }
 	    else if (*c == 'q')
 	    {
-		used += 2 <= cmd_have - used ? 2 : (cmd_have - used);
+		// The engine is quitting or restarting: hang up, and take
+		// whichever connects next.
+		close (cmd_fd);
+		cmd_fd = -1;
+		cmd_have = 0;
+		return;
 	    }
 	    else
 	    {
