@@ -2,7 +2,7 @@
 
 All notable changes are here. The format follows Keep a Changelog, and the
 top section's heading is what the release workflow reads: `## [X.Y.Z] — DATE`
-on the default branch publishes that version, `## [Unreleased]` publishes only
+on the default branch publishes that version, `## [1.14.0] — 2026-09-29` publishes only
 `edge`. Versions are the image tags published to `ghcr.io/krippler/doom`, so
 `1.11.0` here is `:1.11.0` there.
 

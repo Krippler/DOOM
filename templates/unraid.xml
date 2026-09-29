@@ -39,6 +39,15 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.14.0
+- Limit-removing, for maps in DOOM's own format: maps made for newer
+  engines no longer stop with an error, crash or draw garbage when they are
+  bigger or busier than id's. Node builders' extended formats, big
+  blockmaps, walls of any height and mods with partial texture lists or
+  sprite sets all work. Boom, UDMF and ZScript maps still do not.
+- 32 sounds can play at once, instead of 8.
+- The original games play exactly as before.
+
 ### 1.13.4
 - SIGIL II no longer stalls for seconds at a time on levels with see-through
   walls made of several pictures (E6M2, E6M7), which are drawn properly now
