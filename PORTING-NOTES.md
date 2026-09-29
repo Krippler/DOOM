@@ -889,6 +889,38 @@ tables were raised eightfold: `MAXVISPLANES`, `MAXOPENINGS`, `MAXDRAWSEGS`,
 Only memory depends on them. The scrolling-wall list, which the original
 filled with no check at all, stops at its end now.
 
+## SIGIL II, and the limits a "limit-removing" map needs gone
+
+SIGIL II's own text file says "Advanced engine needed: Limit-removing.
+Developed using GZDoom." -- where the first SIGIL was made for the 1993
+engine. So it met the 1993 engine's limits one at a time: the flats (below),
+then these.
+
+**The Medusa effect.** `R_RenderMaskedSegRange` draws a middle texture on a
+two-sided line post by post, and took its columns from `R_GetColumn`, backing
+up three bytes to where a post header would be. For a column one patch
+covers, that is the patch's own column and right. For a column two patches
+overlap, `R_GetColumn` returns the composite built for walls -- plain pixels,
+no posts -- and the masked drawer read colours as offsets and lengths until a
+colour happened to be 255. SIGIL II has such textures on two-sided lines on
+E6M2 (`SW1LION`) and E6M7 (`WOOD1`, `WOOD5`). Its demo of E6M2 took 664 and
+then 2827 realtics under `-timedemo` on two runs of 1.13.3, against 60 to 80
+for its other demos, and the lion switch drew as stripes. `R_GetMaskedColumn`
+now returns a patch column where there is one, and otherwise builds, once per
+texture, a column of real posts from where each patch has pixels
+(`R_GenerateMaskedComposite`); walls keep the plain composite. The E6M2 demo
+now takes 62.
+
+**Tables written past unchecked**, each now grown or sized to what it can
+need: `intercepts` (128; a trace across a 4000-line map, `P_RoomForIntercept`
+doubles it), `spechit` (8; doubled in `PIT_CheckLine`), `solidsegs` (32;
+`SCREENWIDTH/2+2`, the most ranges a row of columns can split into), and
+`P_FindNextHighestFloor`'s height list (20; one per line of the sector). None
+of them overflowed in SIGIL II's four demos, under a build that reported it
+if they did; they are the rest of what "limit-removing" means, and a player
+goes places demos do not. The original games' demos -- DOOM's four, DOOM II's
+three, TNT's and Plutonia's -- run to the same gametic as on 1.13.3.
+
 ## Flats from more than one file
 
 `R_InitFlats` took the flats to be the lumps between `W_GetNumForName

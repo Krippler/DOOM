@@ -12,6 +12,27 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [Unreleased]
+
+### Fixed
+- **SIGIL II stalled for seconds at a time, and drew stripes where a lion's
+  head should be.** DOOM draws a see-through wall — a grate, a fence, E6M2's
+  lion-head switch — from the gaps and runs in its picture, and a texture
+  made of more than one picture has none of that information: id's engine
+  read its colours as if they were, drawing garbage for as long as the
+  garbage said to (the "Medusa effect"). Classic maps avoided such walls;
+  SIGIL II, made for newer engines, has them on E6M2 and E6M7, and its own
+  demo of E6M2 took 81 seconds to play at full speed instead of 2. They are
+  drawn properly now, and that demo takes as long as the others.
+- **Four more of the 1993 engine's fixed tables that nothing checked** grow
+  now instead of being written past: the lines a shot or a line of sight
+  crosses (128), the special lines one step touches (8), the stretches of the
+  screen already walled off (32), and a sector's neighbours when a floor
+  moves (20). A map as big as SIGIL II's — over 4,000 lines — can pass any of
+  them, and what follows is a crash or a freeze wherever the overflow lands.
+  The original games play exactly as before: their demos run to the same
+  tic.
+
 ## [1.13.3] — 2026-09-29
 
 ### Fixed
