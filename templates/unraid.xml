@@ -39,6 +39,13 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.16.0
+- Switches light up when used in The Ultimate DOOM and mods played on it,
+  SIGIL II included: the lion, gargoyle, skin, wood and other switches of
+  episodes 2 and 3 never changed before.
+- Mods' own switch and animation lists (SWITCHES and ANIMATED lumps) are
+  read; SIGIL II's burning walls now burn.
+
 ### 1.15.0
 - New Game asks which game or mod to play first, from the WADs you
   mounted in alphabetical order, then goes straight to the difficulty,
