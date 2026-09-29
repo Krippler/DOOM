@@ -33,6 +33,10 @@
 
 // Visplane related.
 extern  short*		lastopening;
+extern  short*		openings;
+
+// Room in openings for n more, before a wall segment takes them.
+void R_EnsureOpenings (int n);
 
 
 typedef void (*planefunction_t) (int top, int bottom);

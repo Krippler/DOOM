@@ -42,7 +42,8 @@ rcsid[] = "$Id: p_ceilng.c,v 1.4 1997/02/03 16:47:53 b1 Exp $";
 //
 
 
-ceiling_t*	activeceilings[MAXCEILINGS];
+ceiling_t**	activeceilings;
+int		maxceilings;
 
 
 //
@@ -252,14 +253,8 @@ void P_AddActiveCeiling(ceiling_t* c)
 {
     int		i;
     
-    for (i = 0; i < MAXCEILINGS;i++)
-    {
-	if (activeceilings[i] == NULL)
-	{
-	    activeceilings[i] = c;
-	    return;
-	}
-    }
+    i = P_FreeSlot ((void***) &activeceilings, &maxceilings);
+    activeceilings[i] = c;
 }
 
 
@@ -271,7 +266,7 @@ void P_RemoveActiveCeiling(ceiling_t* c)
 {
     int		i;
 	
-    for (i = 0;i < MAXCEILINGS;i++)
+    for (i = 0;i < maxceilings;i++)
     {
 	if (activeceilings[i] == c)
 	{
@@ -292,7 +287,7 @@ void P_ActivateInStasisCeiling(line_t* line)
 {
     int		i;
 	
-    for (i = 0;i < MAXCEILINGS;i++)
+    for (i = 0;i < maxceilings;i++)
     {
 	if (activeceilings[i]
 	    && (activeceilings[i]->tag == line->tag)
@@ -317,7 +312,7 @@ int	EV_CeilingCrushStop(line_t	*line)
     int		rtn;
 	
     rtn = 0;
-    for (i = 0;i < MAXCEILINGS;i++)
+    for (i = 0;i < maxceilings;i++)
     {
 	if (activeceilings[i]
 	    && (activeceilings[i]->tag == line->tag)

@@ -382,9 +382,23 @@ R_StoreWallRange
     fixed_t		vtop;
     int			lightnum;
 
-    // don't overflow and crash
-    if (ds_p == &drawsegs[MAXDRAWSEGS])
-	return;		
+    // room for one more segment, and for the clipping it may keep
+    {
+	extern int	maxdrawsegs;
+
+	if (ds_p - drawsegs == maxdrawsegs)
+	{
+	    int		n = ds_p - drawsegs;
+
+	    maxdrawsegs = maxdrawsegs ? maxdrawsegs * 2 : 256;
+	    drawsegs = realloc (drawsegs, maxdrawsegs * sizeof(*drawsegs));
+	    if (!drawsegs)
+		I_Error ("R_StoreWallRange: no memory for %d segments",
+			 maxdrawsegs);
+	    ds_p = drawsegs + n;
+	}
+	R_EnsureOpenings (3 * (stop - start + 1));
+    }		
 		
 #ifdef RANGECHECK
     if (start >=viewwidth || start > stop)

@@ -1887,8 +1887,11 @@ A_CloseShotgun2
 
 
 
-mobj_t*		braintargets[32];
+// The spots the boss brain spits cubes at. id's array held 32 and went on
+// writing past it; this grows.
+mobj_t**	braintargets;
 int		numbraintargets;
+static int	maxbraintargets;
 int		braintargeton;
 
 void A_BrainAwake (mobj_t* mo)
@@ -1912,6 +1915,15 @@ void A_BrainAwake (mobj_t* mo)
 
 	if (m->type == MT_BOSSTARGET )
 	{
+	    if (numbraintargets == maxbraintargets)
+	    {
+		maxbraintargets = maxbraintargets ? maxbraintargets * 2 : 32;
+		braintargets = realloc (braintargets,
+					maxbraintargets * sizeof(*braintargets));
+		if (!braintargets)
+		    I_Error ("A_BrainAwake: no memory for %d targets",
+			     maxbraintargets);
+	    }
 	    braintargets[numbraintargets] = m;
 	    numbraintargets++;
 	}

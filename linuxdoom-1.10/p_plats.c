@@ -25,6 +25,8 @@ static const char
 rcsid[] = "$Id: p_plats.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 
 
+#include <stdlib.h>
+#include <string.h>
 #include "i_system.h"
 #include "z_zone.h"
 #include "m_random.h"
@@ -42,7 +44,25 @@ rcsid[] = "$Id: p_plats.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 #include "sounds.h"
 
 
-plat_t*		activeplats[MAXPLATS];
+plat_t**	activeplats;
+int		maxplats;
+
+
+int P_FreeSlot (void*** table, int* n)
+{
+    int		i;
+
+    for (i = 0; i < *n; i++)
+	if (!(*table)[i])
+	    return i;
+
+    *n = *n ? *n * 2 : 32;
+    *table = realloc (*table, *n * sizeof(**table));
+    if (!*table)
+	I_Error ("P_FreeSlot: no memory for %d", *n);
+    memset (*table + i, 0, (*n - i) * sizeof(**table));
+    return i;
+}
 
 
 
@@ -259,7 +279,7 @@ void P_ActivateInStasis(int tag)
 {
     int		i;
 	
-    for (i = 0;i < MAXPLATS;i++)
+    for (i = 0;i < maxplats;i++)
 	if (activeplats[i]
 	    && (activeplats[i])->tag == tag
 	    && (activeplats[i])->status == in_stasis)
@@ -274,7 +294,7 @@ void EV_StopPlat(line_t* line)
 {
     int		j;
 	
-    for (j = 0;j < MAXPLATS;j++)
+    for (j = 0;j < maxplats;j++)
 	if (activeplats[j]
 	    && ((activeplats[j])->status != in_stasis)
 	    && ((activeplats[j])->tag == line->tag))
@@ -289,19 +309,14 @@ void P_AddActivePlat(plat_t* plat)
 {
     int		i;
     
-    for (i = 0;i < MAXPLATS;i++)
-	if (activeplats[i] == NULL)
-	{
-	    activeplats[i] = plat;
-	    return;
-	}
-    I_Error ("P_AddActivePlat: no more plats!");
+    i = P_FreeSlot ((void***) &activeplats, &maxplats);
+    activeplats[i] = plat;
 }
 
 void P_RemoveActivePlat(plat_t* plat)
 {
     int		i;
-    for (i = 0;i < MAXPLATS;i++)
+    for (i = 0;i < maxplats;i++)
 	if (plat == activeplats[i])
 	{
 	    (activeplats[i])->sector->specialdata = NULL;

@@ -26,6 +26,8 @@ static const char
 rcsid[] = "$Id: p_switch.c,v 1.3 1997/01/28 22:08:29 b1 Exp $";
 
 
+#include <stdlib.h>
+#include <string.h>
 #include "i_system.h"
 #include "doomdef.h"
 #include "p_local.h"
@@ -98,7 +100,8 @@ switchlist_t alphSwitchList[] =
 
 int		switchlist[MAXSWITCHES * 2];
 int		numswitches;
-button_t        buttonlist[MAXBUTTONS];
+button_t**	buttonlist;
+int		maxbuttons;
 
 //
 // P_InitSwitchList
@@ -149,6 +152,17 @@ void P_InitSwitchList(void)
 
 
 //
+// Where id's code played a switch's sound from: the first button slot's
+// origin, whichever line that was (or none, before any button was used) --
+// buttonlist->soundorg. Kept, as it is part of how the game sounds.
+//
+static mobj_t* P_FirstButtonOrigin (void)
+{
+    return maxbuttons ? buttonlist[0]->soundorg : NULL;
+}
+
+
+//
 // Start a button counting down till it turns off.
 //
 void
@@ -161,10 +175,10 @@ P_StartButton
     int		i;
     
     // See if button is already pressed
-    for (i = 0;i < MAXBUTTONS;i++)
+    for (i = 0;i < maxbuttons;i++)
     {
-	if (buttonlist[i].btimer
-	    && buttonlist[i].line == line)
+	if (buttonlist[i]->btimer
+	    && buttonlist[i]->line == line)
 	{
 	    
 	    return;
@@ -173,20 +187,25 @@ P_StartButton
     
 
     
-    for (i = 0;i < MAXBUTTONS;i++)
+    for (i = 0;i < maxbuttons;i++)
+	if (!buttonlist[i]->btimer)
+	    break;
+
+    if (i == maxbuttons)
     {
-	if (!buttonlist[i].btimer)
-	{
-	    buttonlist[i].line = line;
-	    buttonlist[i].where = w;
-	    buttonlist[i].btexture = texture;
-	    buttonlist[i].btimer = time;
-	    buttonlist[i].soundorg = (mobj_t *)&line->frontsector->soundorg;
-	    return;
-	}
+	int	j;
+
+	i = P_FreeSlot ((void***) &buttonlist, &maxbuttons);
+	for (j = i; j < maxbuttons; j++)
+	    if (!(buttonlist[j] = calloc (1, sizeof(button_t))))
+		I_Error ("P_StartButton: no memory for %d buttons", maxbuttons);
     }
-    
-    I_Error("P_StartButton: no button slots left!");
+
+    buttonlist[i]->line = line;
+    buttonlist[i]->where = w;
+    buttonlist[i]->btexture = texture;
+    buttonlist[i]->btimer = time;
+    buttonlist[i]->soundorg = (mobj_t *)&line->frontsector->soundorg;
 }
 
 
@@ -225,7 +244,7 @@ P_ChangeSwitchTexture
     {
 	if (switchlist[i] == texTop)
 	{
-	    S_StartSound(buttonlist->soundorg,sound);
+	    S_StartSound(P_FirstButtonOrigin (),sound);
 	    sides[line->sidenum[0]].toptexture = switchlist[i^1];
 
 	    if (useAgain)
@@ -237,7 +256,7 @@ P_ChangeSwitchTexture
 	{
 	    if (switchlist[i] == texMid)
 	    {
-		S_StartSound(buttonlist->soundorg,sound);
+		S_StartSound(P_FirstButtonOrigin (),sound);
 		sides[line->sidenum[0]].midtexture = switchlist[i^1];
 
 		if (useAgain)
@@ -249,7 +268,7 @@ P_ChangeSwitchTexture
 	    {
 		if (switchlist[i] == texBot)
 		{
-		    S_StartSound(buttonlist->soundorg,sound);
+		    S_StartSound(P_FirstButtonOrigin (),sound);
 		    sides[line->sidenum[0]].bottomtexture = switchlist[i^1];
 
 		    if (useAgain)

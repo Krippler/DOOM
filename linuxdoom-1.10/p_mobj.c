@@ -24,6 +24,8 @@
 static const char
 rcsid[] = "$Id: p_mobj.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 
+#include <stdlib.h>
+#include <string.h>
 #include "i_system.h"
 #include "z_zone.h"
 #include "m_random.h"
@@ -723,7 +725,19 @@ void P_SpawnMapThing (mapthing_t* mthing)
     // count deathmatch start positions
     if (mthing->type == 11)
     {
-	if (deathmatch_p < &deathmatchstarts[10])
+	// id's array held 10 and ignored the rest; this grows
+	if (deathmatch_p - deathmatchstarts == maxdeathmatchstarts)
+	{
+	    int		n = deathmatch_p - deathmatchstarts;
+
+	    maxdeathmatchstarts *= 2;
+	    deathmatchstarts = realloc (deathmatchstarts,
+					maxdeathmatchstarts
+					* sizeof(*deathmatchstarts));
+	    if (!deathmatchstarts)
+		I_Error ("P_SpawnMapThing: no memory for deathmatch starts");
+	    deathmatch_p = deathmatchstarts + n;
+	}
 	{
 	    memcpy (deathmatch_p, mthing, sizeof(*mthing));
 	    deathmatch_p++;

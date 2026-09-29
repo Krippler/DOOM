@@ -287,8 +287,12 @@ void R_InitSpriteDefs (char** namelist)
 //
 // GAME FUNCTIONS
 //
-vissprite_t	vissprites[MAXVISSPRITES];
+// The sprites seen this frame. id's 128 (raised here to 1024) left the rest
+// undrawn; this grows instead. Nothing points into it until the frame's
+// sprites are sorted, after the last is added.
+vissprite_t*	vissprites;
 vissprite_t*	vissprite_p;
+static int	maxvissprites;
 int		newvissprite;
 
 
@@ -328,9 +332,17 @@ vissprite_t	overflowsprite;
 
 vissprite_t* R_NewVisSprite (void)
 {
-    if (vissprite_p == &vissprites[MAXVISSPRITES])
-	return &overflowsprite;
-    
+    if (vissprite_p - vissprites == maxvissprites)
+    {
+	int	n = vissprite_p - vissprites;
+
+	maxvissprites = maxvissprites ? maxvissprites * 2 : 128;
+	vissprites = realloc (vissprites, maxvissprites * sizeof(*vissprites));
+	if (!vissprites)
+	    I_Error ("R_NewVisSprite: no memory for %d sprites", maxvissprites);
+	vissprite_p = vissprites + n;
+    }
+
     vissprite_p++;
     return vissprite_p-1;
 }

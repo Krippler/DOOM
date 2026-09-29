@@ -52,21 +52,77 @@ planefunction_t		ceilingfunc;
 
 // Here comes the obnoxious "visplane".
 //
-// This and the other fixed tables of the renderer and the play code were
-// sized in 1993 for id's own maps, and the add-ons of the 2024 re-release
-// go past them -- SIGIL's E5M6 wants 132 visplanes where there were 128, and
-// the game stopped. Raised eight times over; all they cost is memory, a
-// megabyte or so in all. Nothing about how the game plays depends on them.
-#define MAXVISPLANES	1024
-visplane_t		visplanes[MAXVISPLANES];
-visplane_t*		lastvisplane;
+// This and the other tables of the renderer and the play code were sized in
+// 1993 for id's own maps. SIGIL's E5M6 wants 132 visplanes where there were
+// 128, and the game stopped; they were raised eight times over, and then, for
+// maps made for limit-removing engines, made to grow as far as a map needs.
+//
+// Visplanes, the floor and ceiling areas seen this frame. id's array held
+// 128; this one had been raised to 1024 and stopped with "no more visplanes"
+// past it, and R_CheckPlane wrote past it with no check at all. Now there
+// are as many as a frame needs. Each is allocated once and kept, so the
+// planes the BSP walk holds on to (floorplane, ceilingplane) never move, and
+// they are looked up through a hash rather than one by one -- a big open map
+// makes thousands. A chain is kept in the order planes were made, so the one
+// found is the first made, as id's search through the array found it.
+//
+#define VISPLANEHASH	128
+
+static visplane_t**	visplanes;		// this frame's, in order made
+static int		numvisplanes;
+static int		maxvisplanes;
+static visplane_t*	visplanehash[VISPLANEHASH];
+
+static unsigned R_VisplaneHash (fixed_t height, int picnum, int lightlevel)
+{
+    return ((unsigned) height * 7 + (unsigned) picnum * 3
+	    + (unsigned) lightlevel) % VISPLANEHASH;
+}
+
+static visplane_t* R_NewVisplane (fixed_t height, int picnum, int lightlevel)
+{
+    visplane_t*		pl;
+    visplane_t**	link;
+    int			i;
+
+    if (numvisplanes == maxvisplanes)
+    {
+	maxvisplanes = maxvisplanes ? maxvisplanes * 2 : 128;
+	visplanes = realloc (visplanes, maxvisplanes * sizeof(*visplanes));
+	if (!visplanes)
+	    I_Error ("R_NewVisplane: no memory for %d planes", maxvisplanes);
+	for (i = numvisplanes; i < maxvisplanes; i++)
+	    if (!(visplanes[i] = malloc (sizeof(visplane_t))))
+		I_Error ("R_NewVisplane: no memory for %d planes",
+			 maxvisplanes);
+    }
+
+    pl = visplanes[numvisplanes++];
+    pl->height = height;
+    pl->picnum = picnum;
+    pl->lightlevel = lightlevel;
+    pl->next = NULL;
+
+    link = &visplanehash[R_VisplaneHash (height, picnum, lightlevel)];
+    while (*link)
+	link = &(*link)->next;
+    *link = pl;
+
+    return pl;
+}
 visplane_t*		floorplane;
 visplane_t*		ceilingplane;
 
 // ?
-#define MAXOPENINGS	SCREENWIDTH*512
-short			openings[MAXOPENINGS];
+//
+// Openings: the clipping each wall segment leaves for the sprites and masked
+// textures drawn after it. The array had a fixed size and was checked only
+// after a frame had filled it. It grows now; the segments already pointing
+// into it are moved with it (R_EnsureOpenings).
+//
+short*			openings;
 short*			lastopening;
+static int		maxopenings;
 
 
 //
@@ -205,7 +261,8 @@ void R_ClearPlanes (void)
 	ceilingclip[i] = -1;
     }
 
-    lastvisplane = visplanes;
+    numvisplanes = 0;
+    memset (visplanehash, 0, sizeof(visplanehash));
     lastopening = openings;
     
     // texture calculation
@@ -225,6 +282,45 @@ void R_ClearPlanes (void)
 //
 // R_FindPlane
 //
+//
+// Room for n more openings. Drawsegs hold pointers into the array, offset by
+// their first column, so each is moved if it pointed there -- and left alone
+// if it points at one of the fixed arrays the clipping can also use.
+//
+void R_EnsureOpenings (int n)
+{
+    int		used = lastopening - openings;
+    short*	old = openings;
+    drawseg_t*	ds;
+
+    if (openings && used + n <= maxopenings)
+	return;
+
+    while (used + n > maxopenings)
+	maxopenings = maxopenings ? maxopenings * 2 : SCREENWIDTH * 64;
+
+    openings = realloc (openings, maxopenings * sizeof(*openings));
+    if (!openings)
+	I_Error ("R_EnsureOpenings: no memory for %d", maxopenings);
+    lastopening = openings + used;
+
+    if (!old)
+	return;
+
+#define R_MOVEOPENING(p) \
+    if ((p) && (p) + ds->x1 >= old && (p) + ds->x1 <= old + used) \
+	(p) = openings + ((p) - old)
+
+    for (ds = drawsegs; ds < ds_p; ds++)
+    {
+	R_MOVEOPENING (ds->maskedtexturecol);
+	R_MOVEOPENING (ds->sprtopclip);
+	R_MOVEOPENING (ds->sprbottomclip);
+    }
+#undef R_MOVEOPENING
+}
+
+
 visplane_t*
 R_FindPlane
 ( fixed_t	height,
@@ -239,28 +335,16 @@ R_FindPlane
 	lightlevel = 0;
     }
 	
-    for (check=visplanes; check<lastvisplane; check++)
+    for (check = visplanehash[R_VisplaneHash (height, picnum, lightlevel)];
+	 check; check = check->next)
     {
 	if (height == check->height
 	    && picnum == check->picnum
 	    && lightlevel == check->lightlevel)
-	{
-	    break;
-	}
+	    return check;
     }
-    
-			
-    if (check < lastvisplane)
-	return check;
-		
-    if (lastvisplane - visplanes == MAXVISPLANES)
-	I_Error ("R_FindPlane: no more visplanes");
-		
-    lastvisplane++;
 
-    check->height = height;
-    check->picnum = picnum;
-    check->lightlevel = lightlevel;
+    check = R_NewVisplane (height, picnum, lightlevel);
     check->minx = SCREENWIDTH;
     check->maxx = -1;
     
@@ -321,11 +405,7 @@ R_CheckPlane
     }
 	
     // make a new visplane
-    lastvisplane->height = pl->height;
-    lastvisplane->picnum = pl->picnum;
-    lastvisplane->lightlevel = pl->lightlevel;
-    
-    pl = lastvisplane++;
+    pl = R_NewVisplane (pl->height, pl->picnum, pl->lightlevel);
     pl->minx = start;
     pl->maxx = stop;
 
@@ -382,23 +462,12 @@ void R_DrawPlanes (void)
     int			x;
     int			stop;
     int			angle;
-				
-#ifdef RANGECHECK
-    if (ds_p - drawsegs > MAXDRAWSEGS)
-	I_Error ("R_DrawPlanes: drawsegs overflow (%i)",
-		 ds_p - drawsegs);
-    
-    if (lastvisplane - visplanes > MAXVISPLANES)
-	I_Error ("R_DrawPlanes: visplane overflow (%i)",
-		 lastvisplane - visplanes);
-    
-    if (lastopening - openings > MAXOPENINGS)
-	I_Error ("R_DrawPlanes: opening overflow (%i)",
-		 lastopening - openings);
-#endif
+    int			i;
 
-    for (pl = visplanes ; pl < lastvisplane ; pl++)
+    for (i = 0 ; i < numvisplanes ; i++)
     {
+	pl = visplanes[i];
+
 	if (pl->minx > pl->maxx)
 	    continue;
 

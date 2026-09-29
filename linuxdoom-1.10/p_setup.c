@@ -26,6 +26,8 @@ static const char
 rcsid[] = "$Id: p_setup.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 
 
+#include <stdlib.h>
+#include <string.h>
 #include <math.h>
 
 #include "z_zone.h"
@@ -107,10 +109,9 @@ byte*		rejectmatrix;
 
 
 // Maintain single and multi player starting spots.
-#define MAX_DEATHMATCH_STARTS	10
-
-mapthing_t	deathmatchstarts[MAX_DEATHMATCH_STARTS];
+mapthing_t*	deathmatchstarts;
 mapthing_t*	deathmatch_p;
+int		maxdeathmatchstarts;
 mapthing_t	playerstarts[MAXPLAYERS];
 
 
@@ -664,6 +665,14 @@ P_SetupLevel
     P_GroupLines ();
 
     bodyqueslot = 0;
+    if (!deathmatchstarts)
+    {
+	maxdeathmatchstarts = 10;
+	deathmatchstarts = malloc (maxdeathmatchstarts
+				   * sizeof(*deathmatchstarts));
+	if (!deathmatchstarts)
+	    I_Error ("P_SetupLevel: no memory for deathmatch starts");
+    }
     deathmatch_p = deathmatchstarts;
     P_LoadThings (lumpnum+ML_THINGS);
     

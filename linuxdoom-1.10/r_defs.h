@@ -52,7 +52,6 @@
 #define SIL_TOP			2
 #define SIL_BOTH		3
 
-#define MAXDRAWSEGS		2048	// 256; see MAXVISPLANES
 
 
 
@@ -464,7 +463,7 @@ typedef struct
 //
 // Now what is a visplane, anyway?
 // 
-typedef struct
+typedef struct visplane_s
 {
   fixed_t		height;
   int			picnum;
@@ -472,6 +471,9 @@ typedef struct
   int			minx;
   int			maxx;
   
+  // the next plane in the same hash chain (r_plane.c)
+  struct visplane_s*	next;
+
   // leave pads for [minx-1]/[maxx+1]
   
   byte		pad1;

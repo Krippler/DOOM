@@ -33,8 +33,7 @@
 
 
 
-#define MAXWADFILES             20
-extern char*		wadfiles[MAXWADFILES];
+extern char**		wadfiles;	// NULL-terminated; the IWAD first
 
 void D_AddFile (char *file);
 

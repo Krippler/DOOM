@@ -95,7 +95,9 @@ static const char rcsid[] = "$Id: d_main.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 void D_DoomLoop (void);
 
 
-char*		wadfiles[MAXWADFILES];
+// The files to load, the IWAD first. id's array held 20, unchecked.
+char**		wadfiles;
+static int	maxwadfiles;
 
 
 boolean		devparm;	// started game with -devparm
@@ -783,8 +785,18 @@ void D_AddFile (char *file)
     int     numwadfiles;
     char    *newfile;
 	
-    for (numwadfiles = 0 ; wadfiles[numwadfiles] ; numwadfiles++)
+    for (numwadfiles = 0 ; wadfiles && wadfiles[numwadfiles] ; numwadfiles++)
 	;
+
+    if (numwadfiles + 1 >= maxwadfiles)
+    {
+	maxwadfiles = maxwadfiles ? maxwadfiles * 2 : 20;
+	wadfiles = realloc (wadfiles, maxwadfiles * sizeof(*wadfiles));
+	if (!wadfiles)
+	    I_Error ("D_AddFile: no memory for %d files", maxwadfiles);
+	memset (wadfiles + numwadfiles, 0,
+		(maxwadfiles - numwadfiles) * sizeof(*wadfiles));
+    }
 
     newfile = malloc (strlen(file)+1);
     strcpy (newfile, file);
@@ -1088,23 +1100,24 @@ void IdentifyVersion (void)
 //
 void FindResponseFile (void)
 {
-    int             i;
-#define MAXARGVS        100
-	
+    int		i;
+
+    //
+    // @file: arguments read from a file, in place of the @file and
+    // before whatever follows it. id's version held 100 arguments in all
+    // and 20 after the @file, unchecked, and split a word at any character
+    // past 'z'; this takes as many as there are, split on white space.
+    //
     for (i = 1;i < myargc;i++)
 	if (myargv[i][0] == '@')
 	{
-	    FILE *          handle;
-	    int             size;
-	    int             k;
-	    int             index;
-	    int             indexinfile;
-	    char    *infile;
-	    char    *file;
-	    char    *moreargs[20];
-	    char    *firstargv;
-			
-	    // READ THE RESPONSE FILE INTO MEMORY
+	    FILE*	handle;
+	    long	size;
+	    long	k;
+	    int		count;
+	    char*	file;
+	    char**	newargv;
+
 	    handle = fopen (&myargv[i][1],"rb");
 	    if (!handle)
 	    {
@@ -1115,38 +1128,43 @@ void FindResponseFile (void)
 	    fseek (handle,0,SEEK_END);
 	    size = ftell(handle);
 	    fseek (handle,0,SEEK_SET);
-	    file = malloc (size);
-	    fread (file,size,1,handle);
+	    file = malloc (size + 1);
+	    if (!file || fread (file, 1, size, handle) != (size_t) size)
+		I_Error ("Could not read response file %s", &myargv[i][1]);
 	    fclose (handle);
-			
-	    // KEEP ALL CMDLINE ARGS FOLLOWING @RESPONSEFILE ARG
-	    for (index = 0,k = i+1; k < myargc; k++)
-		moreargs[index++] = myargv[k];
-			
-	    firstargv = myargv[0];
-	    myargv = malloc(sizeof(char *)*MAXARGVS);
-	    memset(myargv,0,sizeof(char *)*MAXARGVS);
-	    myargv[0] = firstargv;
-			
-	    infile = file;
-	    indexinfile = k = 0;
-	    indexinfile++;  // SKIP PAST ARGV[0] (KEEP IT)
-	    do
+	    file[size] = 0;
+
+	    // one word for every start of a run of non-space characters
+	    for (count = 0, k = 0; k < size; k++)
+		if ((unsigned char) file[k] > ' '
+		    && (!k || (unsigned char) file[k-1] <= ' '))
+		    count++;
+
+	    newargv = malloc ((myargc + count + 1) * sizeof(*newargv));
+	    if (!newargv)
+		I_Error ("FindResponseFile: no memory");
+
+	    // the arguments before the @file, the file's, then the rest
+	    memcpy (newargv, myargv, i * sizeof(*newargv));
+	    count = i;
+	    for (k = 0; k < size; k++)
 	    {
-		myargv[indexinfile++] = infile+k;
-		while(k < size &&
-		      ((*(infile+k)>= ' '+1) && (*(infile+k)<='z')))
-		    k++;
-		*(infile+k) = 0;
-		while(k < size &&
-		      ((*(infile+k)<= ' ') || (*(infile+k)>'z')))
-		    k++;
-	    } while(k < size);
-			
-	    for (k = 0;k < index;k++)
-		myargv[indexinfile++] = moreargs[k];
-	    myargc = indexinfile;
-	
+		if ((unsigned char) file[k] <= ' ')
+		{
+		    file[k] = 0;
+		    continue;
+		}
+		if (!k || !file[k-1])
+		    newargv[count++] = file + k;
+	    }
+	    memcpy (newargv + count, myargv + i + 1,
+		    (myargc - i - 1) * sizeof(*newargv));
+	    count += myargc - i - 1;
+	    newargv[count] = NULL;
+
+	    myargv = newargv;
+	    myargc = count;
+
 	    // DISPLAY ARGS
 	    printf("%d command-line args:\n",myargc);
 	    for (k=1;k<myargc;k++)
