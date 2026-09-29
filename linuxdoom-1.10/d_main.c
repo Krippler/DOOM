@@ -81,6 +81,7 @@ static const char rcsid[] = "$Id: d_main.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 #include "i_pad.h"
 #include "u_mapinfo.h"
 #include "d_main.h"
+#include "r_lerp.h"
 
 //
 // D-DoomLoop()
@@ -275,9 +276,14 @@ void D_Display (void)
     // draw buffered stuff to screen
     I_UpdateNoBlit ();
     
-    // draw the view directly
+    // draw the view directly, and what goes over it
     if (gamestate == GS_LEVEL && !automapactive && gametic)
+    {
 	R_RenderPlayerView (&players[displayplayer]);
+	HU_DrawCrosshair ();
+	if (hud_style && viewheight == SCREENHEIGHT)
+	    ST_DrawMinimal ();
+    }
 
     if (gamestate == GS_LEVEL && gametic)
 	HU_Drawer ();
@@ -470,14 +476,32 @@ void D_DoomLoop (void)
 	static int	slow = 0, late = 0, frames = 0;
 	static double	worst = 0, worst_tics = 0, worst_draw = 0;
 	static double	worst_put = 0, worst_net = 0, worst_snd = 0;
+	static double	nextframe = 0;
 	double		t0, t1, t2;
+	boolean		lerp;
 
 	// frame syncronous IO operations
-	I_StartFrame ();                
+	I_StartFrame ();
 	t0 = D_Now ();
-	
+
+	// Max FPS above 35: draw between tics as well as at them (r_lerp.c).
+	lerp = !singletics && R_LerpWanted ();
+
 	// process one or more tics
-	if (singletics)
+	if (lerp)
+	{
+	    // The keys and the mouse are read every frame, not only when a tic
+	    // is made, so the view turns as the mouse moves. A tic is run when
+	    // one is due, and otherwise the frame is drawn without one.
+	    I_StartTic ();
+	    D_ProcessEvents ();
+
+	    if (D_TicDue ())
+		TryRunTics ();
+
+	    R_LerpFrame (true, I_GetTimeFrac () - D_TicRunAt);
+	}
+	else if (singletics)
 	{
 	    I_StartTic ();
 	    D_ProcessEvents ();
@@ -493,7 +517,10 @@ void D_DoomLoop (void)
 	{
 	    TryRunTics (); // will run at least one tic
 	}
-		
+
+	if (!lerp)
+	    R_LerpFrame (false, 1);
+
 	t1 = D_Now ();
 
 	S_UpdateSounds (players[consoleplayer].mo);// move positional sounds
@@ -542,7 +569,18 @@ void D_DoomLoop (void)
 	    double	cpu = D_Cpu ();
 	    double	busy = (cpu - reportcpu) / (t2 - report) * 100.0;
 
-	    if (late >= FRAME_LATE_MANY || slow || busy > FRAME_BUSY_PCT)
+	    // DOOM_FRAME_REPORT=1 prints it every time, not only when something
+	    // was wrong: how many frames Max FPS is getting, for one.
+	    static int	always = -1;
+
+	    if (always < 0)
+	    {
+		char*	e = getenv ("DOOM_FRAME_REPORT");
+		always = e && *e && *e != '0';
+	    }
+
+	    if (always || late >= FRAME_LATE_MANY || slow
+		|| busy > FRAME_BUSY_PCT)
 	    {
 		fprintf (stderr,
 			 "frames: %d in the last 5s, %d late, %d over %.0f ms, "
@@ -575,6 +613,20 @@ void D_DoomLoop (void)
 	    worst = worst_tics = worst_draw = 0;
 	    worst_put = worst_net = worst_snd = 0;
 	    I_SleepLate = 0;
+	}
+
+	// Max FPS: wait out the rest of this frame's share of a second. With no
+	// limit (0) the next frame is drawn at once.
+	if (lerp && max_fps > 0)
+	{
+	    double	now = I_NowMs ();
+	    double	period = 1000.0 / max_fps;
+
+	    nextframe += period;
+	    if (nextframe < now - period || nextframe > now + period)
+		nextframe = now + period;
+
+	    I_SleepUntilMs (nextframe);
 	}
 
 #ifndef SNDSERV
@@ -1429,6 +1481,14 @@ void D_DoomMain (void)
 
     printf ("ST_Init: Init status bar.\n");
     ST_Init ();
+
+    // Back from a WAD the engine could not start on: say so.
+    if (getenv ("DOOM_LOAD_FAILED"))
+    {
+	M_LoadFailed (getenv ("DOOM_LOADING"), getenv ("DOOM_LOAD_FAILED"));
+	unsetenv ("DOOM_LOAD_FAILED");
+	unsetenv ("DOOM_LOADING");
+    }
 
     // check for a driver that wants intermission stats
     p = M_CheckParm ("-statcopy");

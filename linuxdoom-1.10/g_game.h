@@ -69,6 +69,10 @@ void G_WorldDone (void);
 // Whether the map was left by its secret exit.
 extern boolean secretexit;
 
+// The number key slot of the next weapon (dir 1) or the one before (-1),
+// or -1 when there is no other to change to.
+int G_CycleWeapon (int dir);
+
 // Whether the game data has a map.
 boolean G_MapExists (int episode, int map);
 

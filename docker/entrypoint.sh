@@ -22,8 +22,24 @@ AUDIO_RATE="${DOOM_AUDIO_RATE:-22050}"
 NOVNC_ROOT="${DOOM_NOVNC_ROOT:-/usr/share/novnc}"
 RESTART="${DOOM_RESTART:-1}"
 
-log() { printf '[doom] %s\n' "$*" >&2; }
-die() { printf '[doom] error: %s\n' "$*" >&2; exit 1; }
+# Every line says how long after the start it was written, as the Quake
+# container's do: "[doom 12.3s] ...". A slow start shows where the time went --
+# a long gap before "found IWAD" is the mount being scanned, which on Unraid is
+# often disks spinning up. The start is kept in the environment so that the
+# re-run after dropping privileges goes on counting from it.
+DOOM_LOG_T0="${DOOM_LOG_T0:-$(date +%s%N 2>/dev/null)}"
+export DOOM_LOG_T0
+
+stamp() {
+    _now=$(date +%s%N 2>/dev/null)
+    case "$_now$DOOM_LOG_T0" in
+        *[!0-9]*|"") printf 'doom' ;;
+        *) _t=$(( (_now - DOOM_LOG_T0) / 100000000 ))
+           printf 'doom %d.%ds' $((_t / 10)) $((_t % 10)) ;;
+    esac
+}
+log() { printf '[%s] %s\n' "$(stamp)" "$*" >&2; }
+die() { printf '[%s] error: %s\n' "$(stamp)" "$*" >&2; exit 1; }
 
 ##############################################################################
 # Drop privileges.
@@ -574,6 +590,28 @@ case " $* " in
 esac
 
 cd "$STATE"
+
+#
+# WASD on a state volume with no settings yet, as the Quake container does:
+# W and S to walk, A and D to sidestep, E to use. The arrow keys still turn,
+# the mouse turns and fires, and the wheel changes weapon, as they do for
+# everyone. Written once, as the user the engine runs as, and then the
+# engine's: it rewrites .doomrc whenever it quits, so what is changed in the
+# game is kept over this. DOOM_MODERN_CONTROLS=0 starts from id's 1993 keys
+# instead -- the arrows to walk, comma and period to sidestep, Space to use.
+#
+seed_config () {
+    [ -e "$STATE/.doomrc" ] && return 0
+    [ "${DOOM_MODERN_CONTROLS:-1}" = "1" ] || return 0
+    printf '%s\t\t%s\n' \
+        key_up 119 key_down 115 key_strafeleft 97 key_straferight 100 \
+        key_use 101 >"$STATE/.doomrc"
+    log "settings: WASD to move and E to use, on a first start"
+    log "  (DOOM_MODERN_CONTROLS=0 for id's keys; the game's own settings"
+    log "  are kept over these once it has saved them)"
+}
+seed_config
+
 #
 # Who is waiting for a CPU rather than using one.
 #

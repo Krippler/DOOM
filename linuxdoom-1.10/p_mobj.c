@@ -527,7 +527,13 @@ P_SpawnMobj
 	mobj->z = z;
 
     mobj->thinker.function.acp1 = (actionf_p1)P_MobjThinker;
-	
+
+    // new this tic: nothing to draw it moving from
+    mobj->oldx = mobj->x;
+    mobj->oldy = mobj->y;
+    mobj->oldz = mobj->z;
+    mobj->oldangle = mobj->angle;
+
     P_AddThinker (&mobj->thinker);
 
     return mobj;

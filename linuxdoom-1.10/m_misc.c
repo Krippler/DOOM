@@ -59,6 +59,7 @@ rcsid[] = "$Id: m_misc.c,v 1.6 1997/02/03 22:45:10 b1 Exp $";
 
 #include "m_misc.h"
 #include "i_pad.h"
+#include "r_lerp.h"
 
 //
 // M_DrawText
@@ -183,6 +184,11 @@ extern int	key_use;
 extern int	key_strafe;
 extern int	key_speed;
 extern int	key_menu;
+extern int	key_nextweapon;
+extern int	key_prevweapon;
+extern int	crosshair, crosshair_r, crosshair_g, crosshair_b;
+extern int	hud_style;
+extern int	weaponpickup;
 
 extern int	mousebfire;
 extern int	mousebstrafe;
@@ -264,6 +270,14 @@ default_t	defaults[] =
     {"key_strafe",&key_strafe, KEY_RALT},
     {"key_speed",&key_speed, KEY_RSHIFT},
     {"key_menu",&key_menu, '`'},
+    {"key_nextweapon",&key_nextweapon, KEY_MWHEELUP},
+    {"key_prevweapon",&key_prevweapon, KEY_MWHEELDOWN},
+    {"crosshair",&crosshair, 0},
+    {"crosshair_red",&crosshair_r, 8},
+    {"crosshair_green",&crosshair_g, 8},
+    {"crosshair_blue",&crosshair_b, 8},
+    {"hud_style",&hud_style, 0},
+    {"weapon_pickup",&weaponpickup, 1},
 
 // UNIX hack, to be removed. 
 #ifdef SNDSERV
@@ -290,8 +304,8 @@ default_t	defaults[] =
     {"pad_b",&padbind[PB_B], PA_MENU},
     {"pad_x",&padbind[PB_X], PA_WEAPON3},
     {"pad_y",&padbind[PB_Y], PA_WEAPON2},
-    {"pad_lb",&padbind[PB_LB], PA_WEAPON4},
-    {"pad_rb",&padbind[PB_RB], PA_WEAPON5},
+    {"pad_lb",&padbind[PB_LB], PA_PREVWEAPON},
+    {"pad_rb",&padbind[PB_RB], PA_NEXTWEAPON},
     {"pad_lt",&padbind[PB_LT], PA_RUN},
     {"pad_rt",&padbind[PB_RT], PA_FIRE},
     {"pad_view",&padbind[PB_BACK], PA_AUTOMAP},
@@ -305,6 +319,10 @@ default_t	defaults[] =
     {"pad_vibration",&padrumble, 5},
     {"pad_swapsticks",&padswapsticks, 0},
     {"pad_pushrun",&padpushrun, 1},
+    {"pad_turncurve",&padturncurve, 4},
+    {"pad_movedeadzone",&padmovedeadzone, 6},
+    {"pad_turndeadzone",&padturndeadzone, 6},
+    {"max_fps",&max_fps, 35},
 
     {"use_joystick",&usejoystick, 0},
     {"joyb_fire",&joybfire,0},

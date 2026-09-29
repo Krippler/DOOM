@@ -31,6 +31,7 @@ enum
     PA_WEAPON1, PA_WEAPON2, PA_WEAPON3, PA_WEAPON4,
     PA_WEAPON5, PA_WEAPON6, PA_WEAPON7,
     PA_AUTOMAP, PA_MENU,
+    PA_NEXTWEAPON, PA_PREVWEAPON,	// after the rest, so saved numbers keep
     PA_COUNT
 };
 
@@ -42,6 +43,9 @@ extern int	padturnspeed;		// 0..9
 extern int	padrumble;		// 0 (off) .. 9
 extern int	padswapsticks;
 extern int	padpushrun;
+extern int	padturncurve;		// 0 (in proportion) .. 9 (finest near the middle)
+extern int	padmovedeadzone;	// 0 .. 9, 0.03 of the stick's travel each
+extern int	padturndeadzone;
 
 void	I_PadInit (void);
 void	I_PadShutdown (void);

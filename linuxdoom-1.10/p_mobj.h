@@ -24,6 +24,7 @@
 #define __P_MOBJ__
 
 // Basics.
+#include <stddef.h>
 #include "tables.h"
 #include "m_fixed.h"
 
@@ -281,9 +282,21 @@ typedef struct mobj_s
     mapthing_t		spawnpoint;	
 
     // Thing being chased/attacked for tracers.
-    struct mobj_s*	tracer;	
-    
+    struct mobj_s*	tracer;
+
+    // Where it was at the start of the tic, to draw it part of the way from
+    // there between tics (r_lerp.c). Last, and not saved: a save holds what
+    // comes before, byte for byte as it always did, so saves made before
+    // these were added still load and saves made now still load in them.
+    fixed_t		oldx;
+    fixed_t		oldy;
+    fixed_t		oldz;
+    angle_t		oldangle;
+
 } mobj_t;
+
+// How much of a mobj_t a save holds.
+#define MOBJ_SAVESIZE	offsetof(mobj_t, oldx)
 
 
 

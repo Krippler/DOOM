@@ -291,6 +291,18 @@ typedef enum
 
 #define KEY_LALT	KEY_RALT
 
+// Not keys: the mouse wheel, which X reports as buttons 4 and 5 and the X
+// driver turns into a press and a release of one of these, so it can be
+// bound like a key; and next and previous weapon from a controller button,
+// which work whatever the keys are bound to. The codes are 0x80 plus the
+// scancodes of letter keys, which always arrive as their ASCII letters --
+// a keysym above 0x7f can come through xlatekey as itself, and 0xa0 to 0xff
+// are all Latin-1 letters someone's keyboard has.
+#define KEY_MWHEELUP	(0x80+0x10)
+#define KEY_MWHEELDOWN	(0x80+0x11)
+#define KEY_WEAPNEXT	(0x80+0x12)
+#define KEY_WEAPPREV	(0x80+0x13)
+
 
 
 // DOOM basic types (boolean),

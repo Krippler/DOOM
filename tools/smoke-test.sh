@@ -25,6 +25,8 @@
 #             General MIDI soundfont is installed)
 #   depth 8   the colour-mapped path the engine was written for draws the
 #             status bar exactly as the truecolour one does
+#   lerp      Max FPS 90 draws well over 35 frames a second, between tics,
+#             and the setting is saved
 #   umapinfo  a level starts with a UMAPINFO lump naming it, its sky and its
 #             music, and the lump is read without complaint (the reader
 #             itself is tools/umapinfo-test.c's)
@@ -34,6 +36,11 @@
 #   ogg       a level whose music is an Ogg Vorbis lump, as SIGIL II's are,
 #             is heard at the tone's own pitch (needs oggenc, from
 #             vorbis-tools, and a soundfont; skipped without)
+#   recover   a WAD the engine cannot start on, as if chosen from Load WAD:
+#             it goes back to the game before, still listening for the
+#             controller, and says why
+#   loadwad   Load WAD, walked through with keys, restarts the engine, and
+#             the controller's port is listened on again (needs xdotool)
 #   pointer   with capture on, the pointer is held at the centre in a level
 #             and let go in the menu (needs xdotool; skipped without it)
 #   crash     SIGSEGV prints "DOOM died on" and a backtrace with names in it
@@ -249,6 +256,34 @@ kill "$game_pid" 2>/dev/null
 wait_game 10
 stop_x
 
+# --------------------------------------------------------------------- lerp
+# Max FPS above 35 draws frames between tics. The frame report, printed every
+# five seconds with DOOM_FRAME_REPORT=1, counts them: at 90 there have to be
+# well over the 175 frames that drawing once a tic would give. The second
+# report, as the first counts from the level's first frame and may include
+# the loading.
+say "lerp: Max FPS 90 draws between tics"
+start_x 24
+printf 'max_fps 90\n' >"$work/.doomrc"
+export DOOM_FRAME_REPORT=1
+start_game lerp.log -warp 1 1 -nojoy
+unset DOOM_FRAME_REPORT
+i=0
+until [ "$(grep -c '^frames: ' "$work/lerp.log" 2>/dev/null)" -ge 2 ]; do
+    i=$((i + 1))
+    [ "$i" -gt 300 ] && { tail -20 "$work/lerp.log" >&2; die "no frame report in 30s; see $work/lerp.log"; }
+    sleep 0.1
+done
+frames=$(grep '^frames: ' "$work/lerp.log" | sed -n 2p | sed 's/^frames: \([0-9]*\) .*/\1/')
+say "$frames frames in 5 seconds"
+[ "$frames" -ge 250 ] \
+    || die "Max FPS 90 drew $frames frames in 5 seconds, not over 250; see $work/lerp.log"
+kill -INT "$game_pid" 2>/dev/null
+wait_game 10
+grep -q '^max_fps[[:space:]]*90' "$work/.doomrc" || die "max_fps was not saved in .doomrc"
+rm -f "$work/.doomrc"
+stop_x
+
 # ----------------------------------------------------------------- umapinfo
 say "umapinfo: E1M1 as a UMAPINFO lump describes it"
 mkdir -p "$work/umapinfo"
@@ -321,6 +356,109 @@ EOF
     wait_game 10
     stop_mixer
     stop_x
+fi
+
+# ------------------------------------------------------------------ recover
+# What Load WAD leaves behind when it restarts the engine on a new file is
+# the arguments it was running on, in DOOM_PREVIOUS_ARGS; given here by
+# hand. The WAD is the shareware one with a second E1M1 whose first wall
+# wants a texture there is none of, so it fails at the level, once the
+# controller's port is open: the engine it goes back to has to be able to
+# open it again.
+say "recover: a WAD the engine cannot start on, as if from Load WAD"
+mkdir -p "$work/recover"
+python3 - "$wad" "$work/recover" <<'EOF' || die "could not write the broken map"
+import struct, sys
+data = open(sys.argv[1], 'rb').read()
+count, diroff = struct.unpack('<ii', data[4:12])
+lumps = [struct.unpack('<ii8s', data[diroff + 16*i:diroff + 16*i + 16])
+         for i in range(count)]
+names = [n.rstrip(b'\0').decode() for p, s, n in lumps]
+i = names.index('E1M1')
+for k in range(1, 11):
+    pos, size, name = lumps[i + k]
+    lump = bytearray(data[pos:pos + size])
+    if names[i + k] == 'SIDEDEFS':
+        lump[12:20] = b'NOSUCHTX'       # the first sidedef's middle texture
+    open('%s/%s' % (sys.argv[2], names[i + k]), 'wb').write(lump)
+open(sys.argv[2] + '/E1M1', 'wb').write(b'')
+EOF
+set -- E1M1 "$work/recover/E1M1"
+for l in THINGS LINEDEFS SIDEDEFS VERTEXES SEGS SSECTORS NODES SECTORS REJECT BLOCKMAP; do
+    set -- "$@" "$l" "$work/recover/$l"
+done
+add_lumps "$wad" "$work/recover/doom1.wad" "$@" \
+    || die "could not make the broken WAD"
+set --
+start_x 24
+rm -f "$work/.doomrc"
+DOOM_PREVIOUS_ARGS=$(printf '%s\037%s\037%s\037%s' \
+    "$engine" -2 -iwad "$work/wads/doom1.wad") \
+DOOM_LOADING=broken.wad DOOM_PAD_PORT="$pad_port" \
+game_iwad="$work/recover/doom1.wad" start_game recover.log -warp 1 1
+game_iwad=
+i=0
+# It fails loading the level, before its window opens, so the one window
+# there is belongs to the game it went back to.
+until grep -q "Going back" "$work/recover.log" 2>/dev/null \
+      && grep -q "I_InitGraphics" "$work/recover.log"; do
+    i=$((i + 1))
+    [ "$i" -gt 200 ] && { tail -20 "$work/recover.log" >&2;
+        die "the engine did not go back to the game before; see $work/recover.log"; }
+    sleep 0.1
+done
+sleep 2
+kill -0 "$game_pid" 2>/dev/null \
+    || die "the engine did not stay up after going back; see $work/recover.log"
+grep -q "Error: R_TextureNumForName: NOSUCHTX" "$work/recover.log" \
+    || die "the broken WAD failed some other way; see $work/recover.log"
+[ "$(grep -c "^Controller: from the browser, port $pad_port" "$work/recover.log")" = 2 ] \
+    || die "after going back the controller port was not listened on again; see $work/recover.log"
+kill "$game_pid" 2>/dev/null
+wait_game 10
+stop_x
+say "it went back to the game before, and listens for the controller again"
+
+# ------------------------------------------------------------------ loadwad
+# Load WAD restarts the engine with exec. Everything it had open went with
+# it into the new one, the controller's listening socket included, so the
+# new engine could not listen on the same port: "cannot listen on port ...
+# (Address already in use)", and no controller from the browser until the
+# container was restarted. The menu is walked with keys, as a player would.
+if command -v xdotool >/dev/null 2>&1; then
+    say "loadwad: Load WAD restarts the engine, controller and all"
+    start_x 24
+    rm -f "$work/.doomrc"
+    DOOM_PAD_PORT="$pad_port" start_game loadwad.log
+    i=0
+    until grep -q "I_InitGraphics" "$work/loadwad.log" 2>/dev/null; do
+        i=$((i + 1))
+        [ "$i" -gt 200 ] && die "the engine never opened its window; see $work/loadwad.log"
+        sleep 0.1
+    done
+    sleep 2
+    # Escape, Options, Setup, Load WAD, and the first WAD there
+    for k in Escape Down Return t Return w Return Return; do
+        DISPLAY="$disp" xdotool key "$k"
+        sleep 0.5
+    done
+    i=0
+    until [ "$(grep -c "I_InitGraphics" "$work/loadwad.log")" -ge 2 ]; do
+        i=$((i + 1))
+        [ "$i" -gt 200 ] && { tail -20 "$work/loadwad.log" >&2;
+            die "Load WAD did not restart the engine; see $work/loadwad.log"; }
+        sleep 0.1
+    done
+    grep -q "cannot listen" "$work/loadwad.log" \
+        && die "after Load WAD the controller's port was still held; see $work/loadwad.log"
+    [ "$(grep -c "^Controller: from the browser, port $pad_port" "$work/loadwad.log")" = 2 ] \
+        || die "after Load WAD nothing listened for the controller; see $work/loadwad.log"
+    kill "$game_pid" 2>/dev/null
+    wait_game 10
+    stop_x
+    say "the engine restarted, and listens for the controller again"
+else
+    say "loadwad: skipped, xdotool is not installed"
 fi
 
 # ------------------------------------------------------------ pointer, crash

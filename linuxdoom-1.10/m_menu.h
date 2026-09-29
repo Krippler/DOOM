@@ -50,6 +50,9 @@ void M_Drawer (void);
 // loads the config file.
 void M_Init (void);
 
+// Says on the title screen that a WAD from Load WAD could not be started.
+void M_LoadFailed (char* wad, char* why);
+
 // Called by intro code to force menu up upon a keypress,
 // does nothing if menu is already up.
 void M_StartControlPanel (void);

@@ -12,6 +12,64 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [1.12.0] — 2026-09-29
+
+### Added
+- **Next and previous weapon, on the mouse wheel.** 1993 DOOM had neither,
+  and its X driver dropped the wheel. Wheel up is the next weapon and wheel
+  down the one before, as in the Quake container; both can be bound to keys
+  under **Options → Setup → Controls**, where the wheel is a key like any
+  other. On a controller, **LB and RB** do it by default. Weapons you do not
+  have, or have no ammunition for, are passed over.
+- **WASD by default.** A first start, on a state directory with no settings in
+  it, gets W and S to walk, A and D to sidestep and E to use, as the Quake
+  container does; the arrows still turn. `DOOM_MODERN_CONTROLS=0` keeps id's
+  keys. The desktop build does the same on its first run.
+- **Backspace opens the menu**, as it does in the Quake container: from the
+  game it opens it, in the menus it goes back a page and closes them from the
+  top, and to a question it answers no. It is a key the browser never keeps,
+  and it cannot be bound to anything else now.
+- **Options → Setup → Gameplay**, with three things from the Quake container:
+  - **A crosshair**: a cross, a dot, a circle, a cross with a gap or a circle
+    with a dot, in a colour set by **Red**, **Green** and **Blue**. Off by
+    default, as id's game had none.
+  - **HUD Style → Minimal**: the view fills the screen, with the face and
+    health in the bottom left, armour after them, the ammunition in hand in
+    the bottom right and the keys above.
+  - **Change Weapon on Pickup**: **Always**, **Only If New** (id's, and the
+    default) or **Never**. Demos and net games play id's way whatever it is
+    set to, as they must to stay in step.
+- **Controller: Turn Curve, Move Deadzone and Turn Deadzone**, on Options →
+  Setup → Controller, as in the Quake container (whose Look Curve is Turn
+  Curve here, DOOM having no looking up and down). The defaults are what the
+  sticks always did.
+- **Smoother motion: Max FPS**, on Options → Setup → Gameplay, from the
+  Quake container's `host_maxfps` and `r_lerpmodels`. The game still runs at
+  35 tics a second, as it must for demos and net games to stay in step, but
+  above 35 frames are drawn between tics too, with everything — monsters,
+  doors, lifts, the view, the weapon — drawn part of the way from where it
+  was to where it is going. The mouse turns the view every frame rather than
+  every tic. 60, 72, 90, 120, 144, 165, 240 or no limit; 35, id's, is the
+  default in the container, where every frame is one more for VNC to send, and
+  the desktop build starts at 60.
+- **`DOOM_FRAME_REPORT=1`** prints the engine's five-second frame report
+  every time rather than only when frames were late, which says what Max FPS
+  is getting.
+- **The start-up log says how long each step took**: `[doom 12.3s] ...`, as in
+  the Quake container, so a slow start shows where the time went.
+
+### Fixed
+- **A WAD the engine could not run stopped the container.** Choosing one from
+  Load WAD — a texture the game lacks, a map in a format it cannot read —
+  ended in a fatal error, and the container stopped with it until someone
+  restarted it. The engine now goes back to the game it was running before,
+  and the title screen says which WAD it was and why.
+- **Load WAD broke the controller in the browser.** The engine restarts itself
+  to load a WAD, and took its controller socket into the new engine with it,
+  which then could not listen on the same port: "cannot listen on port 5902
+  (Address already in use)", and no controller until the container was
+  restarted.
+
 ## [1.11.0] — 2026-09-28
 
 ### Changed

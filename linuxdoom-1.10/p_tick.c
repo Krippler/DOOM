@@ -27,6 +27,7 @@ rcsid[] = "$Id: p_tick.c,v 1.4 1997/02/03 16:47:55 b1 Exp $";
 
 #include "z_zone.h"
 #include "p_local.h"
+#include "r_lerp.h"
 
 #include "doomstat.h"
 
@@ -130,7 +131,12 @@ void P_RunThinkers (void)
 void P_Ticker (void)
 {
     int		i;
-    
+
+    // Where everything is as the tic starts is where a frame drawn during
+    // it starts from -- even a tic in which nothing moves, so nothing is
+    // drawn still moving through a pause.
+    R_LerpSave ();
+
     // run the tic
     if (paused)
 	return;
@@ -145,10 +151,12 @@ void P_Ticker (void)
     }
     
 		
+    R_LerpMoved ();
+
     for (i=0 ; i<MAXPLAYERS ; i++)
 	if (playeringame[i])
 	    P_PlayerThink (&players[i]);
-			
+
     P_RunThinkers ();
     P_UpdateSpecials ();
     P_RespawnSpecials ();

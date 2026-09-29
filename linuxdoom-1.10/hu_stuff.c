@@ -39,6 +39,8 @@ rcsid[] = "$Id: hu_stuff.c,v 1.4 1997/02/03 16:47:52 b1 Exp $";
 
 #include "doomstat.h"
 #include "g_game.h"
+#include "r_local.h"
+#include "v_video.h"
 #include "u_mapinfo.h"
 
 // Data.
@@ -505,6 +507,90 @@ void HU_Start(void)
 
     headsupactive = true;
 
+}
+
+//
+// HU_DrawCrosshair
+// Options -> Setup -> Gameplay -> Crosshair, which 1993 DOOM did not have:
+// as the Quake container offers, a cross, a dot, a circle, a cross with a
+// gap in the middle, or a circle with a dot, in the colour the Red, Green and
+// Blue settings mix (0 to 8 each), drawn as the nearest in DOOM's palette.
+// At the middle of the view, whatever its size. The damage and pickup
+// flashes tint it with everything else.
+//
+int	crosshair = 0;
+int	crosshair_r = 8;
+int	crosshair_g = 8;
+int	crosshair_b = 8;
+
+static int HU_CrosshairColour (void)
+{
+    static int	lastkey = -1;
+    static int	colour;
+    int		key = crosshair_r * 81 + crosshair_g * 9 + crosshair_b;
+    int		want[3];
+    int		best = 1 << 30;
+    int		i;
+    byte*	pal;
+
+    if (key == lastkey)
+	return colour;
+
+    want[0] = crosshair_r * 255 / 8;
+    want[1] = crosshair_g * 255 / 8;
+    want[2] = crosshair_b * 255 / 8;
+    pal = W_CacheLumpName ("PLAYPAL", PU_CACHE);
+    for (i = 0; i < 256; i++)
+    {
+	int	dr = pal[i*3] - want[0];
+	int	dg = pal[i*3+1] - want[1];
+	int	db = pal[i*3+2] - want[2];
+	int	d = dr*dr + dg*dg + db*db;
+
+	if (d < best)
+	{
+	    best = d;
+	    colour = i;
+	}
+    }
+    lastkey = key;
+    return colour;
+}
+
+void HU_DrawCrosshair (void)
+{
+    // the shapes on a 9 by 9 grid, a row a string, centred on the middle
+    static const char* const shapes[5][9] =
+    {
+	{ "    #    ", "    #    ", "    #    ", "         ", "###   ###",
+	  "         ", "    #    ", "    #    ", "    #    " },	// cross
+	{ "         ", "         ", "         ", "    #    ", "   ###   ",
+	  "    #    ", "         ", "         ", "         " },	// dot
+	{ "         ", "   ###   ", "  #   #  ", " #     # ", " #     # ",
+	  " #     # ", "  #   #  ", "   ###   ", "         " },	// circle
+	{ "    #    ", "    #    ", "         ", "         ", "##     ##",
+	  "         ", "         ", "    #    ", "    #    " },	// gap
+	{ "         ", "   ###   ", "  #   #  ", " #     # ", " #  #  # ",
+	  " #     # ", "  #   #  ", "   ###   ", "         " }	// ring+dot
+    };
+    const char* const*	shape;
+    int			cx = viewwindowx + scaledviewwidth / 2;
+    int			cy = viewwindowy + viewheight / 2;
+    int			colour;
+    int			x, y;
+
+    if (crosshair < 1 || crosshair > 5)
+	return;
+    shape = shapes[crosshair - 1];
+    colour = HU_CrosshairColour ();
+
+    for (y = 0; y < 9; y++)
+	for (x = 0; x < 9; x++)
+	    if (shape[y][x] == '#'
+		&& cx + x - 4 >= 0 && cx + x - 4 < SCREENWIDTH
+		&& cy + y - 4 >= 0 && cy + y - 4 < SCREENHEIGHT)
+		screens[0][(cy + y - 4) * SCREENWIDTH + cx + x - 4] = colour;
+    V_MarkRect (cx - 4, cy - 4, 9, 9);
 }
 
 void HU_Drawer(void)

@@ -63,15 +63,19 @@ because a confident answer turned out to be an artefact of how it was measured.
 
 ## What was added
 
-Four pages under **Options → Setup**, none of which the 1997 release had any
+Five pages under **Options → Setup**, none of which the 1997 release had any
 equivalent of:
 
-- **Controls** — rebind the eleven movement, action and menu keys. Saved to
-  `.doomrc`.
+- **Controls** — rebind the thirteen movement, action and menu keys, the mouse
+  wheel among them. Saved to `.doomrc`.
 - **Mouse** — turn the mouse on and off, assign its buttons, and capture the
   pointer so it cannot slide out of the window while you turn.
-- **Controller** — what each button does, the turn speed, vibration, swapping
-  the sticks, and whether a full push runs. Saved to `.doomrc`.
+- **Controller** — what each button does, the turn speed and curve, each
+  stick's deadzone, vibration, swapping the sticks, and whether a full push
+  runs. Saved to `.doomrc`.
+- **Gameplay** — a crosshair and its colour, a minimal HUD over a view that
+  fills the screen, whether picking up a weapon changes to it, and Max FPS:
+  frames drawn between the game's 35 tics a second, for smoother motion.
 - **Load WAD** — list the `.wad` files you mounted, marked `GAME` or `MOD`,
   and load one. The engine builds its textures, sprites and sound cache once
   at startup, so choosing a file restarts it: a couple of seconds back to the

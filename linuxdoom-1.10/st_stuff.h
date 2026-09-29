@@ -47,6 +47,11 @@ void ST_Ticker (void);
 // Called by main loop.
 void ST_Drawer (boolean fullscreen, boolean refresh);
 
+// HUD Style: 0 the status bar, 1 minimal -- the view fills the screen and
+// ST_DrawMinimal draws over it.
+extern int hud_style;
+void ST_DrawMinimal (void);
+
 // Called when the console player is spawned on each level.
 void ST_Start (void);
 

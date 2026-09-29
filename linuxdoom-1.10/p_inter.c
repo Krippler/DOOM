@@ -164,6 +164,10 @@ P_GiveAmmo
 // P_GiveWeapon
 // The weapon name may have a MF_DROPPED flag ored in.
 //
+// Options -> Setup -> Gameplay -> Change Weapon on Pickup: 0 always, 1 only
+// if it is new (id's), 2 never.
+int	weaponpickup = 1;
+
 boolean
 P_GiveWeapon
 ( player_t*	player,
@@ -213,9 +217,25 @@ P_GiveWeapon
     {
 	gaveweapon = true;
 	player->weaponowned[weapon] = true;
-	player->pendingweapon = weapon;
     }
-	
+
+    // Options -> Setup -> Gameplay -> Change Weapon on Pickup. Not in a
+    // demo, which has to play as it was recorded, and not in a net game,
+    // where every machine has to decide alike.
+    switch (demoplayback || demorecording || netgame ? 1 : weaponpickup)
+    {
+      case 0:	// always, when it was taken
+	if ((gaveweapon || gaveammo) && player->readyweapon != weapon)
+	    player->pendingweapon = weapon;
+	break;
+      case 2:	// never
+	break;
+      default:	// only a weapon not had before, as id's did
+	if (gaveweapon)
+	    player->pendingweapon = weapon;
+	break;
+    }
+
     return (gaveweapon || gaveammo);
 }
 

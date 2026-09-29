@@ -307,6 +307,21 @@ void I_GetEvent(void)
       case ButtonPress:
 	if (!usemouse)
 	    break;
+	// The wheel: a notch is a press and release of a key, so it can be
+	// bound like one. The 1997 driver took three buttons and dropped the
+	// rest.
+	if (X_event.xbutton.button == Button4
+	    || X_event.xbutton.button == Button5)
+	{
+	    event.type = ev_keydown;
+	    event.data1 = X_event.xbutton.button == Button4
+		? KEY_MWHEELUP : KEY_MWHEELDOWN;
+	    event.data2 = event.data3 = 0;
+	    D_PostEvent (&event);
+	    event.type = ev_keyup;
+	    D_PostEvent (&event);
+	    break;
+	}
 	event.type = ev_mouse;
 	event.data1 =
 	    // Button1Mask is 1<<8, so this has to be turned into bit 0 the way
@@ -324,7 +339,8 @@ void I_GetEvent(void)
 	// fprintf(stderr, "b");
 	break;
       case ButtonRelease:
-	if (!usemouse)
+	if (!usemouse || X_event.xbutton.button == Button4
+	    || X_event.xbutton.button == Button5)
 	    break;
 	event.type = ev_mouse;
 	event.data1 =

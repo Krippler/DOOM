@@ -88,6 +88,7 @@ OBJS=				\
 		$(O)/r_data.o			\
 		$(O)/r_draw.o			\
 		$(O)/r_main.o			\
+		$(O)/r_lerp.o			\
 		$(O)/r_plane.o		\
 		$(O)/r_segs.o			\
 		$(O)/r_sky.o			\

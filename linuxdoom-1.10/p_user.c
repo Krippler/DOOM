@@ -32,6 +32,7 @@ rcsid[] = "$Id: p_user.c,v 1.3 1997/01/28 22:08:29 b1 Exp $";
 #include "d_event.h"
 
 #include "p_local.h"
+#include "r_lerp.h"
 
 #include "doomstat.h"
 
@@ -152,6 +153,7 @@ void P_MovePlayer (player_t* player)
     cmd = &player->cmd;
 	
     player->mo->angle += (cmd->angleturn<<16);
+    R_LerpTurn (player, cmd->angleturn);
 
     // Do not let the player control movement
     //  if not onground.

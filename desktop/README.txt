@@ -52,10 +52,17 @@ or -4 picks one. The mouse turns you and is held by the window while you
 play, and let go in the menus and when another window has the keyboard;
 Options -> Setup -> Mouse -> Grab pointer turns that off.
 
-Keys are set under Options -> Setup -> Controls, and a controller under
-Options -> Setup -> Controller: what each button does, turn speed, vibration
-and more. In the menus, A chooses, B goes back and Start opens and closes
-them.
+W, A, S and D move you and E opens doors, on a first run; the mouse wheel
+changes weapon and Backspace opens the menu. DOOM_MODERN_CONTROLS=0 on that
+first run keeps id's keys instead (the arrows, comma and period, Space).
+Keys are set under Options -> Setup -> Controls, a controller under
+Options -> Setup -> Controller -- what each button does, turn speed,
+vibration and more -- and a crosshair, a minimal HUD, changing weapon on a
+pickup and Max FPS under Options -> Setup -> Gameplay. Max FPS starts at 60:
+the game runs at 35 tics a second, as it always did, and the frames between
+are drawn with everything part of the way to where it is going. 35 draws
+only at the tics, as id's did; a faster monitor can take 120 or 144. In the menus, A chooses, B goes
+back and Start opens and closes them.
 
 Sound effects go through PulseAudio, or PipeWire's stand-in for it, which is
 what almost every desktop runs.
