@@ -25,6 +25,8 @@
 #             General MIDI soundfont is installed)
 #   depth 8   the colour-mapped path the engine was written for draws the
 #             status bar exactly as the truecolour one does
+#   lerp      Max FPS 90 draws well over 35 frames a second, between tics,
+#             and the setting is saved
 #   umapinfo  a level starts with a UMAPINFO lump naming it, its sky and its
 #             music, and the lump is read without complaint (the reader
 #             itself is tools/umapinfo-test.c's)
@@ -252,6 +254,34 @@ grep -q "I_InitGraphics: 8-bit PseudoColor" "$work/depth8.log" \
     || die "the engine did not report the 8-bit path"
 kill "$game_pid" 2>/dev/null
 wait_game 10
+stop_x
+
+# --------------------------------------------------------------------- lerp
+# Max FPS above 35 draws frames between tics. The frame report, printed every
+# five seconds with DOOM_FRAME_REPORT=1, counts them: at 90 there have to be
+# well over the 175 frames that drawing once a tic would give. The second
+# report, as the first counts from the level's first frame and may include
+# the loading.
+say "lerp: Max FPS 90 draws between tics"
+start_x 24
+printf 'max_fps 90\n' >"$work/.doomrc"
+export DOOM_FRAME_REPORT=1
+start_game lerp.log -warp 1 1 -nojoy
+unset DOOM_FRAME_REPORT
+i=0
+until [ "$(grep -c '^frames: ' "$work/lerp.log" 2>/dev/null)" -ge 2 ]; do
+    i=$((i + 1))
+    [ "$i" -gt 300 ] && { tail -20 "$work/lerp.log" >&2; die "no frame report in 30s; see $work/lerp.log"; }
+    sleep 0.1
+done
+frames=$(grep '^frames: ' "$work/lerp.log" | sed -n 2p | sed 's/^frames: \([0-9]*\) .*/\1/')
+say "$frames frames in 5 seconds"
+[ "$frames" -ge 250 ] \
+    || die "Max FPS 90 drew $frames frames in 5 seconds, not over 250; see $work/lerp.log"
+kill -INT "$game_pid" 2>/dev/null
+wait_game 10
+grep -q '^max_fps[[:space:]]*90' "$work/.doomrc" || die "max_fps was not saved in .doomrc"
+rm -f "$work/.doomrc"
 stop_x
 
 # ----------------------------------------------------------------- umapinfo

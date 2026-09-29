@@ -131,7 +131,14 @@ typedef	struct
 
     int			linecount;
     struct line_s**	lines;	// [linecount] size
-    
+
+    // Heights at the start of the tic, and the real ones while a frame
+    // between tics is drawn with blended ones (r_lerp.c).
+    fixed_t	oldfloorheight;
+    fixed_t	oldceilingheight;
+    fixed_t	savefloorheight;
+    fixed_t	saveceilingheight;
+
 } sector_t;
 
 

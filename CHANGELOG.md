@@ -43,6 +43,18 @@ patch whatever was in it.
   Setup → Controller, as in the Quake container (whose Look Curve is Turn
   Curve here, DOOM having no looking up and down). The defaults are what the
   sticks always did.
+- **Smoother motion: Max FPS**, on Options → Setup → Gameplay, from the
+  Quake container's `host_maxfps` and `r_lerpmodels`. The game still runs at
+  35 tics a second, as it must for demos and net games to stay in step, but
+  above 35 frames are drawn between tics too, with everything — monsters,
+  doors, lifts, the view, the weapon — drawn part of the way from where it
+  was to where it is going. The mouse turns the view every frame rather than
+  every tic. 60, 72, 90, 120, 144, 165, 240 or no limit; 35, id's, is the
+  default in the container, where every frame is one more for VNC to send, and
+  the desktop build starts at 60.
+- **`DOOM_FRAME_REPORT=1`** prints the engine's five-second frame report
+  every time rather than only when frames were late, which says what Max FPS
+  is getting.
 - **The start-up log says how long each step took**: `[doom 12.3s] ...`, as in
   the Quake container, so a slow start shows where the time went.
 

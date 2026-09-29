@@ -272,14 +272,31 @@ int G_CmdChecksum (ticcmd_t* cmd)
 } 
  
 
+// What of each tic command's turn was the mouse's.
+short	G_MouseTurn[BACKUPTICS];
+
+//
+// The turn the mouse has made since the last tic command, as the next one
+// will carry it: shown at once when drawing between tics (r_lerp.c).
+//
+int G_PendingMouseTurn (void)
+{
+    if (keyheld(key_strafe) || mousebuttons[mousebstrafe]
+	|| joybuttons[joybstrafe])
+	return 0;
+
+    return (short) (-mousex*0x8);
+}
+
+
 //
 // G_BuildTiccmd
 // Builds a ticcmd from all of the available inputs
-// or reads it from the demo buffer. 
-// If recording a demo, write it out 
-// 
-void G_BuildTiccmd (ticcmd_t* cmd) 
-{ 
+// or reads it from the demo buffer.
+// If recording a demo, write it out
+//
+void G_BuildTiccmd (ticcmd_t* cmd)
+{
     int		i; 
     boolean	strafe;
     boolean	bstrafe; 
@@ -459,14 +476,17 @@ void G_BuildTiccmd (ticcmd_t* cmd)
     // A controller's sticks, as speeds rather than keys.
     I_PadTiccmd (cmd, &forward, &side, speed);
 
-    if (!novert) 
-	forward += mousey; 
-    if (strafe) 
-	side += mousex*2; 
-    else 
-	cmd->angleturn -= mousex*0x8; 
+    if (!novert)
+	forward += mousey;
+    if (strafe)
+	side += mousex*2;
+    else
+	cmd->angleturn -= mousex*0x8;
 
-    mousex = mousey = 0; 
+    // what of the turn was the mouse's, for drawing between tics
+    G_MouseTurn[maketic%BACKUPTICS] = strafe ? 0 : (short) (-mousex*0x8);
+
+    mousex = mousey = 0;
 	 
     if (forward > MAXPLMOVE) 
 	forward = MAXPLMOVE; 

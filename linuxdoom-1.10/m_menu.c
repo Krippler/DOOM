@@ -69,6 +69,7 @@ rcsid[] = "$Id: m_menu.c,v 1.7 1997/02/03 22:45:10 b1 Exp $";
 #include "i_pad.h"
 #include "u_mapinfo.h"
 #include "st_stuff.h"
+#include "r_lerp.h"
 
 
 
@@ -1682,6 +1683,7 @@ enum
     gp_blue,
     gp_hud,
     gp_pickup,
+    gp_maxfps,
     gp_end
 } gameplay_e;
 
@@ -1691,6 +1693,7 @@ void M_ChangeCrosshairGreen (int choice);
 void M_ChangeCrosshairBlue (int choice);
 void M_ChangeHudStyle (int choice);
 void M_ChangeWeaponPickup (int choice);
+void M_ChangeMaxFps (int choice);
 void M_DrawGameplay (void);
 
 menuitem_t GameplayMenu[] =
@@ -1700,7 +1703,8 @@ menuitem_t GameplayMenu[] =
     {2,"",M_ChangeCrosshairGreen,'g'},
     {2,"",M_ChangeCrosshairBlue,'b'},
     {2,"",M_ChangeHudStyle,'h'},
-    {2,"",M_ChangeWeaponPickup,'w'}
+    {2,"",M_ChangeWeaponPickup,'w'},
+    {2,"",M_ChangeMaxFps,'f'}
 };
 
 menu_t GameplayDef =
@@ -1738,6 +1742,29 @@ void M_ChangeCrosshairRed (int choice)	{ M_Step (&crosshair_r, choice, 8); }
 void M_ChangeCrosshairGreen (int choice) { M_Step (&crosshair_g, choice, 8); }
 void M_ChangeCrosshairBlue (int choice)	{ M_Step (&crosshair_b, choice, 8); }
 void M_ChangeWeaponPickup (int choice)	{ M_Cycle (&weaponpickup, choice, 3); }
+
+// 35 is id's: drawn once a tic, nothing blended. 0 is no limit at all.
+static int maxfpsvalues[] = { 35, 60, 72, 90, 120, 144, 165, 240, 0 };
+#define NUMMAXFPS	(int) (sizeof(maxfpsvalues) / sizeof(maxfpsvalues[0]))
+
+void M_ChangeMaxFps (int choice)
+{
+    int		i;
+
+    // where it is in the list, or where a number typed into .doomrc would be
+    for (i = 0 ; i < NUMMAXFPS - 1 ; i++)
+	if (max_fps != 0 && max_fps <= maxfpsvalues[i])
+	    break;
+
+    if (max_fps == 0)
+	i = NUMMAXFPS - 1;
+    else if (max_fps != maxfpsvalues[i] && choice)
+	i--;		// between two: on to the higher, back to the lower
+
+    i = choice ? (i + 1) % NUMMAXFPS : (i + NUMMAXFPS - 1) % NUMMAXFPS;
+    max_fps = maxfpsvalues[i];
+    S_StartSound (NULL, sfx_stnmov);
+}
 
 void M_ChangeHudStyle (int choice)
 {
@@ -1783,10 +1810,20 @@ void M_DrawGameplay (void)
     M_WriteText (x, y, "WEAPON ON PICKUP");
     M_WriteText (vx, y, pickupnames[weaponpickup >= 0 && weaponpickup < 3
 				    ? weaponpickup : 1]);
+    y += GameplayDef.lineheight;
+
+    if (max_fps == 0)
+	snprintf (buf, sizeof(buf), "NO LIMIT");
+    else if (max_fps <= TICRATE)
+	snprintf (buf, sizeof(buf), "35 (ID'S)");
+    else
+	snprintf (buf, sizeof(buf), "%d", max_fps);
+    M_WriteText (x, y, "MAX FPS");
+    M_WriteText (vx, y, buf);
 
     // ONLY IF NEW is id's, and all a demo or a net game will use
-    M_WriteText (x, 140, "ONLY IF NEW IS ID'S, AND WHAT DEMOS");
-    M_WriteText (x, 152, "AND NET GAMES ALWAYS USE");
+    M_WriteText (x, 146, "ONLY IF NEW IS ID'S, AND WHAT DEMOS");
+    M_WriteText (x, 156, "AND NET GAMES ALWAYS USE");
 }
 
 

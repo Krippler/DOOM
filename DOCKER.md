@@ -222,6 +222,19 @@ pistol reaches the super shotgun; the shotgun is the one going back from it.
 | Crosshair red, green, blue | its colour, 0–8 each, drawn as the nearest in DOOM's palette |
 | HUD style | the status bar, or **minimal**: the view fills the screen, with the face and health in the bottom left, armour after them, the ammunition in hand in the bottom right and the keys above |
 | Weapon on pickup | change to a weapon picked up **always**, **only if new** (id's), or **never**. Demos and net games always play id's way |
+| Max FPS | **35** (id's, the default), 60, 72, 90, 120, 144, 165, 240 or **no limit**. Above 35, frames are drawn between the game's tics too, for smoother motion |
+
+**Max FPS.** DOOM runs 35 times a second and always will — demos and net games
+depend on it — and it used to draw 35 times a second too, so everything that
+moves moved in steps. Above 35 the game still runs at 35, but a frame drawn
+between two tics shows each monster, door, lift and projectile, the view and
+the weapon part of the way from where it was at the one to where it is at the
+other; the mouse turns the view every frame. The price is a tic's delay, 29 ms,
+on what the picture shows, and the CPU for the extra frames: 120 took about 5%
+of a core here, and no limit takes a whole one. In the container it is 35 by
+default, because every extra frame is one more for x11vnc to compare, encode
+and send; whether the browser shows the difference depends on the link. Set
+`DOOM_FRAME_REPORT=1` to have the log say how many frames it is drawing.
 
 A game controller works too, and is set up in the same place — see below.
 
@@ -405,6 +418,7 @@ Everything is set through the environment:
 | `DOOM_SOUNDFONT` | auto | General MIDI soundfont for music; empty means search for an installed one. |
 | `DOOM_MODERN_CONTROLS` | `1` | WASD, and E to use, on a first start. `0` starts from id's keys instead. Only read while the state directory has no `.doomrc`. |
 | `DOOM_RESTART` | `1` | Start the game again after a crash or QUIT GAME. `0` stops the container instead. |
+| `DOOM_FRAME_REPORT` | `0` | `1` logs how many frames the engine drew every five seconds, not only when some were late. |
 | `PUID` / `PGID` | `1001` | User to drop to, when the container starts as root. |
 
 Anything you pass after the image name goes straight to the engine:
@@ -877,6 +891,10 @@ an older build can still carry the value, and the fix makes it a dead control
 rather than a crash. Rebind it in **Options → Setup → Controls**.
 
 ## Troubleshooting
+
+**How many frames is it drawing?** `DOOM_FRAME_REPORT=1` makes the engine log
+`frames: N in the last 5s, ...` every five seconds, not only when some were
+late. N over 5 is the frame rate: 175 is 35 a second.
 
 **Reading the start-up log.** Every line the container prints carries the
 seconds since it started, `[doom 12.3s] ...`, so a slow start shows where the

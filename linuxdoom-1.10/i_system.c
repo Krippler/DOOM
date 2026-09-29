@@ -166,7 +166,7 @@ void I_Sleep (int ms)
 double	I_SleepLate;		// worst overshoot since last read, milliseconds
 double	I_SpinMs = SPIN_MIN_MS;	// how much of the tic end is held, not slept
 
-static double
+double
 I_NowMs (void)
 {
     struct timespec	ts;
@@ -265,18 +265,56 @@ void I_WaitForTic (void)
 // I_GetTime
 // returns time in 1/70th second tics
 //
+static int	basetime = 0;
+
 int  I_GetTime (void)
 {
     struct timeval	tp;
     struct timezone	tzp;
     int			newtics;
-    static int		basetime=0;
-  
+
     gettimeofday(&tp, &tzp);
     if (!basetime)
 	basetime = tp.tv_sec;
     newtics = (tp.tv_sec-basetime)*TICRATE + tp.tv_usec*TICRATE/1000000;
     return newtics;
+}
+
+
+//
+// The same clock in fractions of a tic: I_GetTime is this rounded down.
+// Drawing between tics uses the fraction to know how far between it is.
+//
+double I_GetTimeFrac (void)
+{
+    struct timeval	tp;
+
+    gettimeofday (&tp, NULL);
+    if (!basetime)
+	basetime = tp.tv_sec;
+
+    return (double) (tp.tv_sec - basetime) * TICRATE
+	+ (double) tp.tv_usec * TICRATE / 1000000.0;
+}
+
+
+//
+// Sleep until a time on I_NowMs's clock, for a frame rate limit. At once if
+// it has passed.
+//
+void I_SleepUntilMs (double when)
+{
+    struct timespec	ts;
+
+    if (when <= I_NowMs ())
+	return;
+
+    ts.tv_sec  = (time_t) (when / 1000.0);
+    ts.tv_nsec = (long) ((when - ts.tv_sec * 1000.0) * 1000000.0);
+    if (ts.tv_nsec >= 1000000000L)
+	ts.tv_nsec = 999999999L;
+
+    clock_nanosleep (CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, NULL);
 }
 
 

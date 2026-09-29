@@ -31,6 +31,7 @@ rcsid[] = "$Id: p_telept.c,v 1.3 1997/01/28 22:08:29 b1 Exp $";
 #include "s_sound.h"
 
 #include "p_local.h"
+#include "r_lerp.h"
 
 
 // Data.
@@ -123,6 +124,9 @@ EV_Teleport
 
 		thing->angle = m->angle;
 		thing->momx = thing->momy = thing->momz = 0;
+
+		// drawn there at once, not crossing the map on the way
+		R_LerpJump (thing);
 		return 1;
 	    }	
 	}

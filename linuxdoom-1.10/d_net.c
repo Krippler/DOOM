@@ -631,6 +631,29 @@ int	frameon;
 int	frameskip[4];
 int	oldnettics;
 
+// When the last tics were run, on I_GetTime's clock: a frame drawn between
+// tics is drawn as far past this as the time is (r_lerp.c).
+int	D_TicRunAt;
+
+
+//
+// Whether a tic can be run now without waiting for one: when frames are
+// drawn between tics, the loop draws another rather than wait.
+//
+boolean D_TicDue (void)
+{
+    int		i;
+    int		lowtic = MAXINT;
+
+    NetUpdate ();
+
+    for (i=0 ; i<doomcom->numnodes ; i++)
+	if (nodeingame[i] && nettics[i] < lowtic)
+	    lowtic = nettics[i];
+
+    return lowtic > gametic/ticdup;
+}
+
 extern	boolean	advancedemo;
 
 void TryRunTics (void)
@@ -790,4 +813,6 @@ void TryRunTics (void)
 	}
 	NetUpdate ();	// check for new console commands
     }
+
+    D_TicRunAt = I_GetTime ()/ticdup;
 }

@@ -138,6 +138,10 @@ void D_QuitNetGame (void);
 //? how many ticks to run?
 void TryRunTics (void);
 
+// Whether a tic can be run without waiting, and when the last ones were.
+boolean D_TicDue (void);
+extern int	D_TicRunAt;
+
 
 #endif
 

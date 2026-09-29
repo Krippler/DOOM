@@ -33,6 +33,7 @@ static const char rcsid[] = "$Id: r_main.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 
 
 #include "doomdef.h"
+#include "r_lerp.h"
 #include "d_net.h"
 
 #include "m_bbox.h"
@@ -862,12 +863,12 @@ void R_SetupFrame (player_t* player)
     int		i;
     
     viewplayer = player;
-    viewx = player->mo->x;
-    viewy = player->mo->y;
-    viewangle = player->mo->angle + viewangleoffset;
+    viewx = R_LerpX (player->mo);
+    viewy = R_LerpY (player->mo);
+    viewangle = R_LerpViewAngle (player) + viewangleoffset;
     extralight = player->extralight;
 
-    viewz = player->viewz;
+    viewz = R_LerpViewZ (player);
     
     viewsin = finesine[viewangle>>ANGLETOFINESHIFT];
     viewcos = finecosine[viewangle>>ANGLETOFINESHIFT];
@@ -898,7 +899,8 @@ void R_SetupFrame (player_t* player)
 // R_RenderView
 //
 void R_RenderPlayerView (player_t* player)
-{	
+{
+    R_LerpBegin ();
     R_SetupFrame (player);
 
     // Clear buffers.
@@ -923,6 +925,8 @@ void R_RenderPlayerView (player_t* player)
     
     R_DrawMasked ();
 
+    R_LerpEnd ();
+
     // Check for new console commands.
-    NetUpdate ();				
+    NetUpdate ();
 }

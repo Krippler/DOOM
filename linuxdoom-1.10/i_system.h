@@ -62,6 +62,12 @@ extern double	I_SpinMs;
 void I_Sleep (int ms);
 void I_WaitForTic (void);
 
+// For drawing between tics: the time in tics with its fraction, the time in
+// milliseconds on a clock that never steps, and a sleep until such a time.
+double I_GetTimeFrac (void);
+double I_NowMs (void);
+void I_SleepUntilMs (double when);
+
 
 //
 // Called by D_DoomLoop,

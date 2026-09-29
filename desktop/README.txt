@@ -57,8 +57,11 @@ changes weapon and Backspace opens the menu. DOOM_MODERN_CONTROLS=0 on that
 first run keeps id's keys instead (the arrows, comma and period, Space).
 Keys are set under Options -> Setup -> Controls, a controller under
 Options -> Setup -> Controller -- what each button does, turn speed,
-vibration and more -- and a crosshair, a minimal HUD and changing weapon on
-a pickup under Options -> Setup -> Gameplay. In the menus, A chooses, B goes
+vibration and more -- and a crosshair, a minimal HUD, changing weapon on a
+pickup and Max FPS under Options -> Setup -> Gameplay. Max FPS starts at 60:
+the game runs at 35 tics a second, as it always did, and the frames between
+are drawn with everything part of the way to where it is going. 35 draws
+only at the tics, as id's did; a faster monitor can take 120 or 144. In the menus, A chooses, B goes
 back and Start opens and closes them.
 
 Sound effects go through PulseAudio, or PipeWire's stand-in for it, which is

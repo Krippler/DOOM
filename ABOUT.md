@@ -74,7 +74,8 @@ equivalent of:
   stick's deadzone, vibration, swapping the sticks, and whether a full push
   runs. Saved to `.doomrc`.
 - **Gameplay** — a crosshair and its colour, a minimal HUD over a view that
-  fills the screen, and whether picking up a weapon changes to it.
+  fills the screen, whether picking up a weapon changes to it, and Max FPS:
+  frames drawn between the game's 35 tics a second, for smoother motion.
 - **Load WAD** — list the `.wad` files you mounted, marked `GAME` or `MOD`,
   and load one. The engine builds its textures, sprites and sound cache once
   at startup, so choosing a file restarts it: a couple of seconds back to the

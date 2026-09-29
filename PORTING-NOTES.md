@@ -889,6 +889,55 @@ tables were raised eightfold: `MAXVISPLANES`, `MAXOPENINGS`, `MAXDRAWSEGS`,
 Only memory depends on them. The scrolling-wall list, which the original
 filled with no check at all, stops at its end now.
 
+## Drawing between tics: Max FPS
+
+The game runs at 35 tics a second and must: demos are a tic command per tic,
+and a net game is every machine running the same tics. So `max_fps` above 35
+does not run the game faster. It draws frames between tics, blending where
+everything was with where it is (`r_lerp.c`), from the Quake container's
+`host_maxfps` and `r_lerpmodels`.
+
+**The loop.** At 35, `D_DoomLoop` is what it was: `TryRunTics` waits for a
+tic, runs it, and one frame is drawn. Above 35, in a level and with nothing
+paused, it reads input every frame (`I_StartTic`, `D_ProcessEvents`), runs a
+tic only if one is due (`D_TicDue`, which is `NetUpdate` and a look at
+`nettics`), draws, and sleeps to the next frame's time with
+`clock_nanosleep` on the monotonic clock. How far between tics a frame is
+comes from `I_GetTimeFrac`, `I_GetTime`'s own clock with the fraction kept,
+less `D_TicRunAt`, when `TryRunTics` last ran tics. A net game started with
+`-dup` (`ticdup` above 1) and `-timedemo` (`singletics`) keep the old loop.
+
+**What is blended, and how it stays out of the game.** `P_Ticker` starts
+every tic with `R_LerpSave`: each mobj's x, y, z and angle, each sector's
+floor and ceiling heights, each player's `viewz` and weapon sprite offsets
+become the "old" ones. It does so even for a tic the world stands still in (a
+pause, the menu), so nothing is drawn still moving. The renderer then reads
+blended values in the few places it takes positions: `R_SetupFrame` for the
+view, `R_ProjectSprite` for things, `R_DrawPSprite` for the weapon. Floor and
+ceiling heights are read in too many places for that, so `R_LerpBegin` sets
+blended heights for the length of `R_RenderPlayerView` and `R_LerpEnd` puts
+the real ones back; walls that scroll (special 48) get the same. The play
+code never sees a blended value.
+
+A mobj spawned mid-tic starts with old equal to new (`P_SpawnMobj`), and so
+does one that teleports (`R_LerpJump` from `EV_Teleport`), so neither is
+drawn sliding across the map. The new mobj fields are at the end of
+`mobj_t`, and the save code copies `MOBJ_SAVESIZE`, the offset of the first
+of them, rather than `sizeof(mobj_t)`: 224 bytes, as before, so a save made
+by an earlier engine loads in this one and the other way round.
+
+**Turning.** Blending the view's angle alone would put the mouse a tic
+behind the hand. So for the console player, when this machine's tic commands
+are the ones being run (not a demo, not recording one, not a net game), the
+angle drawn is the one the last tic ended on, less the unfinished part of
+that tic's turn from keys and sticks -- which turn at a rate and are blended
+like movement -- plus the turn the mouse has made since the last tic command
+(`G_PendingMouseTurn`), which the next command will carry. `G_BuildTiccmd`
+records how much of each command's turn was the mouse's (`G_MouseTurn`), and
+`P_MovePlayer` hands the command's turn to `R_LerpTurn`, so the two are told
+apart. Dead, or held by a teleport, the mouse's turn is not drawn, as the
+next tic will not make it.
+
 ## From the Quake container: weapons on the wheel, WASD, Backspace, Gameplay
 
 **Next and previous weapon.** 1993 DOOM changes weapon only by number, and

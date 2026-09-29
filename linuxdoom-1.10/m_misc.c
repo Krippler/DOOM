@@ -59,6 +59,7 @@ rcsid[] = "$Id: m_misc.c,v 1.6 1997/02/03 22:45:10 b1 Exp $";
 
 #include "m_misc.h"
 #include "i_pad.h"
+#include "r_lerp.h"
 
 //
 // M_DrawText
@@ -321,6 +322,7 @@ default_t	defaults[] =
     {"pad_turncurve",&padturncurve, 4},
     {"pad_movedeadzone",&padmovedeadzone, 6},
     {"pad_turndeadzone",&padturndeadzone, 6},
+    {"max_fps",&max_fps, 35},
 
     {"use_joystick",&usejoystick, 0},
     {"joyb_fire",&joybfire,0},

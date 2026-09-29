@@ -242,8 +242,8 @@ void P_ArchiveThinkers (void)
 	    *save_p++ = tc_mobj;
 	    PADSAVEP();
 	    mobj = (mobj_t *)save_p;
-	    memcpy (mobj, th, sizeof(*mobj));
-	    save_p += sizeof(*mobj);
+	    memcpy (mobj, th, MOBJ_SAVESIZE);
+	    save_p += MOBJ_SAVESIZE;
 	    mobj->state = (state_t *)(mobj->state - states);
 	    
 	    if (mobj->player)
@@ -297,8 +297,12 @@ void P_UnArchiveThinkers (void)
 	  case tc_mobj:
 	    PADSAVEP();
 	    mobj = Z_Malloc (sizeof(*mobj), PU_LEVEL, NULL);
-	    memcpy (mobj, save_p, sizeof(*mobj));
-	    save_p += sizeof(*mobj);
+	    memcpy (mobj, save_p, MOBJ_SAVESIZE);
+	    save_p += MOBJ_SAVESIZE;
+	    mobj->oldx = mobj->x;
+	    mobj->oldy = mobj->y;
+	    mobj->oldz = mobj->z;
+	    mobj->oldangle = mobj->angle;
 	    mobj->state = &states[(intptr_t)mobj->state];
 	    mobj->target = NULL;
 	    if (mobj->player)

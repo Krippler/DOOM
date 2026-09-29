@@ -161,12 +161,14 @@ fi
 # the keyboard. Options -> Setup -> Mouse -> Grab pointer turns it off.
 #
 # It also gets WASD, as the container and the Quake build do: W and S to walk,
-# A and D to sidestep, E to use. DOOM_MODERN_CONTROLS=0 keeps id's keys. Only
-# a first run: after that the file is the engine's, and holds what was set in
-# the game.
+# A and D to sidestep, E to use. DOOM_MODERN_CONTROLS=0 keeps id's keys. And
+# Max FPS 60, drawing between the game's 35 tics a second for smoother
+# motion. (The container leaves it at 35: there every extra frame is one more
+# for x11vnc to encode and send.) Only a first run: after that the file is the
+# engine's, and holds what was set in the game.
 config="$base/doomrc"
 if [ ! -f "$config" ]; then
-    printf 'grab_mouse\t\t1\n' > "$config"
+    printf 'grab_mouse\t\t1\nmax_fps\t\t60\n' > "$config"
     [ "${DOOM_MODERN_CONTROLS:-1}" = "1" ] && printf '%s\t\t%s\n' \
         key_up 119 key_down 115 key_strafeleft 97 key_straferight 100 \
         key_use 101 >> "$config"
