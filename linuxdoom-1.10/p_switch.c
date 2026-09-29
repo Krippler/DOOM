@@ -29,6 +29,9 @@ rcsid[] = "$Id: p_switch.c,v 1.3 1997/01/28 22:08:29 b1 Exp $";
 #include <stdlib.h>
 #include <string.h>
 #include "i_system.h"
+#include "m_swap.h"
+#include "w_wad.h"
+#include "z_zone.h"
 #include "doomdef.h"
 #include "p_local.h"
 
@@ -98,56 +101,80 @@ switchlist_t alphSwitchList[] =
     {"\0",		"\0",		0}
 };
 
-int		switchlist[MAXSWITCHES * 2];
+// The switch textures, in pairs: switchlist[2n] and switchlist[2n+1] turn
+// into each other.
+int*		switchlist;
 int		numswitches;
 button_t**	buttonlist;
 int		maxbuttons;
+
+static int	maxswitches;
+
+static void P_AddSwitch (char* name1, char* name2)
+{
+    int		t1 = R_CheckTextureNumForName (name1);
+    int		t2 = R_CheckTextureNumForName (name2);
+
+    if (t1 < 0 || t2 < 0)
+	return;
+
+    if (numswitches == maxswitches)
+    {
+	maxswitches = maxswitches ? maxswitches * 2 : 64;
+	switchlist = realloc (switchlist, (2 * maxswitches + 1) * sizeof(int));
+	if (!switchlist)
+	    I_Error ("P_InitSwitchList: no memory for %d switches", maxswitches);
+    }
+    switchlist[2 * numswitches] = t1;
+    switchlist[2 * numswitches + 1] = t2;
+    numswitches++;
+    switchlist[2 * numswitches] = -1;
+}
 
 //
 // P_InitSwitchList
 // Only called at game initialization.
 //
+// id's code took the switches by game: episode 1's for shareware, 2's as
+// well for registered, all for DOOM II. The Ultimate DOOM, which came after
+// this source, was none of those, so it got shareware's -- and the switches
+// of episodes 2 and 3 (SW1LION, SW1GARG, SW1SKIN, SW1WOOD, ...) stayed as
+// they were when used, in The Ultimate DOOM and every mod played on it,
+// SIGIL II among them. A pair is used now whenever both its textures are
+// there, which is what the episode numbers stood for.
+//
+// A mod's SWITCHES lump, as Boom defined it (a name, the other name, an
+// episode number, until an episode of 0), replaces the list; the last one
+// loaded counts. Its episode numbers are read the same way, as "if the
+// textures are there".
+//
 void P_InitSwitchList(void)
 {
     int		i;
-    int		index;
-    int		episode;
-	
-    episode = 1;
+    int		lump = W_CheckNumForName ("SWITCHES");
 
-    if (gamemode == registered)
-	episode = 2;
-    else
-	if ( gamemode == commercial )
-	    episode = 3;
-		
-    for (index = 0,i = 0;i < MAXSWITCHES;i++)
+    numswitches = 0;
+
+    if (lump >= 0)
     {
-	if (!alphSwitchList[i].episode)
+	byte*	data = W_CacheLumpNum (lump, PU_STATIC);
+	int	len = W_LumpLength (lump);
+	char	name1[9], name2[9];
+
+	for (i = 0; i + 20 <= len; i += 20)
 	{
-	    numswitches = index/2;
-	    switchlist[index] = -1;
-	    break;
+	    if (!SHORT (*(short *) (data + i + 18)))
+		break;
+	    memcpy (name1, data + i, 8);
+	    memcpy (name2, data + i + 9, 8);
+	    name1[8] = name2[8] = 0;
+	    P_AddSwitch (name1, name2);
 	}
-		
-	if (alphSwitchList[i].episode <= episode)
-	{
-#if 0	// UNUSED - debug?
-	    int		value;
-			
-	    if (R_CheckTextureNumForName(alphSwitchList[i].name1) < 0)
-	    {
-		I_Error("Can't find switch texture '%s'!",
-			alphSwitchList[i].name1);
-		continue;
-	    }
-	    
-	    value = R_TextureNumForName(alphSwitchList[i].name1);
-#endif
-	    switchlist[index++] = R_TextureNumForName(alphSwitchList[i].name1);
-	    switchlist[index++] = R_TextureNumForName(alphSwitchList[i].name2);
-	}
+	Z_Free (data);
     }
+    else
+	for (i = 0; alphSwitchList[i].episode; i++)
+	    P_AddSwitch (alphSwitchList[i].name1, alphSwitchList[i].name2);
 }
 
 

@@ -12,6 +12,27 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [1.16.0] — 2026-09-29
+
+### Fixed
+- **Switches that did not light up when used, in The Ultimate DOOM and
+  everything played on it — SIGIL II included.** id's code chose which
+  switch textures change by game: shareware's for shareware, more for the
+  registered game, all for DOOM II. The Ultimate DOOM came out after that
+  code and was none of them, so it got shareware's, and every switch
+  first seen in episodes 2 and 3 — the lion, the gargoyle, the skin, the
+  wood — worked but never changed. A switch now changes whenever both its
+  textures are there: 29 in The Ultimate DOOM instead of 19.
+
+### Added
+- **A mod's own SWITCHES and ANIMATED lumps**, in Boom's format, as UZDoom
+  reads them: its switch pairs and its animated walls and floors, in place
+  of id's lists. SIGIL II's burning walls (FLMWAL) now burn. Neither list
+  has a limit any more; id's held 50 switches and 32 animations.
+
+Play is unaffected: the same demos end in the same state, bar the random
+numbers behind the switch sounds you now hear.
+
 ## [1.15.0] — 2026-09-29
 
 ### Added
