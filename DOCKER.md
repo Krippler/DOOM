@@ -372,10 +372,17 @@ maps are DOOM's (SIGIL, SIGIL II), `MAP01`-style maps DOOM II's (No Rest for
 the Living, the Master Levels). If the game running now is the right one, the
 mod goes on top of it; if not, the engine restarts on the right one from the
 WAD directory — so SIGIL II chosen while playing DOOM II starts on DOOM. For
-DOOM it takes the copy with the most episodes; for DOOM II, `doom2.wad` before
-TNT or Plutonia. A mod with no maps — new graphics or sounds — stays on the
-game running now. When the right game is not there at all, the menu says
-`NEEDS DOOM, NOT FOUND` or `NEEDS DOOM II, NOT FOUND` and nothing restarts.
+DOOM it takes the copy with the most episodes. A DOOM II mod goes on
+`doom2.wad` even from TNT or Plutonia, since nearly all of them were made for
+it; TNT or Plutonia only when there is no DOOM II, and then the one running.
+The exception is a mod made for TNT or Plutonia in particular: start the
+container on that game with the mod already loaded, rather than through Load
+WAD — `DOOM_IWAD=tnt.wad`, and `-file /wads/yourmod.wad` after the image name
+(see below). A mod
+with no maps — new graphics or sounds — stays on the game running now, and
+so does one with maps of both kinds. When the right game is not there at all,
+the menu says `NEEDS DOOM, NOT FOUND` or `NEEDS DOOM II, NOT FOUND` and nothing
+restarts.
 
 Shareware refuses to load mods — that is the engine's own restriction, not the
 container's — so a mod chosen while playing the shareware episode goes on the

@@ -900,8 +900,12 @@ before DOOM -- so SIGIL II, chosen while playing DOOM, started on DOOM II:
 
 `M_IwadFor` now reads the PWAD's directory (`M_WadMaps`): an `ExMy` lump makes
 it DOOM's, a `MAPxx` lump DOOM II's. The running IWAD, `wadfiles[0]`, is kept
-when it fits -- DOOM II for `MAPxx`; for `ExMy`, retail, or registered when the
-mod stays within three episodes -- or for a mod with no maps at all. Otherwise
+when it fits -- DOOM II itself for `MAPxx`; for `ExMy`, retail, or registered
+when the mod stays within three episodes -- or for a mod with no maps, or
+with both kinds. DOOM II, TNT and Plutonia all run as `commercial` and
+`gamemission` is never set, so DOOM II is told from the others by its file
+name (`doom2*`); a `MAPxx` mod on TNT or Plutonia moves to DOOM II if there is
+one, and only when there is not stays where it is. Otherwise
 the WAD directory and `DOOMWADDIR` are searched for an IWAD with the right kind
 of map: for DOOM the one with the most episodes, and never a one-episode
 (shareware) IWAD, which the engine will not load a PWAD on; for DOOM II a file

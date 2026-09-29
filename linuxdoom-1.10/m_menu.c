@@ -1981,11 +1981,24 @@ static int M_WadMaps (char* path, int* episodes)
 // DOOM, started on DOOM II.
 //
 // Now: a mod with no maps, or with maps for the game already running, keeps
-// that game. Otherwise the installed game that fits is found -- for DOOM
-// maps the one with the most episodes, never the shareware one, which will
-// not load a mod at all; for DOOM II maps DOOM II itself if it is there,
-// then TNT or Plutonia. NULL if there is none.
+// that game, and so does one with maps for both. Otherwise the installed game
+// that fits is found -- for DOOM maps the one with the most episodes, never
+// the shareware one, which will not load a mod at all; for DOOM II maps DOOM
+// II itself if it is there, even from TNT or Plutonia, since nearly every
+// MAPxx mod was made for it. TNT or Plutonia only when there is no DOOM II,
+// and then the one running if it is one of them. NULL if there is none.
 //
+// The engine runs all three as the same game, commercial -- gamemission is
+// never set -- so DOOM II is told from the other two by its file name, doom2
+// or doom2f, as the container's links and id's own names have it.
+//
+static boolean M_IsDoom2Name (char* path)
+{
+    char*	base = strrchr (path, '/');
+
+    return !strncasecmp (base ? base + 1 : path, "doom2", 5);
+}
+
 static char* M_IwadFor (char* pwad)
 {
     static char	best[256];
@@ -2001,9 +2014,11 @@ static char* M_IwadFor (char* pwad)
     want = M_WadMaps (pwad, &pwadeps);
 
     // The game running now, if it will do.
-    if (!want && gamemode != shareware)
+    if ((!want || want == (WADMAPS_DOOM | WADMAPS_DOOM2))
+	&& gamemode != shareware)
 	return wadfiles[0];
-    if (want & WADMAPS_DOOM2 && gamemode == commercial)
+    if (want == WADMAPS_DOOM2 && gamemode == commercial
+	&& M_IsDoom2Name (wadfiles[0]))
 	return wadfiles[0];
     if (want == WADMAPS_DOOM
 	&& (gamemode == retail || (gamemode == registered && pwadeps <= 3)))
@@ -2032,12 +2047,12 @@ static char* M_IwadFor (char* pwad)
 	    {
 	      case WADMAPS_DOOM:
 		// shareware has one episode, and loads no mods
-		if ((want == WADMAPS_DOOM || !want) && eps > 1)
+		if ((want & WADMAPS_DOOM || !want) && eps > 1)
 		    score = 10 + eps;
 		break;
 	      case WADMAPS_DOOM2:
 		if (want & WADMAPS_DOOM2)
-		    score = strncasecmp (e->d_name, "doom2", 5) ? 10 : 20;
+		    score = M_IsDoom2Name (e->d_name) ? 20 : 10;
 		break;
 	    }
 
@@ -2049,6 +2064,10 @@ static char* M_IwadFor (char* pwad)
 	}
 	closedir (dp);
     }
+
+    // No DOOM II: TNT or Plutonia will do, and the one running first.
+    if (bestscore < 20 && want & WADMAPS_DOOM2 && gamemode == commercial)
+	return wadfiles[0];
 
     return bestscore ? best : NULL;
 }
