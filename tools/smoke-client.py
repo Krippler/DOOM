@@ -428,18 +428,32 @@ def compare(a):
     say('depth 8 and depth 24 agree on all %d status bar pixels' % len(got))
 
 
+def peak(a):
+    # Whatever the stream carries for --secs seconds, while the caller makes
+    # the engine play something: loud enough to be the game's own sound.
+    audio = Audio(a.audio)
+    t0 = time.time()
+    time.sleep(a.secs)
+    loud = audio.peak(t0, time.time())
+    if loud < 1000:
+        die('nothing was heard: peak %d in %.0f seconds' % (loud, a.secs))
+    say('heard: peak %d' % loud)
+
+
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('phase', choices=['level', 'music', 'ogg', 'compare'])
+    p.add_argument('phase', choices=['level', 'music', 'ogg', 'compare',
+                                     'peak'])
     p.add_argument('--fb')
     p.add_argument('--pad', type=int)
     p.add_argument('--audio', type=int)
     p.add_argument('--wad')
     p.add_argument('--src', help="the engine's v_video.c, for its gamma table")
     p.add_argument('--out', default='.')
+    p.add_argument('--secs', type=float, default=5)
     a = p.parse_args()
     {'level': level, 'music': music, 'ogg': ogg,
-     'compare': compare}[a.phase](a)
+     'compare': compare, 'peak': peak}[a.phase](a)
 
 
 if __name__ == '__main__':
