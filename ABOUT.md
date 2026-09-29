@@ -70,8 +70,9 @@ equivalent of:
   wheel among them. Saved to `.doomrc`.
 - **Mouse** — turn the mouse on and off, assign its buttons, and capture the
   pointer so it cannot slide out of the window while you turn.
-- **Controller** — what each button does, the turn speed, vibration, swapping
-  the sticks, and whether a full push runs. Saved to `.doomrc`.
+- **Controller** — what each button does, the turn speed and curve, each
+  stick's deadzone, vibration, swapping the sticks, and whether a full push
+  runs. Saved to `.doomrc`.
 - **Gameplay** — a crosshair and its colour, a minimal HUD over a view that
   fills the screen, and whether picking up a weapon changes to it.
 - **Load WAD** — list the `.wad` files you mounted, marked `GAME` or `MOD`,

@@ -318,6 +318,9 @@ default_t	defaults[] =
     {"pad_vibration",&padrumble, 5},
     {"pad_swapsticks",&padswapsticks, 0},
     {"pad_pushrun",&padpushrun, 1},
+    {"pad_turncurve",&padturncurve, 4},
+    {"pad_movedeadzone",&padmovedeadzone, 6},
+    {"pad_turndeadzone",&padturndeadzone, 6},
 
     {"use_joystick",&usejoystick, 0},
     {"joyb_fire",&joybfire,0},

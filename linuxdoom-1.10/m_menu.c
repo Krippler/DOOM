@@ -1398,6 +1398,9 @@ enum
     pad_on,
     pad_buttons,
     pad_turn,
+    pad_curve,
+    pad_movedz,
+    pad_turndz,
     pad_vibration,
     pad_swap,
     pad_pushrun,
@@ -1406,6 +1409,9 @@ enum
 
 void M_TogglePad (int choice);
 void M_ChangePadTurn (int choice);
+void M_ChangePadCurve (int choice);
+void M_ChangePadMoveDZ (int choice);
+void M_ChangePadTurnDZ (int choice);
 void M_ChangePadRumble (int choice);
 void M_TogglePadSwap (int choice);
 void M_TogglePadPushRun (int choice);
@@ -1418,20 +1424,25 @@ menuitem_t PadMenu[] =
     {1,"",M_TogglePad,'u'},
     {1,"",M_PadButtons,'b'},
     {2,"",M_ChangePadTurn,'t'},
+    {2,"",M_ChangePadCurve,'c'},
+    {2,"",M_ChangePadMoveDZ,'m'},
+    {2,"",M_ChangePadTurnDZ,'d'},
     {2,"",M_ChangePadRumble,'v'},
     {1,"",M_TogglePadSwap,'s'},
     {1,"",M_TogglePadPushRun,'p'}
 };
 
+// Nine rows and two lines of help below them fit above the status bar at
+// 11 pixels a row, not the small font's 13.
 menu_t PadDef =
 {
     pad_end,
     &SetupDef,
     PadMenu,
     M_DrawPadOptions,
-    56,48,
+    56,42,
     0,
-    SMALLLINEHEIGHT
+    11
 };
 
 static char* padactionnames[PA_COUNT] =
@@ -1542,6 +1553,9 @@ static void M_Step (int* value, int choice, int max)
 }
 
 void M_ChangePadTurn (int choice)	{ M_Step (&padturnspeed, choice, 9); }
+void M_ChangePadCurve (int choice)	{ M_Step (&padturncurve, choice, 9); }
+void M_ChangePadMoveDZ (int choice)	{ M_Step (&padmovedeadzone, choice, 9); }
+void M_ChangePadTurnDZ (int choice)	{ M_Step (&padturndeadzone, choice, 9); }
 
 void M_ChangePadRumble (int choice)
 {
@@ -1606,6 +1620,21 @@ void M_DrawPadOptions (void)
     M_WriteText (PadDef.x + 148, y, buf);
     y += PadDef.lineheight;
 
+    snprintf (buf, sizeof(buf), "%d", padturncurve);
+    M_WriteText (PadDef.x, y, "TURN CURVE");
+    M_WriteText (PadDef.x + 148, y, buf);
+    y += PadDef.lineheight;
+
+    snprintf (buf, sizeof(buf), "%d", padmovedeadzone);
+    M_WriteText (PadDef.x, y, "MOVE DEADZONE");
+    M_WriteText (PadDef.x + 148, y, buf);
+    y += PadDef.lineheight;
+
+    snprintf (buf, sizeof(buf), "%d", padturndeadzone);
+    M_WriteText (PadDef.x, y, "TURN DEADZONE");
+    M_WriteText (PadDef.x + 148, y, buf);
+    y += PadDef.lineheight;
+
     snprintf (buf, sizeof(buf), "%d", padrumble);
     M_WriteText (PadDef.x, y, "VIBRATION");
     M_WriteText (PadDef.x + 148, y, padrumble ? buf : "OFF");
@@ -1618,8 +1647,8 @@ void M_DrawPadOptions (void)
     M_WriteText (PadDef.x, y, "PUSH STICK TO RUN");
     M_WriteText (PadDef.x + 148, y, padpushrun ? "ON" : "OFF");
 
-    M_WriteText (56, 140, "LEFT STICK MOVES, RIGHT STICK TURNS");
-    M_WriteText (56, 152, "START IS ALWAYS THE MENU");
+    M_WriteText (56, 146, "LEFT STICK MOVES, RIGHT STICK TURNS");
+    M_WriteText (56, 156, "START IS ALWAYS THE MENU");
 }
 
 void M_DrawPadButtons (void)

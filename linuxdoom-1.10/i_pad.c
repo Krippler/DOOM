@@ -92,7 +92,18 @@ int	padrumble = 5;
 int	padswapsticks = 0;
 int	padpushrun = 1;
 
-#define DEADZONE	0.18	// of the stick that moves, and the one that turns
+// From the Quake container's controller page: how far each stick has to go
+// before it does anything, the one that moves and the one that turns, in
+// steps of 0.03 of its travel (6, the default, is the 0.18 there always
+// was); and how much finer a small push on the turning stick is, 0 turning
+// in plain proportion and 9 very fine near the middle (4, the default, is
+// the square there always was). The deadzones go with what the stick does,
+// so they follow it when Swap Sticks is on.
+int	padturncurve = 4;
+int	padmovedeadzone = 6;
+int	padturndeadzone = 6;
+
+#define PAD_DEADZONE(n)	((n) < 0 ? 0 : (n) > 9 ? 0.27 : (n) * 0.03)
 
 typedef struct
 {
@@ -572,17 +583,17 @@ void I_PadPoll (void)
 // diagonal is not held to a higher bar, and rescaled so the first movement
 // past it is a small one. Returns how far over it is, 0 to 1.
 //
-static float PAD_Stick (float x, float y, float* ox, float* oy)
+static float PAD_Stick (float x, float y, float dz, float* ox, float* oy)
 {
     float	m, s;
 
     m = sqrt (x*x + y*y);
-    if (m <= DEADZONE || m <= 0)
+    if (m <= dz || m <= 0)
     {
 	*ox = *oy = 0;
 	return 0;
     }
-    s = (m - DEADZONE) / (1 - DEADZONE);
+    s = (m - dz) / (1 - dz);
     if (s > 1)
 	s = 1;
     *ox = x / m * s;
@@ -597,11 +608,13 @@ static float PAD_Stick (float x, float y, float* ox, float* oy)
 //
 // Turning is degrees a second, 90 to 360 on the Turn Speed slider -- 240 at
 // the default, which is the keyboard's own fast turn -- on a curve so a small
-// push aims finely.
+// push aims finely: the push raised to 1 plus a quarter of Turn Curve.
 //
 void I_PadTiccmd (ticcmd_t* cmd, int* forward, int* side, int speed)
 {
     float	mx, my, tx, ty, m, deg;
+    float	movedz = PAD_DEADZONE (padmovedeadzone);
+    float	turndz = PAD_DEADZONE (padturndeadzone);
     int		run;
 
     if (!pad.connected || !usepad || menuactive || gamestate != GS_LEVEL)
@@ -609,13 +622,13 @@ void I_PadTiccmd (ticcmd_t* cmd, int* forward, int* side, int speed)
 
     if (padswapsticks)
     {
-	m = PAD_Stick (pad.rx, pad.ry, &mx, &my);
-	PAD_Stick (pad.lx, pad.ly, &tx, &ty);
+	m = PAD_Stick (pad.rx, pad.ry, movedz, &mx, &my);
+	PAD_Stick (pad.lx, pad.ly, turndz, &tx, &ty);
     }
     else
     {
-	m = PAD_Stick (pad.lx, pad.ly, &mx, &my);
-	PAD_Stick (pad.rx, pad.ry, &tx, &ty);
+	m = PAD_Stick (pad.lx, pad.ly, movedz, &mx, &my);
+	PAD_Stick (pad.rx, pad.ry, turndz, &tx, &ty);
     }
 
     run = speed || (padpushrun && m > 0.9);
@@ -624,7 +637,9 @@ void I_PadTiccmd (ticcmd_t* cmd, int* forward, int* side, int speed)
 
     if (tx)
     {
-	deg = (90 + padturnspeed * 30) * (tx * tx) / TICRATE;
+	deg = (90 + padturnspeed * 30)
+	    * pow (fabs (tx), 1 + (padturncurve < 0 ? 0 : padturncurve) * 0.25)
+	    / TICRATE;
 	cmd->angleturn -= (tx < 0 ? -1 : 1) * (short)(deg * 65536 / 360);
     }
 }

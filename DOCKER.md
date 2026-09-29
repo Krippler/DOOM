@@ -252,6 +252,8 @@ Controller**, and saved in `.doomrc` beside the keys:
 | Use controller | on or off |
 | Buttons… | what each button does — any of the game's actions, or nothing |
 | Turn speed | how fast the right stick turns, 0–9. 5 is the keyboard's own fast turn |
+| Turn curve | how much finer a small push on the turning stick is, 0–9: 0 turns in plain proportion to the push, higher values slow the middle of its travel. 4 is the curve there always was |
+| Move deadzone, turn deadzone | how far each stick must go before it does anything, 0–9, in steps of 3% of its travel; 6 is the 18% there always was. They go with the job, so they follow the sticks when Swap sticks is on |
 | Vibration | 0 (off) to 9. The pad pulses as you set it, so you can feel the strength |
 | Swap sticks | left stick turns, right stick moves |
 | Push stick to run | a full push breaks into a run, without holding Run |

@@ -39,6 +39,10 @@ patch whatever was in it.
   - **Change Weapon on Pickup**: **Always**, **Only If New** (id's, and the
     default) or **Never**. Demos and net games play id's way whatever it is
     set to, as they must to stay in step.
+- **Controller: Turn Curve, Move Deadzone and Turn Deadzone**, on Options →
+  Setup → Controller, as in the Quake container (whose Look Curve is Turn
+  Curve here, DOOM having no looking up and down). The defaults are what the
+  sticks always did.
 - **The start-up log says how long each step took**: `[doom 12.3s] ...`, as in
   the Quake container, so a slow start shows where the time went.
 
