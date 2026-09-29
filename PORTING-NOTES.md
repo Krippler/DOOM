@@ -889,6 +889,37 @@ tables were raised eightfold: `MAXVISPLANES`, `MAXOPENINGS`, `MAXDRAWSEGS`,
 Only memory depends on them. The scrolling-wall list, which the original
 filled with no check at all, stops at its end now.
 
+## Switches in The Ultimate DOOM, and SWITCHES and ANIMATED
+
+`P_InitSwitchList` took the switch pairs by `gamemode`: episode 1's for
+shareware, 1 and 2 for `registered`, all for `commercial`. `retail`, The
+Ultimate DOOM, is not in that test -- linuxdoom-1.10 predates it, and id's
+DOS 1.9 and Chocolate Doom both have `gamemode == registered || gamemode ==
+retail` there -- so it got shareware's 19 pairs, and a player using SW1LION,
+SW1GARG, SW1SKIN, SW1WOOD and the rest of episodes 2 and 3's heard nothing
+and saw nothing change. SIGIL II, played on The Ultimate DOOM, is built from
+them. A pair is now taken whenever both its textures exist
+(`R_CheckTextureNumForName`), which is what the episode numbers were a
+stand-in for: 29 pairs in The Ultimate DOOM, 40 in DOOM II, 19 in shareware,
+as before for the other two.
+
+A `SWITCHES` lump, as Boom defined it -- 20-byte records, two 9-byte names
+and a short episode, ending at episode 0 -- replaces the built-in table, the
+last loaded counting; its episode numbers get the same treatment. An
+`ANIMATED` lump -- 23-byte records, a type byte (1 texture, 0 flat), the last
+frame's name, the first frame's, tics per frame, ending at a type of 255 --
+replaces `animdefs`. SIGIL II has both; its `SWITCHES` is id's table, and its
+`ANIMATED` is id's cycles plus FLMWAL01 to FLMWAL03. A mod's cycle whose
+frames are missing is skipped, and one that runs backwards is left out with
+a message rather than `I_Error`. `switchlist` and `anims` grow; id's arrays
+held 50 pairs (checked) and 32 cycles (not checked).
+
+Neither changes play. A switch that now changes also now makes its sound,
+and `S_StartSound` draws on `M_Random` for the pitch, so `rndindex` (not
+`prndindex`) ends one or two further on in demos that use such switches:
+DOOM's demo4, and SIGIL II's demos 2 and 4. Everything else -- `prndindex`,
+position, angle, health, kills, `leveltime` -- is as it was.
+
 ## New Game chooses the WAD
 
 `M_NewGame` opens `WadDef`, the Load WAD list, with `wadNewGame` set: the

@@ -31,6 +31,7 @@ rcsid[] = "$Id: p_spec.c,v 1.6 1997/02/03 22:45:12 b1 Exp $";
 #include <stdlib.h>
 
 #include "doomdef.h"
+#include "m_swap.h"
 #include "doomstat.h"
 
 #include "i_system.h"
@@ -80,9 +81,9 @@ typedef struct
 
 
 
-#define MAXANIMS                32
-
-extern anim_t	anims[MAXANIMS];
+// As many as there are: id's array held 32 and wrote past the end of it
+// when a mod asked for more.
+extern anim_t*	anims;
 extern anim_t*	lastanim;
 
 //
@@ -131,8 +132,9 @@ animdef_t		animdefs[] =
     {-1}
 };
 
-anim_t		anims[MAXANIMS];
+anim_t*		anims;
 anim_t*		lastanim;
+static int	numanims, maxanims;
 
 
 //
@@ -146,45 +148,97 @@ extern  line_t**	linespeciallist;
 
 
 
+//
+// One cycle, from first to last frame. A mod's cycle whose frames are not
+// all there, or run backwards, is left out rather than stopping the game.
+//
+static void P_AddAnim (int istexture, char* start, char* end, int speed,
+		       boolean frommod)
+{
+    anim_t*	a;
+    int		base, pic;
+
+    if (istexture)
+    {
+	// different episode ?
+	if (R_CheckTextureNumForName (start) == -1
+	    || R_CheckTextureNumForName (end) == -1)
+	    return;
+	pic = R_TextureNumForName (end);
+	base = R_TextureNumForName (start);
+    }
+    else
+    {
+	if (R_CheckFlatNumForName (start) == -1
+	    || R_CheckFlatNumForName (end) == -1)
+	    return;
+	pic = R_FlatNumForName (end);
+	base = R_FlatNumForName (start);
+    }
+
+    if (pic - base + 1 < 2)
+    {
+	if (frommod)
+	{
+	    printf ("\nP_InitPicAnims: %s to %s is not a cycle, left out",
+		    start, end);
+	    return;
+	}
+	I_Error ("P_InitPicAnims: bad cycle from %s to %s", start, end);
+    }
+
+    if (numanims == maxanims)
+    {
+	maxanims = maxanims ? maxanims * 2 : 32;
+	anims = realloc (anims, maxanims * sizeof(*anims));
+	if (!anims)
+	    I_Error ("P_InitPicAnims: no memory for %d animations", maxanims);
+    }
+
+    a = &anims[numanims++];
+    a->istexture = istexture;
+    a->picnum = pic;
+    a->basepic = base;
+    a->numpics = pic - base + 1;
+    a->speed = speed > 0 ? speed : 8;
+}
+
+//
+// The animated flats and walls: id's list, or a mod's ANIMATED lump in its
+// place, as Boom defined it and UZDoom reads it -- a byte for texture (1) or
+// flat (0), the last frame's name, the first frame's, and tics per frame,
+// until a byte of 255. SIGIL II's has id's cycles and one of its own, the
+// burning wall FLMWAL01 to FLMWAL03, which stood still here before.
+//
 void P_InitPicAnims (void)
 {
     int		i;
+    int		lump = W_CheckNumForName ("ANIMATED");
 
-    
-    //	Init animation
-    lastanim = anims;
-    for (i=0 ; animdefs[i].istexture != -1 ; i++)
+    numanims = 0;
+
+    if (lump >= 0)
     {
-	if (animdefs[i].istexture)
+	byte*	data = W_CacheLumpNum (lump, PU_STATIC);
+	int	len = W_LumpLength (lump);
+	char	last[9], first[9];
+
+	for (i = 0; i + 23 <= len && data[i] != 255; i += 23)
 	{
-	    // different episode ?
-	    if (R_CheckTextureNumForName(animdefs[i].startname) == -1)
-		continue;	
-
-	    lastanim->picnum = R_TextureNumForName (animdefs[i].endname);
-	    lastanim->basepic = R_TextureNumForName (animdefs[i].startname);
+	    memcpy (last, data + i + 1, 8);
+	    memcpy (first, data + i + 10, 8);
+	    last[8] = first[8] = 0;
+	    P_AddAnim (data[i] != 0, first, last,
+		       LONG (*(int *) (data + i + 19)), true);
 	}
-	else
-	{
-	    if (W_CheckNumForName(animdefs[i].startname) == -1)
-		continue;
-
-	    lastanim->picnum = R_FlatNumForName (animdefs[i].endname);
-	    lastanim->basepic = R_FlatNumForName (animdefs[i].startname);
-	}
-
-	lastanim->istexture = animdefs[i].istexture;
-	lastanim->numpics = lastanim->picnum - lastanim->basepic + 1;
-
-	if (lastanim->numpics < 2)
-	    I_Error ("P_InitPicAnims: bad cycle from %s to %s",
-		     animdefs[i].startname,
-		     animdefs[i].endname);
-	
-	lastanim->speed = animdefs[i].speed;
-	lastanim++;
+	Z_Free (data);
     }
-	
+    else
+	for (i = 0; animdefs[i].istexture != -1; i++)
+	    P_AddAnim (animdefs[i].istexture, animdefs[i].startname,
+		       animdefs[i].endname, animdefs[i].speed, false);
+
+    lastanim = anims + numanims;
 }
 
 
