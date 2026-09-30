@@ -1098,6 +1098,24 @@ P_ActivateLineSpecial
 
 
 //
+// P_LineEffect
+// MBF's A_LineEffect: a special on a copy of line 0, used by the thing and,
+// if that does nothing, crossed. True when the special is spent (a once-
+// only line clears it).
+//
+boolean P_LineEffect (mobj_t* thing, int special, int tag)
+{
+    line_t	junk = lines[0];
+
+    junk.special = special;
+    junk.tag = tag;
+    if (!P_UseSpecialLine (thing, &junk, 0))
+	P_CrossLine (&junk, 0, thing, false);
+    return !junk.special;
+}
+
+
+//
 // The dispatch on a line's special, crossed or shot: Boom's, with its own
 // types and the generalized ones, by way of Woof -- id's under
 // demo_compatibility, where W1 lines are spent whether or not they did

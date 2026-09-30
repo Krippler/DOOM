@@ -88,8 +88,9 @@ static const char* const thingnames[] =
     "BigTree", "BurningBarrel", "HangNoGuts", "HangBNoBrain",
     "HangTLookingDown", "HangTSkull", "HangTLookingUp", "HangTNoBrain",
     "ColonGibs", "SmallBloodPool", "BrainStem",
-    // Boom's
-    "PointPusher", "PointPuller"
+    // Boom's and MBF's
+    "PointPusher", "PointPuller", "MBFHelperDog", "PlasmaBall1",
+    "PlasmaBall2", "EvilSceptre", "UnholyBible", "MusicChanger"
 };
 
 // One name for every type there is, or the build stops here.
@@ -478,7 +479,12 @@ static void U_BossAction (umapentry_t* m)
     for (i = 0; i < NUMMOBJTYPES; i++)
 	if (!strcasecmp (values[0], thingnames[i]))
 	    break;
-    if (i == NUMMOBJTYPES)
+    // any other by its number, as a DEHACKED patch has it (from 0, where
+    // the patch's Thing numbers are from 1): Deh_Actor_156 is Thing 157
+    if (i == NUMMOBJTYPES && !strncasecmp (values[0], "Deh_Actor_", 10)
+	&& isdigit ((unsigned char) values[0][10]))
+	i = atoi (values[0] + 10);
+    if (i == NUMMOBJTYPES || i >= DSDH_MAX)
     {
 	U_Warn ("no such thing as", values[0]);
 	return;

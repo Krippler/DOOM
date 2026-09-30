@@ -979,9 +979,125 @@ the same thinkers, the pusher still tied to its thing, and the flat
 offsets. The smoke test's `boom` phase plays E1M1 from a PWAD with 213 and
 261 lines putting every floor and ceiling in a dark room's light.
 
-Not yet: MBF's and MBF21's things, frames, code pointers, flags and
-DEHACKED fields (Boom's `MT_PUSH` and `MT_PULL` are here, as the pushers
-need them), and ID24.
+MBF's and MBF21's additions came next: see MBF and MBF21.
+
+## MBF and MBF21
+
+MBF (1998) added code pointers, flags and a helper dog to Boom; MBF21
+(2021) is what a mod means by "MBF21": MBF's, plus a set of
+parameterized code pointers, more thing, frame and weapon fields, and
+DEHACKED numbering past DOOM's tables. Legacy of Rust, the expansion in
+the 2024 re-release, is ID24, which is MBF21 and more: its monsters and
+both new weapons are MBF21 patch work, frames 1100 to 1566, things to
+209, sprites to 284 and sounds 700 to 736. This is the MBF21 half.
+
+**Tables that grow.** `states`, `mobjinfo`, `sprnames` and `S_sfx` were
+arrays of DOOM's size. They are now copies of the originals
+(`original_states` and so on, with MBF's entries after id's and Boom's,
+in Woof's order, so numbers mean what they mean there), made by
+`D_InitInfo` and `S_InitSfxInfo` before any patch, and `D_GrowStates`,
+`D_GrowThings`, `D_GrowSprites` and `D_GrowSounds` make entry n exist
+when a patch names it -- as a section (`Frame 5000`), as a field that
+points at one (`Next frame = 5000`), or in `[SPRITES]` and `[SOUNDS]` by
+number. Woof translates such numbers to the next free slot, through hash
+tables; here the tables grow to the number itself, so a number means the
+same in the patch, the code pointers' arguments, UMAPINFO's
+`Deh_Actor_156` and a savegame, and nothing needs translating
+(`DSDH_MAX`, 200000, bounds what a patch can ask for). A new frame is
+TNT1 for ever, a new thing spawns nothing and has no editor number, and
+a new sprite or sound has no name until a patch gives it one; DEHEXTRA's
+sounds 500 to 699 are FRE000 to FRE199 until then.
+
+Growing moves a table, so nothing may hold a pointer into one across a
+growth. The first version did, in `D_Frame`: it took `&states[n]`, then
+`Next frame = 5000` grew the table and the next frame was written to the
+freed copy. The durations stuck and the links did not -- which showed as
+a pistol whose new firing frames never ran, and would have broken every
+animation of Legacy of Rust's. Fields that can grow a table are resolved
+first now, and the entry found after. The tables grow only while patches
+are read, before anything else points into them.
+
+**The patch reader** (`d_deh.c`) takes MBF21's fields: Thing's MBF21
+Bits (by number or name), Infighting, Projectile and Splash group (a
+patch's groups numbered after the built-in ones, as Woof does), Fast
+speed, Melee range, Rip sound and DEHEXTRA's Dropped item; Frame's Args1
+to Args8 and MBF21 Bits (SKILL5FAST); Weapon's Ammo per shot and MBF21
+Bits; MBF's flag names in Bits (TOUCHY, BOUNCES, FRIEND, TRANSLUCENT);
+and MBF's and MBF21's code pointer names, each with how many args it
+takes and their defaults. `D_FinishDehacked`, after the last patch, gives
+each frame's unset args its pointer's defaults, and grows the tables to
+whatever frame, thing or sound an arg names.
+
+**The code pointers** are Woof's, converted: MBF's (A_Die, A_Detonate,
+A_Mushroom, A_Spawn, A_Turn, A_Face, A_Scratch, A_PlaySound,
+A_RandomJump, A_LineEffect, A_FireOldBFG, A_BetaSkullAttack, A_Stop) and
+MBF21's eighteen for things and ten for weapons, with the helpers they
+need: `P_HealCorpse` (the Arch-vile's raising, parameterized, which
+A_VileChase now calls), `P_SeekerMissile`, `P_RoughTargetSearch`,
+`P_CheckFov`, the random spreads, and `P_RadiusAttack` with a distance
+apart from its damage. Woof has MBF's and MBF21's pointers do nothing
+unless the level plays at their complevel; here they work in any mode,
+since only a patch can put one on a frame and no DOOM demo has one --
+which lets a DEHACKED-only MBF21 mod work on the games' own maps.
+
+**What id's code did by type, MBF21 does by flag**, and the flags each
+type has by default are what its code did, so the games play as they
+did: the Arch-vile's short missile range and indifference to threshold
+and its targets' anger (SHORTMRANGE, NOTHRESHOLD, DMGIGNORED), the
+Revenant's long melee, the half distances of the Revenant, Lost Soul,
+Spider Mastermind and Cyberdemon (RANGEHALF), the Cyberdemon's eagerness
+(HIGHERMPROB), the two bosses' immunity to blasts (NORADIUSDMG) and
+full-volume sounds, the boss deaths on E1M8, E2M8, E3M8, E4M6, E4M8 and
+MAP07, the Baron and Hell Knight sparing each other's fireballs
+(PG_BARON), the dropped clip, shotgun and chaingun, the chainsaw's lack
+of thrust (NOTHRUST), the rocket launcher and BFG not firing on
+selection (NOAUTOFIRE), and fast monsters: the Demon's frames (SKILL5FAST)
+and the three fireballs' speeds (altspeed), with id's -fast quirk of
+halving the Demon's frames again on each new game kept. Ammo per shot
+changes id's weapons only when a patch sets it. The 21 demos end as on
+1.17.1 at each step.
+
+**MBF's things**: bouncing things come off floors, ceilings and walls
+(`blockline`, now kept by `PIT_CheckLine`); touchy things go off when
+anything solid touches them, when crushed, and when they land once
+armed; translucent ones are drawn through Boom's `tranmap`. Friends are
+simpler than MBF's: a friendly monster (MBF's map thing flag 128, on a
+Boom map) looks for the nearest monster in sight rather than the player,
+and friends never attack friends, the player among them (players are
+friends on Boom maps, as in MBF); MBF's following, helping and backing
+away are not here. MBF21's line flags that block players or walking
+monsters, its reserved-bit rule for bad editors, and its sectors that
+kill the monsters standing in them work on Boom maps.
+
+**Saves** in Boom's format (`WAD2`) carry each thing's flags2, intflags
+and lastenemy after id's fields; a save needs Boom's format too when a
+code pointer has changed a thing's flags2 from its type's. **Sounds past
+255** reach the mixer by new commands, `P` and `L` with four hex digits
+for the number (`p` and `l` still carry id's), and `soundsrv.c` keeps
+the samples of sounds past its own table by number.
+
+A frame with no pictures -- TNT1, which other ports ship an empty
+picture for, or a patch's sprite no WAD has -- is not drawn, where id's
+code stopped the game; and a map thing of a type the engine does not
+know is left out with a line in the log, as Boom does.
+
+**The build.** The Makefile had no header dependencies: changing a
+structure in a header rebuilt only the files that changed, and the rest
+read the old layout. That is how the first Legacy of Rust start crashed
+in `R_InitSpriteDefs`, handed the address of `sprnames` by a `p_setup.o`
+built when it was an array. Objects now record the headers they read
+(`-MMD -MP`).
+
+Checked: all 21 demos end as on 1.17.1, and every map format conversion
+as on 1.17.3; the Boom test maps as before; a test patch whose pistol
+fires a rocket (A_WeaponProjectile) and takes five bullets
+(A_ConsumeAmmo), a thing numbered 300 with sprite 250 that spawns a
+barrel (A_SpawnObject), and one that gives itself SHADOW and LOGRAV
+(A_AddFlags); Legacy of Rust's 16 maps start and run, the Incinerator
+and Calamity Blade fire, and a save on its MAP03 with its monsters awake
+loads with every thing as it was; saves on DOOM's maps still load on
+1.17.3 and 1.17.3's here. The smoke test's `mbf21` phase has the pistol
+play sound 700 through a frame of its own, and hears it.
 
 ## A savegame from another game or mod
 
@@ -1102,8 +1218,8 @@ the tables), then a `.deh`/`.bex` of the same name beside each mod file, then
   already read from lumps and now reads from files too.
 
 Not supported, and said once in the log: Cheat (the cheats are id's and
-their aliases), [HELPER], INCLUDE, MBF's and MBF21's code pointers and
-fields, and numbers past DOOM's own frames, things and sounds (DEHEXTRA).
+their aliases), [HELPER], INCLUDE. (MBF's and MBF21's code pointers and
+fields, and numbers past DOOM's own, came later: see MBF and MBF21.)
 
 **The mixer's sounds.** `audiostream`, and the desktop build's sound server,
 loaded every effect from one IWAD they found in `DOOMWADDIR` -- DOOM II's

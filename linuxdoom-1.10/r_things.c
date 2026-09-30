@@ -186,12 +186,13 @@ void R_InitSpriteDefs (char** namelist)
     int		start;
     int		end;
 		
-    // count the number of sprite names
+    // count the number of sprite names: a patch's sprite can have none
+    // yet, and is left without frames
     check = namelist;
     while (*check != NULL)
 	check++;
 
-    numsprites = check-namelist;
+    numsprites = namelist == sprnames ? numspritenames : check-namelist;
 	
     if (!numsprites)
 	return;
@@ -208,6 +209,11 @@ void R_InitSpriteDefs (char** namelist)
     for (i=0 ; i<numsprites ; i++)
     {
 	spritename = namelist[i];
+	if (!spritename)
+	{
+	    sprites[i].numframes = 0;
+	    continue;
+	}
 	memset (sprtemp,-1, sizeof(sprtemp));
 		
 	maxframe = -1;
@@ -440,6 +446,12 @@ R_DrawVisSprite
 	dc_translation = translationtables - 256 +
 	    ( (vis->mobjflags & MF_TRANSLATION) >> (MF_TRANSSHIFT-8) );
     }
+    else if (vis->mobjflags & MF_TRANSLUCENT)
+    {
+	// MBF's translucent things, through Boom's table
+	colfunc = detailshift ? R_DrawTLColumnLow : R_DrawTLColumn;
+	tranmap = main_tranmap;
+    }
 	
     dc_iscale = abs(vis->xiscale)>>detailshift;
     dc_texturemid = vis->texturemid;
@@ -463,6 +475,31 @@ R_DrawVisSprite
 }
 
 
+
+//
+// R_SpriteFrameExists
+// Whether a sprite's frame has pictures. id's engine stopped on one that
+// did not; MBF21 mods show nothing with TNT1 (Boom's sprite with no
+// pictures, which ports ship an empty one for), and a patch can name a
+// sprite or frame that no WAD has. Said once in the log.
+//
+static boolean R_SpriteFrameExists (int sprite, int frame)
+{
+    static boolean	said;
+
+    if ((unsigned) sprite < (unsigned) numsprites
+	&& (frame & FF_FRAMEMASK) < sprites[sprite].numframes)
+	return true;
+    if (sprite != SPR_TNT1 && !said)
+    {
+	printf ("R_ProjectSprite: no sprite %s frame %c; not drawn\n",
+		(unsigned) sprite < (unsigned) numspritenames
+		&& sprnames[sprite] ? sprnames[sprite] : "?",
+		'A' + (frame & FF_FRAMEMASK));
+	said = true;
+    }
+    return false;
+}
 
 //
 // R_ProjectSprite
@@ -533,18 +570,12 @@ void R_ProjectSprite (mobj_t* thing)
     if (thing->sprite == SPR_TNT1)
 	return;
     
-    // decide which patch to use for sprite relative to player
-#ifdef RANGECHECK
-    if ((unsigned)thing->sprite >= numsprites)
-	I_Error ("R_ProjectSprite: invalid sprite number %i ",
-		 thing->sprite);
-#endif
+    // decide which patch to use for sprite relative to player; a frame
+    // with no pictures (TNT1, or a patch's sprite with none in the WADs)
+    // is not drawn
+    if (!R_SpriteFrameExists (thing->sprite, thing->frame))
+	return;
     sprdef = &sprites[thing->sprite];
-#ifdef RANGECHECK
-    if ( (thing->frame&FF_FRAMEMASK) >= sprdef->numframes )
-	I_Error ("R_ProjectSprite: invalid sprite frame %i : %i ",
-		 thing->sprite, thing->frame);
-#endif
     sprframe = &sprdef->spriteframes[ thing->frame & FF_FRAMEMASK];
 
     if (sprframe->rotate)
@@ -691,18 +722,10 @@ void R_DrawPSprite (pspdef_t* psp)
     fixed_t		sx = R_LerpPspX (viewplayer, psp);
     fixed_t		sy = R_LerpPspY (viewplayer, psp);
 
-    // decide which patch to use
-#ifdef RANGECHECK
-    if ( (unsigned)psp->state->sprite >= numsprites)
-	I_Error ("R_ProjectSprite: invalid sprite number %i ",
-		 psp->state->sprite);
-#endif
+    // decide which patch to use; none, for a frame with no pictures
+    if (!R_SpriteFrameExists (psp->state->sprite, psp->state->frame))
+	return;
     sprdef = &sprites[psp->state->sprite];
-#ifdef RANGECHECK
-    if ( (psp->state->frame & FF_FRAMEMASK)  >= sprdef->numframes)
-	I_Error ("R_ProjectSprite: invalid sprite frame %i : %i ",
-		 psp->state->sprite, psp->state->frame);
-#endif
     sprframe = &sprdef->spriteframes[ psp->state->frame & FF_FRAMEMASK ];
 
     lump = sprframe->lump[0];

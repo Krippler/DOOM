@@ -25,6 +25,7 @@
 #define __INFO__
 
 // Needed for action function pointer handling.
+#include "doomtype.h"
 #include "d_think.h"
 
 typedef enum
@@ -169,6 +170,16 @@ typedef enum
     SPR_TLP2,
     // Boom's, and later ports', after id's so that numbers stay put
     SPR_TNT1,		// nothing: an invisible thing
+    // MBF's
+    SPR_DOGS,		// the helper dog
+    SPR_PLS1,		// the beta's plasma fireballs
+    SPR_PLS2,
+    SPR_BON3,		// the beta's sceptre and bible
+    SPR_BON4,
+    SPR_BLD2,		// blood splats, in later ports' tables
+    // DEHEXTRA: a hundred names for patches to use, SP00 to SP99
+    SPR_SP00,
+    SPR_SP99 = SPR_SP00 + 99,
     NUMSPRITES
 
 } spritenum_t;
@@ -1144,9 +1155,80 @@ typedef enum
     S_TECH2LAMP4,
     // Boom's
     S_TNT1,		// invisible, for MT_PUSH and MT_PULL
+    // MBF's
+    S_GRENADE,
+    S_DETONATE,
+    S_DETONATE2,
+    S_DETONATE3,
+    S_DOGS_STND,
+    S_DOGS_STND2,
+    S_DOGS_RUN1,
+    S_DOGS_RUN2,
+    S_DOGS_RUN3,
+    S_DOGS_RUN4,
+    S_DOGS_RUN5,
+    S_DOGS_RUN6,
+    S_DOGS_RUN7,
+    S_DOGS_RUN8,
+    S_DOGS_ATK1,
+    S_DOGS_ATK2,
+    S_DOGS_ATK3,
+    S_DOGS_PAIN,
+    S_DOGS_PAIN2,
+    S_DOGS_DIE1,
+    S_DOGS_DIE2,
+    S_DOGS_DIE3,
+    S_DOGS_DIE4,
+    S_DOGS_DIE5,
+    S_DOGS_DIE6,
+    S_DOGS_RAISE1,
+    S_DOGS_RAISE2,
+    S_DOGS_RAISE3,
+    S_DOGS_RAISE4,
+    S_DOGS_RAISE5,
+    S_DOGS_RAISE6,
+    S_OLDBFG1,		// the beta BFG's 43 firing frames
+    S_OLDBFG42 = S_OLDBFG1 + 41,
+    S_OLDBFG43,
+    S_PLS1BALL,
+    S_PLS1BALL2,
+    S_PLS1EXP,
+    S_PLS1EXP2,
+    S_PLS1EXP3,
+    S_PLS1EXP4,
+    S_PLS1EXP5,
+    S_PLS2BALL,
+    S_PLS2BALL2,
+    S_PLS2BALLX1,
+    S_PLS2BALLX2,
+    S_PLS2BALLX3,
+    S_BON3,
+    S_BON4,
+    S_BSKUL_STND,	// the beta's lost soul
+    S_BSKUL_RUN1,
+    S_BSKUL_RUN2,
+    S_BSKUL_RUN3,
+    S_BSKUL_RUN4,
+    S_BSKUL_ATK1,
+    S_BSKUL_ATK2,
+    S_BSKUL_ATK3,
+    S_BSKUL_PAIN1,
+    S_BSKUL_PAIN2,
+    S_BSKUL_PAIN3,
+    S_BSKUL_DIE1,
+    S_BSKUL_DIE2,
+    S_BSKUL_DIE3,
+    S_BSKUL_DIE4,
+    S_BSKUL_DIE5,
+    S_BSKUL_DIE6,
+    S_BSKUL_DIE7,
+    S_BSKUL_DIE8,
+    S_MUSHROOM,
     NUMSTATES
 } statenum_t;
 
+
+#define MAXSTATEARGS	8
 
 typedef struct
 {
@@ -1157,14 +1239,25 @@ typedef struct
   actionf_t			action;
   statenum_t			nextstate;
   long			misc1, misc2;
+  int			args[MAXSTATEARGS];	// MBF21's, for its code pointers
+  int			flags;			// MBF21's: STATEF_*
 } state_t;
 
-extern state_t	states[NUMSTATES];
-extern char *sprnames[NUMSPRITES + 1];   // NULL-terminated; see info.c
+// MBF21's frame flags
+#define STATEF_SKILL5FAST	1	// tics halved on Nightmare
+
+// The tables as a patch leaves them. A DEHACKED patch can name frames,
+// things, sprites and sounds past DOOM's (DEHEXTRA, and DSDHacked's any
+// number at all); the tables grow to the highest it names (info.c).
+extern state_t*	states;
+extern int	numstates;
+extern char**	sprnames;	// NULL after the last; a name can be NULL
+extern int	numspritenames;
 
 
 
 typedef enum {
+    MT_NULL = -1,	// none (a thing's dropped item)
     MT_PLAYER,
     MT_POSSESSED,
     MT_SHOTGUY,
@@ -1305,6 +1398,13 @@ typedef enum {
     // Boom's point pushers (p_spec.c, line 226)
     MT_PUSH,
     MT_PULL,
+    // MBF's
+    MT_DOGS,
+    MT_PLASMA1,		// the beta's two plasma fireballs
+    MT_PLASMA2,
+    MT_SCEPTRE,		// and its sceptre and bible
+    MT_BIBLE,
+    MT_MUSICSOURCE,	// MUSINFO's music changer, in later ports' tables
     NUMMOBJTYPES
 
 } mobjtype_t;
@@ -1335,9 +1435,50 @@ typedef struct
     int	flags;
     int	raisestate;
 
+    // DEHEXTRA
+    int	droppeditem;		// what it drops when killed, or MT_NULL
+
+    // MBF21
+    int	flags2;			// MF2_*
+    int	infighting_group;	// monsters in one do not fight each other
+    int	projectile_group;	// nor hurt each other with these (-1: any)
+    int	splash_group;		// nor with radius damage
+    int	ripsound;		// a ripping missile's sound as it rips
+    int	altspeed;		// speed on Nightmare, or NO_ALTSPEED
+    int	meleerange;		// how close is close enough for melee
+
 } mobjinfo_t;
 
-extern mobjinfo_t mobjinfo[NUMMOBJTYPES];
+#define NO_ALTSPEED	-1
+
+// MBF21's groups: 0 is every thing's by default
+#define IG_DEFAULT	0
+#define PG_GROUPLESS	-1
+#define PG_DEFAULT	0
+#define PG_BARON	1
+#define SG_DEFAULT	0
+// a patch's groups, numbered from 0, come after these
+#define IG_END		1
+#define PG_END		2
+#define SG_END		1
+
+extern mobjinfo_t* mobjinfo;
+extern int	nummobjtypes;
+
+// The tables as id made them, before any patch; and making them.
+extern state_t		original_states[NUMSTATES];
+extern mobjinfo_t	original_mobjinfo[NUMMOBJTYPES];
+void	D_InitInfo (void);
+
+// Make room for a patch's frame, thing, sprite or sound n: false if n is
+// past what any patch could mean (DSDH_MAX). A new frame is TNT1 for ever,
+// a new thing spawns nothing and cannot be placed on a map, a new sprite
+// and sound have no name until a patch gives them one.
+#define DSDH_MAX	200000
+boolean	D_GrowStates (int n);
+boolean	D_GrowThings (int n);
+boolean	D_GrowSprites (int n);
+boolean	D_GrowSounds (int n);
 
 #endif
 //-----------------------------------------------------------------------------

@@ -72,6 +72,9 @@ line_t*		ceilingline;
 // across a detailed floor can touch more. It grows instead.
 line_t**	spechit;
 int		numspechit;
+
+// the line a move was stopped by, which a bouncing thing comes off (MBF)
+line_t*		blockline;
 static int	maxspechit;
 
 
@@ -214,15 +217,24 @@ boolean PIT_CheckLine (line_t* ld)
     // could be crossed in either order.
     
     if (!ld->backsector)
-	return false;		// one sided line
-		
-    if (!(tmthing->flags & MF_MISSILE) )
     {
-	if ( ld->flags & ML_BLOCKING )
-	    return false;	// explicitly blocking everything
-
-	if ( !tmthing->player && ld->flags & ML_BLOCKMONSTERS )
-	    return false;	// block monsters only
+	blockline = ld;		// for a bouncing thing (MBF)
+	return false;		// one sided line
+    }
+		
+    // (MBF: bouncing things go through as missiles do)
+    if (!(tmthing->flags & (MF_MISSILE | MF_BOUNCES)) )
+    {
+	if ( (ld->flags & ML_BLOCKING)	// explicitly blocking everything
+	     || (!tmthing->player && ld->flags & ML_BLOCKMONSTERS)
+	     // MBF21's
+	     || (mbf21 && tmthing->player && (ld->flags & ML_BLOCKPLAYERS))
+	     || (mbf21 && !tmthing->player && !(tmthing->flags & MF_FLOAT)
+		 && (ld->flags & ML_BLOCKLANDMONSTERS)) )
+	{
+	    blockline = ld;
+	    return false;
+	}
     }
 
     // set openrange, opentop, openbottom
@@ -261,13 +273,27 @@ boolean PIT_CheckLine (line_t* ld)
 //
 // PIT_CheckThing
 //
+// MBF21's projectile groups: what a thing's own missiles leave alone. By
+// default (PG_DEFAULT) its own type; a Baron's and a Hell Knight's are one
+// group (PG_BARON), as id's code had it; a patch's groups otherwise, or
+// none at all (PG_GROUPLESS).
+static boolean P_ProjectileImmune (mobj_t* target, mobj_t* source)
+{
+    int		group = target->info->projectile_group;
+
+    return (group != PG_GROUPLESS || target == source)
+	&& ((group == PG_DEFAULT && source->type == target->type)
+	    || (group != PG_DEFAULT && group == source->info->projectile_group));
+}
+
 boolean PIT_CheckThing (mobj_t* thing)
 {
     fixed_t		blockdist;
     boolean		solid;
     int			damage;
 		
-    if (!(thing->flags & (MF_SOLID|MF_SPECIAL|MF_SHOOTABLE) ))
+    // MBF: a touchy thing is touched by anything solid
+    if (!(thing->flags & (MF_SOLID|MF_SPECIAL|MF_SHOOTABLE|MF_TOUCHY) ))
 	return true;
     
     blockdist = thing->radius + tmthing->radius;
@@ -282,6 +308,24 @@ boolean PIT_CheckThing (mobj_t* thing)
     // don't clip against self
     if (thing == tmthing)
 	return true;
+
+    // MBF: a touchy thing (a mine, say) dies when something solid of
+    // another kind touches it, once it is armed or while it is alive
+    // and aware; a Pain Elemental and its Lost Souls count as one kind
+    if ((thing->flags & MF_TOUCHY)
+	&& (tmthing->flags & MF_SOLID)
+	&& thing->health > 0
+	&& ((thing->intflags & MIF_ARMED)
+	    || (thing->health > 0 && thing->info->seestate))
+	&& (thing->type != tmthing->type || thing->type == MT_PLAYER)
+	&& thing->z + thing->height >= tmthing->z
+	&& tmthing->z + tmthing->height >= thing->z
+	&& !(thing->type == MT_PAIN && tmthing->type == MT_SKULL)
+	&& !(thing->type == MT_SKULL && tmthing->type == MT_PAIN))
+    {
+	P_DamageMobj (thing, NULL, NULL, thing->health);
+	return true;
+    }
     
     // check for skulls slamming into things
     if (tmthing->flags & MF_SKULLFLY)
@@ -299,8 +343,9 @@ boolean PIT_CheckThing (mobj_t* thing)
     }
 
     
-    // missiles can hit other things
-    if (tmthing->flags & MF_MISSILE)
+    // missiles can hit other things; so can MBF's bouncing things
+    if ((tmthing->flags & MF_MISSILE)
+	|| ((tmthing->flags & MF_BOUNCES) && !(tmthing->flags & MF_SOLID)))
     {
 	// see if it went over / under
 	if (tmthing->z > thing->z + thing->height)
@@ -308,10 +353,7 @@ boolean PIT_CheckThing (mobj_t* thing)
 	if (tmthing->z+tmthing->height < thing->z)
 	    return true;		// underneath
 		
-	if (tmthing->target && (
-	    tmthing->target->type == thing->type || 
-	    (tmthing->target->type == MT_KNIGHT && thing->type == MT_BRUISER)||
-	    (tmthing->target->type == MT_BRUISER && thing->type == MT_KNIGHT) ) )
+	if (tmthing->target && P_ProjectileImmune (thing, tmthing->target))
 	{
 	    // Don't hit same species as originator.
 	    if (thing == tmthing->target)
@@ -326,10 +368,39 @@ boolean PIT_CheckThing (mobj_t* thing)
 	    }
 	}
 	
+	// MBF: a bouncing thing that is no missile does no damage, and
+	// comes off what is solid
+	if (!(tmthing->flags & MF_MISSILE))
+	{
+	    if (!(thing->flags & MF_SOLID))
+		return true;
+	    tmthing->momx = -tmthing->momx;
+	    tmthing->momy = -tmthing->momy;
+	    if (!(tmthing->flags & MF_NOGRAVITY))
+	    {
+		tmthing->momx >>= 2;
+		tmthing->momy >>= 2;
+	    }
+	    return false;
+	}
+
 	if (! (thing->flags & MF_SHOOTABLE) )
 	{
 	    // didn't do any damage
 	    return !(thing->flags & MF_SOLID);	
+	}
+
+	// MBF21: a ripper goes through, hurting as it goes
+	if (tmthing->flags2 & MF2_RIP)
+	{
+	    damage = ((P_Random() & 3) + 2) * tmthing->info->damage;
+	    if (!(thing->flags & MF_NOBLOOD))
+		P_SpawnBlood (tmthing->x, tmthing->y, tmthing->z, damage);
+	    if (tmthing->info->ripsound)
+		S_StartSound (tmthing, tmthing->info->ripsound);
+	    P_DamageMobj (thing, tmthing, tmthing->target, damage);
+	    numspechit = 0;
+	    return true;
 	}
 	
 	// damage / explode
@@ -411,6 +482,7 @@ P_CheckPosition
 
     newsubsec = R_PointInSubsector (x,y);
     ceilingline = NULL;
+    blockline = NULL;
     
     // The base floor / ceiling is from the subsector
     // that contains the point.
@@ -1167,6 +1239,14 @@ void P_UseLines (player_t*	player)
 mobj_t*		bombsource;
 mobj_t*		bombspot;
 int		bombdamage;
+int		bombdistance;	// MBF21's: how far it reaches, apart from damage
+
+// MBF21's splash groups: a patch's group is not hurt by its own blasts
+static boolean P_SplashImmune (mobj_t* target, mobj_t* spot)
+{
+    return target->info->splash_group != SG_DEFAULT
+	&& target->info->splash_group == spot->info->splash_group;
+}
 
 
 //
@@ -1180,13 +1260,22 @@ boolean PIT_RadiusAttack (mobj_t* thing)
     fixed_t	dy;
     fixed_t	dist;
 	
-    if (!(thing->flags & MF_SHOOTABLE) )
+    // MBF: bouncing things are hurt too
+    if (!(thing->flags & (MF_SHOOTABLE | MF_BOUNCES)) )
+	return true;
+
+    if (P_SplashImmune (thing, bombspot))
 	return true;
 
     // Boss spider and cyborg
-    // take no damage from concussion.
-    if (thing->type == MT_CYBORG
-	|| thing->type == MT_SPIDER)
+    // take no damage from concussion. (MBF21: whatever has
+    // NORADIUSDMG or BOSS, unless the blast has FORCERADIUSDMG; MBF: a
+    // bouncing grenade hurts all but a Cyberdemon's own.)
+    if ((bombspot->flags & MF_BOUNCES)
+	? thing->type == MT_CYBORG && bombsource
+	  && bombsource->type == MT_CYBORG
+	: (thing->flags2 & (MF2_NORADIUSDMG | MF2_BOSS))
+	  && !(bombspot->flags2 & MF2_FORCERADIUSDMG))
 	return true;	
 		
     dx = abs(thing->x - bombspot->x);
@@ -1198,13 +1287,17 @@ boolean PIT_RadiusAttack (mobj_t* thing)
     if (dist < 0)
 	dist = 0;
 
-    if (dist >= bombdamage)
+    if (dist >= bombdistance)
 	return true;	// out of range
 
     if ( P_CheckSight (thing, bombspot) )
     {
-	// must be in direct path
-	P_DamageMobj (thing, bombspot, bombsource, bombdamage - dist);
+	// must be in direct path; MBF21's damage apart from reach as
+	// Eternity has it
+	int	damage = bombdamage == bombdistance ? bombdamage - dist
+			 : bombdamage * (bombdistance - dist) / bombdistance + 1;
+
+	P_DamageMobj (thing, bombspot, bombsource, damage);
     }
     
     return true;
@@ -1219,7 +1312,8 @@ void
 P_RadiusAttack
 ( mobj_t*	spot,
   mobj_t*	source,
-  int		damage )
+  int		damage,
+  int		distance )
 {
     int		x;
     int		y;
@@ -1231,7 +1325,7 @@ P_RadiusAttack
     
     fixed_t	dist;
 	
-    dist = (damage+MAXRADIUS)<<FRACBITS;
+    dist = (distance+MAXRADIUS)<<FRACBITS;
     yh = (spot->y + dist - bmaporgy)>>MAPBLOCKSHIFT;
     yl = (spot->y - dist - bmaporgy)>>MAPBLOCKSHIFT;
     xh = (spot->x + dist - bmaporgx)>>MAPBLOCKSHIFT;
@@ -1239,6 +1333,7 @@ P_RadiusAttack
     bombspot = spot;
     bombsource = source;
     bombdamage = damage;
+    bombdistance = distance;
 	
     for (y=yl ; y<=yh ; y++)
 	for (x=xl ; x<=xh ; x++)
@@ -1298,6 +1393,15 @@ boolean PIT_ChangeSector (mobj_t*	thing)
 	
 	// keep checking
 	return true;		
+    }
+
+    // MBF: a touchy thing goes off when crushed
+    if ((thing->flags & MF_TOUCHY)
+	&& ((thing->intflags & MIF_ARMED)
+	    || (thing->health > 0 && thing->info->seestate)))
+    {
+	P_DamageMobj (thing, NULL, NULL, thing->health);
+	return true;
     }
 
     if (! (thing->flags & MF_SHOOTABLE) )

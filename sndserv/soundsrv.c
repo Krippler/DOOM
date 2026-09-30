@@ -92,6 +92,27 @@ int 		longsound;
 // lengths of all sound effects
 int 		lengths[NUMSFX];
 
+// Sounds numbered past id's table -- MBF's, and a DEHACKED patch's, which
+// can be any number (DSDHacked): their samples by number, as the engine
+// says where they are (loadsfx)
+#define MAXXSFX		65536
+static unsigned char**	xsfxdata;
+static int*		xsfxlen;
+
+static unsigned char* sfxdata (int id)
+{
+    if (id < NUMSFX)
+	return (unsigned char *) S_sfx[id].data;
+    return xsfxdata ? xsfxdata[id] : NULL;
+}
+
+static int sfxlen (int id)
+{
+    if (id < NUMSFX)
+	return lengths[id];
+    return xsfxlen ? xsfxlen[id] : 0;
+}
+
 // mixing buffer
 signed short	mixbuffer[MIXBUFFERSIZE];
 
@@ -437,7 +458,9 @@ grabdata
 // another rate -- mods often have 22050 -- is resampled to it, where id's
 // code played it at the wrong speed. Returns 0 if it was loaded.
 //
-int loadsfx (const char* spec)
+// the sound's number in the first digits hex digits of spec (2 for 'l',
+// 4 for 'L')
+static int loadsfx_n (const char* spec, int digits)
 {
     char		hex[9];
     unsigned int	id, offset, size;
@@ -447,15 +470,23 @@ int loadsfx (const char* spec)
     unsigned char*	sfx;
     int			rate, samples, n, padded, i;
 
-    if (strlen (spec) < 19)
+    if ((int) strlen (spec) < digits + 17)
 	return -1;
-    memcpy (hex, spec, 2); hex[2] = 0; id = strtoul (hex, NULL, 16);
-    memcpy (hex, spec + 2, 8); hex[8] = 0; offset = strtoul (hex, NULL, 16);
-    memcpy (hex, spec + 10, 8); hex[8] = 0; size = strtoul (hex, NULL, 16);
-    path = spec + 18;
+    memcpy (hex, spec, digits); hex[digits] = 0; id = strtoul (hex, NULL, 16);
+    spec += digits;
+    memcpy (hex, spec, 8); hex[8] = 0; offset = strtoul (hex, NULL, 16);
+    memcpy (hex, spec + 8, 8); hex[8] = 0; size = strtoul (hex, NULL, 16);
+    path = spec + 16;
 
-    if (id < 1 || id >= NUMSFX || size < 8 || size > (64 << 20))
+    if (id < 1 || id >= MAXXSFX || size < 8 || size > (64 << 20))
 	return -1;
+    if (id >= NUMSFX && !xsfxdata)
+    {
+	xsfxdata = calloc (MAXXSFX, sizeof(*xsfxdata));
+	xsfxlen = calloc (MAXXSFX, sizeof(*xsfxlen));
+	if (!xsfxdata || !xsfxlen)
+	    return -1;
+    }
     if (!(f = fopen (path, "rb")))
 	return -1;
     lump = malloc (size);
@@ -495,6 +526,12 @@ int loadsfx (const char* spec)
 
     // what played it before goes on playing from the old copy, which is
     // left where it is
+    if (id >= NUMSFX)
+    {
+	xsfxdata[id] = sfx + 8;
+	xsfxlen[id] = padded;
+	return 0;
+    }
     S_sfx[id].data = sfx + 8;
     lengths[id] = padded;
     for (i = 1; i < NUMSFX; i++)
@@ -524,6 +561,16 @@ void updatesounds(void)
 
 #endif
 
+int loadsfx (const char* spec)
+{
+    return loadsfx_n (spec, 2);
+}
+
+int loadsfx4 (const char* spec)
+{
+    return loadsfx_n (spec, 4);
+}
+
 int
 addsfx
 ( int		sfxid,
@@ -541,6 +588,10 @@ addsfx
     int		slot;
     int		rightvol;
     int		leftvol;
+
+    // a number past any sound there is plays nothing
+    if (sfxid < 1 || sfxid >= MAXXSFX || !sfxdata (sfxid))
+	return -1;
 
     // play these sound effects
     //  only one at a time
@@ -575,8 +626,8 @@ addsfx
     else
 	slot = i;
 
-    channels[slot] = (unsigned char *) S_sfx[sfxid].data;
-    channelsend[slot] = channels[slot] + lengths[sfxid];
+    channels[slot] = sfxdata (sfxid);
+    channelsend[slot] = channels[slot] + sfxlen (sfxid);
 
     if (!handlenums)
 	handlenums = 100;
@@ -707,7 +758,7 @@ main
     int		sndnum;
     int		handle = 0;
     
-    unsigned char	commandbuf[10];
+    unsigned char	commandbuf[16];
     struct timeval	zerowait = { 0, 0 };
 
     
@@ -803,6 +854,34 @@ main
 			    //	outputushort(handle);
 			    break;
 			    
+			  case 'P':
+			    // the same, with four digits for the sound
+			    read(0, commandbuf, 11);
+			    for (i = 0; i < 10; i++)
+				commandbuf[i] -=
+				    commandbuf[i]>='a' ? 'a'-10 : '0';
+			    sndnum = (commandbuf[0]<<12) + (commandbuf[1]<<8)
+				     + (commandbuf[2]<<4) + commandbuf[3];
+			    step = steptable[(commandbuf[4]<<4) + commandbuf[5]];
+			    vol = (commandbuf[6]<<4) + commandbuf[7];
+			    sep = (commandbuf[8]<<4) + commandbuf[9];
+			    handle = addsfx(sndnum, vol, step, sep);
+			    break;
+
+			  case 'L':
+			  {
+			      char	line[1200];
+			      int	n = 0;
+			      char	ch;
+
+			      while (read (0, &ch, 1) == 1 && ch != '\n')
+				  if (n < (int) sizeof(line) - 1)
+				      line[n++] = ch;
+			      line[n] = 0;
+			      loadsfx4 (line);
+			  }
+			  break;
+
 			  case 'l':
 			  {
 			      // where a sound is: up to the end of the line

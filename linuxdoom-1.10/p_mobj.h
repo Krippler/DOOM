@@ -199,9 +199,41 @@ typedef enum
     //  use a translation table for player colormaps
     MF_TRANSLATION  	= 0xc000000,
     // Hmm ???.
-    MF_TRANSSHIFT	= 26
+    MF_TRANSSHIFT	= 26,
+
+    // MBF's, in the four bits id left free
+    MF_TOUCHY		= 0x10000000,	// dies when anything solid touches it
+    MF_BOUNCES		= 0x20000000,	// bounces off floors, ceilings, walls
+    MF_FRIEND		= 0x40000000,	// on the player's side
+    MF_TRANSLUCENT	= (int) 0x80000000	// drawn translucent
 
 } mobjflag_t;
+
+// MBF21's flags2, from the thing's type (mobjinfo[].flags2)
+#define MF2_LOGRAV		0x00000001	// an eighth of the gravity
+#define MF2_SHORTMRANGE		0x00000002	// short missile range (Arch-vile)
+#define MF2_DMGIGNORED		0x00000004	// others ignore its attacks
+#define MF2_NORADIUSDMG		0x00000008	// not hurt by radius damage
+#define MF2_FORCERADIUSDMG	0x00000010	// its radius damage hurts all
+#define MF2_HIGHERMPROB		0x00000020	// likelier to fire (Cyberdemon)
+#define MF2_RANGEHALF		0x00000040	// thinks targets half as far
+#define MF2_NOTHRESHOLD		0x00000080	// no target threshold
+#define MF2_LONGMELEE		0x00000100	// long melee range (Revenant)
+#define MF2_BOSS		0x00000200	// a boss: no Arch-vile, sounds
+#define MF2_MAP07BOSS1		0x00000400	// MAP07's 666
+#define MF2_MAP07BOSS2		0x00000800	// MAP07's 667
+#define MF2_E1M8BOSS		0x00001000
+#define MF2_E2M8BOSS		0x00002000
+#define MF2_E3M8BOSS		0x00004000
+#define MF2_E4M6BOSS		0x00008000
+#define MF2_E4M8BOSS		0x00010000
+#define MF2_RIP			0x00020000	// a missile that rips through
+#define MF2_FULLVOLSOUNDS	0x00040000	// see and death sounds everywhere
+
+// MBF's internal flags, set as it plays (mobj_t.intflags)
+#define MIF_FALLING		1	// falling off a ledge (MBF's torque)
+#define MIF_ARMED		2	// a touchy thing, ready to go off
+#define MIF_LINEDONE		4	// its A_LineEffect's once-only line is spent
 
 
 // Map Object definition.
@@ -300,10 +332,17 @@ typedef struct mobj_s
     // Boom: the sectors it touches (msecnode_t, r_defs.h), on Boom's maps.
     struct msecnode_s*	touching_sectorlist;
 
+    // MBF's and MBF21's, which saves in Boom's format carry (p_saveg.c)
+    int			flags2;		// MF2_*, from info->flags2
+    int			intflags;	// MIF_*
+    struct mobj_s*	lastenemy;	// who it fought before its target
+
 } mobj_t;
 
 // How much of a mobj_t a save holds.
 #define MOBJ_SAVESIZE	offsetof(mobj_t, oldx)
+// and in Boom's format, flags2, intflags and lastenemy (as a number) after it
+#define MOBJ_MBFSIZE	(3 * sizeof(int))
 
 
 

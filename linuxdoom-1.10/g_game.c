@@ -1831,6 +1831,28 @@ void G_DoSaveGame (void)
  
 
 //
+// G_NormalSpeeds
+// Keep the things' speeds from before fast monsters (saved), or put them
+// back (NULL).
+//
+static void G_NormalSpeeds (int* saved)
+{
+    static int*	speeds;
+    int		i;
+
+    if (saved)
+    {
+	speeds = saved;
+	return;
+    }
+    if (!speeds)
+	return;
+    for (i=0 ; i<nummobjtypes ; i++)
+	if (mobjinfo[i].altspeed != NO_ALTSPEED)
+	    mobjinfo[i].speed = speeds[i];
+}
+
+//
 // G_InitNew
 // Can be called by the startup code or the menu task,
 // consoleplayer, displayplayer, playeringame[] should be set. 
@@ -1930,21 +1952,36 @@ G_InitNew
     else
 	respawnmonsters = false;
 		
+    // Fast monsters: id's by type (the Demon's frames, three missiles),
+    // MBF21's by the frames' SKILL5FAST and the things' Fast speed, which
+    // are those by default. As id's, done again on each new game with
+    // -fast; undone to the speeds as they were before.
     if (fastparm || (skill == sk_nightmare && gameskill != sk_nightmare) )
     { 
-	for (i=S_SARG_RUN1 ; i<=S_SARG_PAIN2 ; i++) 
-	    states[i].tics >>= 1; 
-	mobjinfo[MT_BRUISERSHOT].speed = 20*FRACUNIT; 
-	mobjinfo[MT_HEADSHOT].speed = 20*FRACUNIT; 
-	mobjinfo[MT_TROOPSHOT].speed = 20*FRACUNIT; 
+	static int*	normalspeed;
+
+	for (i=0 ; i<numstates ; i++) 
+	    if (states[i].flags & STATEF_SKILL5FAST)
+		states[i].tics >>= 1; 
+	if (!normalspeed)
+	{
+	    normalspeed = malloc (nummobjtypes * sizeof(*normalspeed));
+	    if (!normalspeed)
+		I_Error ("G_InitNew: no memory");
+	    for (i=0 ; i<nummobjtypes ; i++)
+		normalspeed[i] = mobjinfo[i].speed;
+	    G_NormalSpeeds (normalspeed);
+	}
+	for (i=0 ; i<nummobjtypes ; i++)
+	    if (mobjinfo[i].altspeed != NO_ALTSPEED)
+		mobjinfo[i].speed = mobjinfo[i].altspeed; 
     } 
     else if (skill != sk_nightmare && gameskill == sk_nightmare) 
     { 
-	for (i=S_SARG_RUN1 ; i<=S_SARG_PAIN2 ; i++) 
-	    states[i].tics <<= 1; 
-	mobjinfo[MT_BRUISERSHOT].speed = 15*FRACUNIT; 
-	mobjinfo[MT_HEADSHOT].speed = 10*FRACUNIT; 
-	mobjinfo[MT_TROOPSHOT].speed = 10*FRACUNIT; 
+	for (i=0 ; i<numstates ; i++) 
+	    if (states[i].flags & STATEF_SKILL5FAST)
+		states[i].tics <<= 1; 
+	G_NormalSpeeds (NULL);
     } 
 	 
 			 

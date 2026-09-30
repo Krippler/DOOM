@@ -25,6 +25,7 @@
 
 #ifndef __R_LOCAL__
 #include "r_local.h"
+#include "tables.h"
 #endif
 
 #define FLOATSPEED		(FRACUNIT*4)
@@ -120,7 +121,8 @@ void 	P_MobjThinker (mobj_t* mobj);
 void	P_SpawnPuff (fixed_t x, fixed_t y, fixed_t z);
 void 	P_SpawnBlood (fixed_t x, fixed_t y, fixed_t z, int damage);
 mobj_t* P_SpawnMissile (mobj_t* source, mobj_t* dest, mobjtype_t type);
-void	P_SpawnPlayerMissile (mobj_t* source, mobjtype_t type);
+mobj_t*	P_SpawnPlayerMissile (mobj_t* source, mobjtype_t type);
+void	P_CheckMissileSpawn (mobj_t* th);
 
 
 //
@@ -206,6 +208,7 @@ extern fixed_t		tmceilingz;
 
 
 extern	line_t*		ceilingline;
+extern	line_t*		blockline;	// what stopped the last move (MBF)
 
 boolean P_CheckPosition (mobj_t *thing, fixed_t x, fixed_t y);
 boolean P_TryMove (mobj_t* thing, fixed_t x, fixed_t y);
@@ -244,11 +247,18 @@ P_LineAttack
   fixed_t	slope,
   int		damage );
 
+// MBF21's angles and slopes, from degrees in fixed point (p_enemy.c)
+angle_t	P_FixedToAngle (fixed_t a);
+fixed_t	P_DegToSlope (fixed_t a);
+int	P_RandomHitscanAngle (fixed_t spread);
+int	P_RandomHitscanSlope (fixed_t spread);
+
 void
 P_RadiusAttack
 ( mobj_t*	spot,
   mobj_t*	source,
-  int		damage );
+  int		damage,
+  int		distance );	// id's is the damage
 
 
 

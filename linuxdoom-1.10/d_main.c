@@ -1204,6 +1204,10 @@ void D_DoomMain (void)
     }
 
     FindResponseFile ();
+
+    // the thing, frame, sprite and sound tables, for patches to change
+    D_InitInfo ();
+    S_InitSfxInfo ();
 	
     IdentifyVersion ();
 	

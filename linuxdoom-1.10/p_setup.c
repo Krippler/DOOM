@@ -1338,6 +1338,14 @@ void P_SetCompatibility (int lumpnum)
     demo_version = demo_compatibility ? DV_VANILLA : DV_MBF21;
     mbf21 = !demo_compatibility;
 
+    // MBF21's line flags (ML_BLOCKLANDMONSTERS, ML_BLOCKPLAYERS) are
+    // ignored on a line with the reserved bit 11 set, which some editors
+    // set on every line; so are the others past id's and Boom's.
+    if (last == WADCOMP_BOOM)
+	for (i = 0; i < numlines; i++)
+	    if (lines[i].flags & ML_RESERVED)
+		lines[i].flags &= 0x1ff;
+
     // DOOM's behaviour in full, or the fixes as MBF21 has them
     for (i = 0; i < COMP_TOTAL; i++)
 	comp[i] = demo_compatibility;

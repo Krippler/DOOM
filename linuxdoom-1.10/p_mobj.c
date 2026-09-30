@@ -172,6 +172,32 @@ void P_XYMovement (mobj_t* mo)
 	    {	// try to slide along it
 		P_SlideMove (mo);
 	    }
+	    else if (!(mo->flags & MF_MISSILE) && (mo->flags & MF_BOUNCES))
+	    {
+		// MBF: off the wall, momentum reflected, and halved across
+		// it when under gravity
+		if (blockline)
+		{
+		    fixed_t	r = ((blockline->dx >> FRACBITS) * mo->momx
+				     + (blockline->dy >> FRACBITS) * mo->momy)
+				    / ((blockline->dx >> FRACBITS)
+				       * (blockline->dx >> FRACBITS)
+				       + (blockline->dy >> FRACBITS)
+				       * (blockline->dy >> FRACBITS));
+		    fixed_t	x = FixedMul (r, blockline->dx);
+		    fixed_t	y = FixedMul (r, blockline->dy);
+
+		    mo->momx = x*2 - mo->momx;
+		    mo->momy = y*2 - mo->momy;
+		    if (!(mo->flags & MF_NOGRAVITY))
+		    {
+			mo->momx = (mo->momx + x)/2;
+			mo->momy = (mo->momy + y)/2;
+		    }
+		}
+		else
+		    mo->momx = mo->momy = 0;
+	    }
 	    else if (mo->flags & MF_MISSILE)
 	    {
 		// explode a missile
@@ -257,6 +283,70 @@ void P_ZMovement (mobj_t* mo)
 {
     fixed_t	dist;
     fixed_t	delta;
+
+    // MBF: bouncing things -- the beta's BFG fireballs, a mod's grenades
+    // and mines -- come off floors and ceilings, losing speed if under
+    // gravity (killough, by way of Woof)
+    if ((mo->flags & MF_BOUNCES) && mo->momz)
+    {
+	mo->z += mo->momz;
+	if (mo->z <= mo->floorz)
+	{
+	    mo->z = mo->floorz;
+	    if (mo->momz < 0)
+	    {
+		mo->momz = -mo->momz;
+		if (!(mo->flags & MF_NOGRAVITY))
+		{
+		    // floaters bounce most, and DROPOFF more still
+		    mo->momz = mo->flags & MF_FLOAT
+			? (mo->flags & MF_DROPOFF
+			   ? FixedMul (mo->momz, (fixed_t) (FRACUNIT*.85))
+			   : FixedMul (mo->momz, (fixed_t) (FRACUNIT*.70)))
+			: FixedMul (mo->momz, (fixed_t) (FRACUNIT*.45));
+		    if (abs (mo->momz) <= mo->info->mass*(GRAVITY*4/256))
+			mo->momz = 0;	// at rest
+		}
+		if ((mo->flags & MF_TOUCHY) && (mo->intflags & MIF_ARMED)
+		    && mo->health > 0)
+		    P_DamageMobj (mo, NULL, NULL, mo->health);
+		return;
+	    }
+	}
+	else if (mo->z >= mo->ceilingz - mo->height)
+	{
+	    mo->z = mo->ceilingz - mo->height;
+	    if (mo->momz > 0)
+	    {
+		if (!R_IsSkyFlat (mo->subsector->sector->ceilingpic))
+		    mo->momz = -mo->momz;
+		else if (mo->flags & MF_MISSILE)
+		    P_RemoveMobj (mo);	// no bouncing off the sky
+		else if (mo->flags & MF_NOGRAVITY)
+		    mo->momz = -mo->momz;
+		return;
+	    }
+	}
+	else
+	{
+	    if (!(mo->flags & MF_NOGRAVITY))
+		mo->momz -= mo->info->mass*(GRAVITY/256);
+	    return;
+	}
+
+	// came to a stop
+	mo->momz = 0;
+	if (mo->flags & MF_MISSILE)
+	{
+	    if (ceilingline && ceilingline->backsector
+		&& R_IsSkyFlat (ceilingline->backsector->ceilingpic)
+		&& mo->z > ceilingline->backsector->ceilingheight)
+		P_RemoveMobj (mo);
+	    else
+		P_ExplodeMissile (mo);
+	}
+	return;
+    }
     
     // check for smooth step up
     if (mo->player && mo->z < mo->floorz)
@@ -306,7 +396,11 @@ void P_ZMovement (mobj_t* mo)
 	
 	if (mo->momz < 0)
 	{
-	    if (mo->player
+	    // MBF: a touchy thing goes off when it lands, once armed
+	    if ((mo->flags & MF_TOUCHY) && (mo->intflags & MIF_ARMED)
+		&& mo->health > 0)
+		P_DamageMobj (mo, NULL, NULL, mo->health);
+	    else if (mo->player
 		&& mo->momz < -GRAVITY*8)	
 	    {
 		// Squat down.
@@ -326,6 +420,14 @@ void P_ZMovement (mobj_t* mo)
 	    P_ExplodeMissile (mo);
 	    return;
 	}
+    }
+    else if (mo->flags2 & MF2_LOGRAV)
+    {
+	// MBF21: an eighth of the gravity
+	if (mo->momz == 0)
+	    mo->momz = -(GRAVITY >> 3) * 2;
+	else
+	    mo->momz -= GRAVITY >> 3;
     }
     else if (! (mo->flags & MF_NOGRAVITY) )
     {
@@ -409,6 +511,12 @@ P_NightmareRespawn (mobj_t* mobj)
     mo->spawnpoint = mobj->spawnpoint;	
     mo->angle = ANG45 * (mthing->angle/45);
 
+    // MBF's friendly thing flag, on a map that plays as Boom's -- unless
+    // bit 8 is set, as bad editors set it, and then no bit past id's counts
+    if (!demo_compatibility && (mthing->options & 128)
+	&& !(mthing->options & 256))
+	mobj->flags |= MF_FRIEND;
+
     if (mthing->options & MTF_AMBUSH)
 	mo->flags |= MF_AMBUSH;
 
@@ -443,6 +551,19 @@ void P_MobjThinker (mobj_t* mobj)
 	// FIXME: decent NOP/NULL/Nil function pointer please.
 	if (mobj->thinker.function.acv == (actionf_v) (-1))
 	    return;		// mobj was removed
+    }
+    else if ((mobj->flags & MF_TOUCHY) && !(mobj->momx | mobj->momy)
+	     && !(mobj->health > 0 && mobj->info->seestate))
+	mobj->intflags |= MIF_ARMED;	// MBF: a mine at rest is armed
+
+    // MBF21: a sector that kills the monsters that stand in it
+    if (mbf21 && (mobj->subsector->sector->special & KILL_MONSTERS_MASK)
+	&& mobj->z == mobj->floorz && !mobj->player
+	&& (mobj->flags & MF_SHOOTABLE) && !(mobj->flags & MF_FLOAT))
+    {
+	P_DamageMobj (mobj, NULL, NULL, 10000);
+	if (mobj->thinker.function.acv == (actionf_v) (-1))
+	    return;
     }
 
     
@@ -508,6 +629,12 @@ P_SpawnMobj
     mobj->radius = info->radius;
     mobj->height = info->height;
     mobj->flags = info->flags;
+    mobj->flags2 = info->flags2;
+
+    // MBF: on a map that plays as Boom's, the players are friends, whom
+    // friendly monsters leave alone
+    if (type == MT_PLAYER && !demo_compatibility)
+	mobj->flags |= MF_FRIEND;
     mobj->health = info->spawnhealth;
 
     if (gameskill != sk_nightmare)
@@ -633,7 +760,7 @@ void P_RespawnSpecials (void)
     S_StartSound (mo, sfx_itmbk);
 
     // find which type to spawn
-    for (i=0 ; i< NUMMOBJTYPES ; i++)
+    for (i=0 ; i< nummobjtypes ; i++)
     {
 	if (mthing->type == mobjinfo[i].doomednum)
 	    break;
@@ -786,14 +913,18 @@ void P_SpawnMapThing (mapthing_t* mthing)
 	return;
 	
     // find which type to spawn
-    for (i=0 ; i< NUMMOBJTYPES ; i++)
+    for (i=0 ; i< nummobjtypes ; i++)
 	if (mthing->type == mobjinfo[i].doomednum)
 	    break;
 	
-    if (i==NUMMOBJTYPES)
-	I_Error ("P_SpawnMapThing: Unknown type %i at (%i, %i)",
-		 mthing->type,
-		 mthing->x, mthing->y);
+    // id's engine stopped here; a thing it does not know is left out, as
+    // Boom does, with a line in the log
+    if (i==nummobjtypes)
+    {
+	printf ("P_SpawnMapThing: unknown type %i at (%i, %i); left out\n",
+		mthing->type, mthing->x, mthing->y);
+	return;
+    }
 		
     // don't spawn keycards and players in deathmatch
     if (deathmatch && mobjinfo[i].flags & MF_NOTDMATCH)
@@ -966,7 +1097,7 @@ P_SpawnMissile
 // P_SpawnPlayerMissile
 // Tries to aim at a nearby monster
 //
-void
+mobj_t*
 P_SpawnPlayerMissile
 ( mobj_t*	source,
   mobjtype_t	type )
@@ -1019,5 +1150,6 @@ P_SpawnPlayerMissile
     th->momz = FixedMul( th->info->speed, slope);
 
     P_CheckMissileSpawn (th);
+    return th;	// for MBF21's A_WeaponProjectile
 }
 

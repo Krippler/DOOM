@@ -292,6 +292,8 @@ P_ActivateLineSpecial
   int		tag,
   mobj_t*	thing );
 
+boolean P_LineEffect (mobj_t* thing, int special, int tag);
+
 void    P_PlayerInSpecialSector (player_t* player);
 
 int

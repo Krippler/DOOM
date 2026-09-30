@@ -137,6 +137,11 @@ typedef struct
 // Boom: a use passes through this line to the ones behind it.
 #define ML_PASSUSE		512
 
+// MBF21's, on a map that plays as Boom's
+#define ML_RESERVED		2048	// set by bad editors: MBF21 flags ignored
+#define ML_BLOCKLANDMONSTERS	4096	// blocks monsters that do not fly
+#define ML_BLOCKPLAYERS		8192	// blocks players
+
 
 
 

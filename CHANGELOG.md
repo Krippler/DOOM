@@ -27,11 +27,31 @@ patch whatever was in it.
   mod plays as Boom when one of its maps uses any of that, or its `COMPLVL`
   lump says so, and the log says which: `P_SetupLevel: foo.wad's maps play
   as Boom's (MBF21)`. The games themselves and every other mod play as
-  before, to the random number. This is the first step toward Legacy of
-  Rust; MBF21's monsters and code pointers, then ID24, come next.
-- Saves keep Boom's movers, scrollers and pushers, and fire flickers
-  (sector type 17), which saves used to lose. A save on any other map is
-  written as before and still loads on 1.17.3.
+  before, to the random number.
+- **MBF and MBF21 mods**: DEHACKED patches can use MBF's and MBF21's code
+  pointers (spawning things, parameterized monster and weapon attacks,
+  seeking missiles, jumps on health, sight, distance or flags, flags
+  added and removed, weapon sounds, ammunition taken and checked), their
+  fields for things, frames and weapons (MBF21 Bits, infighting,
+  projectile and splash groups, fast speed, melee range, rip sound,
+  dropped item, frame arguments, ammo per shot, weapon flags), and MBF's
+  translucent, bouncing, touchy and friendly things. A patch can number
+  frames, things, sprites and sounds past DOOM's own, as far as it likes
+  (DEHEXTRA, DSDHacked), and the tables grow to fit. MBF21's line flags
+  that block players or monsters that walk, and its sectors that kill
+  monsters, work on Boom maps. A map thing the engine does not know is
+  left out, with a line in the log, where it used to stop the game, and
+  a frame with no pictures is not drawn rather than fatal.
+- **Legacy of Rust, the first half**: with `id1.wad` from the 2024
+  re-release beside `doom2.wad`, its 16 maps start and play, with its new
+  monsters, the Incinerator and the Calamity Blade. What ID24 adds beyond
+  MBF21 comes next: its status bar and intermission definitions, its line
+  specials, and the pickup, respawn and weapon-slot fields its patch uses
+  (the log names each one it leaves out).
+- Saves keep Boom's movers, scrollers and pushers, fire flickers (sector
+  type 17), which saves used to lose, and the MBF21 flags that a patch's
+  code pointers change. A save on any other map is written as before and
+  still loads on 1.17.3.
 
 ### Fixed
 - A map without a `BLOCKMAP` lump, which the engine makes its own for,

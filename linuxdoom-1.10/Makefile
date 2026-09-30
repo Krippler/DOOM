@@ -123,8 +123,13 @@ $(O)/linuxxdoom:	$(O) $(OBJS) $(O)/i_main.o
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) $(O)/i_main.o \
 	-o $(O)/linuxxdoom $(LIBS) $(MUSIC_LIBS)
 
+# Each object also writes which headers it read (-MMD), so that changing a
+# header rebuilds what includes it: without that, a structure that grew in a
+# header left the objects built before it reading the old layout.
 $(O)/%.o:	%.c | $(O)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
+
+-include $(wildcard $(O)/*.d)
 
 # stb_vorbis, for Ogg Vorbis music, as it comes from github.com/nothings/stb:
 # its warnings are its own.

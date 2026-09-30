@@ -80,9 +80,14 @@ image name loads any other. A mod's own sound effects are played, and its
 scrollers, conveyors, ice, wind and pushers, deep water and colormaps,
 translucent walls and wall-texture skies. The log names how each mod's
 maps play (`P_SetupLevel: foo.wad's maps play as Boom's (MBF21)`); the
-games themselves always play as DOOM's. Mods that need more — MBF or MBF21
-monsters and code pointers, ID24 (Legacy of Rust), UDMF maps, ACS,
-DECORATE, ZScript, "GZDoom only" — do not work yet, or at all.
+games themselves always play as DOOM's. **MBF** and **MBF21** mods play too:
+their DEHACKED patches' new monsters, weapons and code pointers, with
+frames, things, sprites and sounds numbered as far past DOOM's as they
+like. **Legacy of Rust** (`id1.wad`, from the 2024 re-release, with
+`doom2.wad`) starts and plays its maps, monsters and weapons; its ID24
+extras — status bar and intermission definitions, some line specials — are
+not here yet. Mods that need more — UDMF maps, ACS, DECORATE, ZScript,
+"GZDoom only" — do not work.
 
 ## The browser client
 

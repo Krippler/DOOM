@@ -62,7 +62,7 @@ int P_ArchiveSize (void)
 {
     thinker_t*	th;
     int		thinkers = 0;
-    int		biggest = MOBJ_SAVESIZE;
+    int		biggest = MOBJ_SAVESIZE + MOBJ_MBFSIZE;
 
     for (th = thinkercap.next ; th != &thinkercap ; th=th->next)
 	thinkers++;
@@ -390,6 +390,18 @@ void P_ArchiveThinkers (void)
 	    
 	    if (mobj->player)
 		mobj->player = (player_t *)((mobj->player-players) + 1);
+
+	    // Boom's format: MBF's and MBF21's fields after id's
+	    if (savegameversion >= 2)
+	    {
+		int	f[3];
+
+		f[0] = ((mobj_t *)th)->flags2;
+		f[1] = ((mobj_t *)th)->intflags;
+		f[2] = P_SaveRef (((mobj_t *)th)->lastenemy);
+		memcpy (save_p, f, MOBJ_MBFSIZE);
+		save_p += MOBJ_MBFSIZE;
+	    }
 	    continue;
 	}
 		
@@ -444,14 +456,29 @@ void P_UnArchiveThinkers (void)
 		    ? P_LoadRef ((intptr_t) mobj->target) : NULL;
 		mobj->tracer = savegamerefs
 		    ? P_LoadRef ((intptr_t) mobj->tracer) : NULL;
+		mobj->lastenemy = savegameversion >= 2
+		    ? P_LoadRef ((intptr_t) mobj->lastenemy) : NULL;
 	    }
 	    return; 	// end of list
 			
 	  case tc_mobj:
 	    PADSAVEP();
 	    mobj = Z_Malloc (sizeof(*mobj), PU_LEVEL, NULL);
+	    memset (mobj, 0, sizeof(*mobj));
 	    memcpy (mobj, save_p, MOBJ_SAVESIZE);
 	    save_p += MOBJ_SAVESIZE;
+	    if (savegameversion >= 2)
+	    {
+		int	f[3];
+
+		memcpy (f, save_p, MOBJ_MBFSIZE);
+		save_p += MOBJ_MBFSIZE;
+		mobj->flags2 = f[0];
+		mobj->intflags = f[1];
+		mobj->lastenemy = (mobj_t *) (intptr_t) f[2];
+	    }
+	    else	// as the type has them
+		mobj->flags2 = mobjinfo[mobj->type].flags2;
 	    mobj->oldx = mobj->x;
 	    mobj->oldy = mobj->y;
 	    mobj->oldz = mobj->z;
@@ -564,7 +591,17 @@ int P_SaveVersion (void)
     if (!demo_compatibility)
 	return 2;
     for (th = thinkercap.next ; th != &thinkercap ; th=th->next)
-	if (th->function.acp1 == (actionf_p1)T_FireFlicker
+	if (th->function.acp1 == (actionf_p1)P_MobjThinker)
+	{
+	    // MBF's and MBF21's fields, if a patch's code pointers changed
+	    // them from what the type gives
+	    mobj_t*	mo = (mobj_t *) th;
+
+	    if (mo->flags2 != mo->info->flags2 || mo->intflags
+		|| mo->lastenemy)
+		return 2;
+	}
+	else if (th->function.acp1 == (actionf_p1)T_FireFlicker
 	    || th->function.acp1 == (actionf_p1)T_MoveElevator
 	    || th->function.acp1 == (actionf_p1)T_Scroll
 	    || th->function.acp1 == (actionf_p1)T_Pusher)
@@ -894,7 +931,7 @@ P_SaveFitsMap
 	memcpy (&pl, p, sizeof(pl));
 	p += sizeof(pl);
 	for (j = 0; j < NUMPSPRITES; j++)
-	    if ((uintptr_t) pl.psprites[j].state >= NUMSTATES)
+	    if ((uintptr_t) pl.psprites[j].state >= (uintptr_t) numstates)
 		return false;
     }
 
@@ -948,8 +985,20 @@ P_SaveFitsMap
 	NEED(MOBJ_SAVESIZE);
 	memcpy (&mo, p, MOBJ_SAVESIZE);
 	p += MOBJ_SAVESIZE;
-	if ((uintptr_t) mo.state >= NUMSTATES
-	    || (unsigned) mo.type >= NUMMOBJTYPES
+	if (savegameversion >= 2)
+	{
+	    int	f[3];
+
+	    NEED(MOBJ_MBFSIZE);
+	    memcpy (f, p, MOBJ_MBFSIZE);
+	    p += MOBJ_MBFSIZE;
+	    if (f[2] < 0)
+		return false;
+	    if ((uintptr_t) f[2] > maxref)
+		maxref = f[2];
+	}
+	if ((uintptr_t) mo.state >= (uintptr_t) numstates
+	    || (unsigned) mo.type >= (unsigned) nummobjtypes
 	    || (uintptr_t) mo.player > MAXPLAYERS
 	    || (mo.player && !ingame[(uintptr_t) mo.player - 1]))
 	    return false;

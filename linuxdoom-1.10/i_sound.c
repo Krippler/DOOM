@@ -118,7 +118,7 @@ static void I_SendSoundLumps (void)
     if (sndsock < 0 && !sndserver)
 	return;
 
-    for (i = 1; i < NUMSFX; i++)
+    for (i = 1; i < numsfx; i++)
     {
 	if (S_sfx[i].link || !S_sfx[i].name)
 	    continue;
@@ -132,9 +132,17 @@ static void I_SendSoundLumps (void)
 	if (len <= 0)
 	    continue;
 	path[len] = 0;
-	n = snprintf (cmd, sizeof(cmd), "l%2.2x%8.8x%8.8x%s\n", i & 0xff,
-		      (unsigned) lumpinfo[lump].position,
-		      (unsigned) lumpinfo[lump].size, path);
+	// 'l' and two digits for id's sounds, 'L' and four past them
+	if (i < 256)
+	    n = snprintf (cmd, sizeof(cmd), "l%2.2x%8.8x%8.8x%s\n", i,
+			  (unsigned) lumpinfo[lump].position,
+			  (unsigned) lumpinfo[lump].size, path);
+	else if (i < 65536)
+	    n = snprintf (cmd, sizeof(cmd), "L%4.4x%8.8x%8.8x%s\n", i,
+			  (unsigned) lumpinfo[lump].position,
+			  (unsigned) lumpinfo[lump].size, path);
+	else
+	    continue;
 	if (n > 0 && n < (int) sizeof(cmd))
 	{
 	    I_SendSound (cmd, n);
@@ -568,9 +576,18 @@ I_StartSound
     {
 	char	cmd[16];
 
-	snprintf (cmd, sizeof(cmd), "p%2.2x%2.2x%2.2x%2.2x\n",
-		  id & 0xff, pitch & 0xff, vol & 0xff, sep & 0xff);
-	I_SendSound (cmd, 10);
+	if (id < 256)
+	{
+	    snprintf (cmd, sizeof(cmd), "p%2.2x%2.2x%2.2x%2.2x\n",
+		      id, pitch & 0xff, vol & 0xff, sep & 0xff);
+	    I_SendSound (cmd, 10);
+	}
+	else if (id < 65536)
+	{
+	    snprintf (cmd, sizeof(cmd), "P%4.4x%2.2x%2.2x%2.2x\n",
+		      id, pitch & 0xff, vol & 0xff, sep & 0xff);
+	    I_SendSound (cmd, 12);
+	}
     }
     // warning: control reaches end of non-void function.
     return id;

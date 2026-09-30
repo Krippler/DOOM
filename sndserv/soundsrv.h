@@ -76,5 +76,6 @@ void I_ShutdownMusic(void);
 
 // "l" from the engine: load a sound from where the engine says it is
 int loadsfx (const char* spec);
+int loadsfx4 (const char* spec);	// the same, with four digits for the sound
 
 #endif

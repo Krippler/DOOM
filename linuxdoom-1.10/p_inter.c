@@ -108,6 +108,28 @@ P_GiveAmmo
     if (player->ammo[ammo] > player->maxammo[ammo])
 	player->ammo[ammo] = player->maxammo[ammo];
 
+    // MBF21: by the weapons' flags -- from one that has AUTOSWITCHFROM to
+    // the best one that uses this ammunition, has not NOAUTOSWITCHTO, and
+    // could not fire before but can now
+    if (mbf21)
+    {
+	int	i;
+
+	if ((weaponinfo[player->readyweapon].flags & WPF_AUTOSWITCHFROM)
+	    && weaponinfo[player->readyweapon].ammo != ammo)
+	    for (i = NUMWEAPONS - 1; i > player->readyweapon; i--)
+		if (player->weaponowned[i]
+		    && !(weaponinfo[i].flags & WPF_NOAUTOSWITCHTO)
+		    && weaponinfo[i].ammo == ammo
+		    && weaponinfo[i].ammopershot > oldammo
+		    && weaponinfo[i].ammopershot <= player->ammo[ammo])
+		{
+		    player->pendingweapon = i;
+		    break;
+		}
+	return true;
+    }
+
     // If non zero ammo, 
     // don't change up weapons,
     // player was lower on purpose.
@@ -757,30 +779,25 @@ P_KillMobj
     // Drop stuff.
     // This determines the kind of object spawned
     // during the death frame of a thing.
-    switch (target->type)
-    {
-      case MT_WOLFSS:
-      case MT_POSSESSED:
-	item = MT_CLIP;
-	break;
-	
-      case MT_SHOTGUY:
-	item = MT_SHOTGUN;
-	break;
-	
-      case MT_CHAINGUY:
-	item = MT_CHAINGUN;
-	break;
-	
-      default:
+    // (id's by type: DEHEXTRA's Dropped item, which is that by default)
+    item = target->info->droppeditem;
+    if (item == MT_NULL || item >= nummobjtypes)
 	return;
-    }
 
     mo = P_SpawnMobj (target->x,target->y,ONFLOORZ, item);
     mo->flags |= MF_DROPPED;	// special versions of items
 }
 
 
+
+
+// MBF21's infighting groups: monsters of a patch's group do not fight
+// each other
+static boolean P_InfightingImmune (mobj_t* target, mobj_t* source)
+{
+    return target->info->infighting_group != IG_DEFAULT
+	&& target->info->infighting_group == source->info->infighting_group;
+}
 
 
 //
@@ -807,7 +824,8 @@ P_DamageMobj
     fixed_t	thrust;
     int		temp;
 	
-    if ( !(target->flags & MF_SHOOTABLE) )
+    // (MBF: bouncing things can be hurt)
+    if ( !(target->flags & (MF_SHOOTABLE | MF_BOUNCES)) )
 	return;	// shouldn't happen...
 		
     if (target->health <= 0)
@@ -825,12 +843,14 @@ P_DamageMobj
 
     // Some close combat weapons should not
     // inflict thrust and push the victim out of reach,
-    // thus kick away unless using the chainsaw.
+    // thus kick away unless using the chainsaw (MBF21: a weapon with
+    // NOTHRUST, as the chainsaw has).
     if (inflictor
 	&& !(target->flags & MF_NOCLIP)
 	&& (!source
 	    || !source->player
-	    || source->player->readyweapon != wp_chainsaw))
+	    || !(weaponinfo[source->player->readyweapon].flags
+		 & WPF_NOTHRUST)))
     {
 	ang = R_PointToAngle2 ( inflictor->x,
 				inflictor->y,
@@ -917,19 +937,33 @@ P_DamageMobj
     if ( (P_Random () < target->info->painchance)
 	 && !(target->flags&MF_SKULLFLY) )
     {
-	target->flags |= MF_JUSTHIT;	// fight back!
+	// fight back! (MBF: not at a friend, unless it was the friend)
+	if (!target->target || target->target == source
+	    || !(target->flags & target->target->flags & MF_FRIEND))
+	    target->flags |= MF_JUSTHIT;
 	
 	P_SetMobjState (target, target->info->painstate);
     }
 			
     target->reactiontime = 0;		// we're awake now...	
 
-    if ( (!target->threshold || target->type == MT_VILE)
+    // Whoever hurt it becomes its target, unless it is set on another
+    // (threshold). id's code let the Arch-vile turn on anyone at any time
+    // and made it no one's target; MBF21's flags NOTHRESHOLD and
+    // DMGIGNORED, which it has. Monsters of one infighting group do not
+    // turn on each other (MBF21).
+    if ( (!target->threshold || (target->flags2 & MF2_NOTHRESHOLD))
 	 && source && source != target
-	 && source->type != MT_VILE)
+	 && !(source->flags2 & MF2_DMGIGNORED)
+	 && !P_InfightingImmune (target, source))
     {
 	// if not intent on another player,
-	// chase after this one
+	// chase after this one; MBF remembers the one before
+	if (!demo_compatibility
+	    && (!target->lastenemy || target->lastenemy->health <= 0
+		|| (!((target->flags ^ target->lastenemy->flags) & MF_FRIEND)
+		    && target->target != source)))
+	    target->lastenemy = target->target;
 	target->target = source;
 	target->threshold = BASETHRESHOLD;
 	if (target->state == &states[target->info->spawnstate]

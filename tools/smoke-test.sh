@@ -41,6 +41,11 @@
 #             floors and ceilings go dark, the blue pool with them
 #   dehacked  a DEHACKED lump is read, and a mod's own pistol sound (silence)
 #             is the one the mixer plays (needs xdotool)
+#   mbf21     a patch past DOOM's own numbers (DSDHacked) and MBF21's code
+#             pointers: the pistol, made silent, fires through a new frame
+#             that plays sound 700 (A_WeaponSound), a tone of the patch's
+#             own; the tone is heard, so the engine and the mixer both
+#             took a sound numbered past 255 (needs xdotool)
 #   ogg       a level whose music is an Ogg Vorbis lump, as SIGIL II's are,
 #             is heard at the tone's own pitch (needs oggenc, from
 #             vorbis-tools, and a soundfont; skipped without)
@@ -625,6 +630,65 @@ if command -v xdotool >/dev/null 2>&1; then
     say "the patch was read, and the mod's pistol is the one the mixer plays"
 else
     say "dehacked: skipped, xdotool is not installed"
+fi
+
+# -------------------------------------------------------------------- mbf21
+# A patch's frames, sounds and code pointers past DOOM's own numbers, as
+# MBF21 mods (Legacy of Rust among them) number theirs: the pistol's firing
+# frame goes on to frame 5000, which plays sound 700 with A_WeaponSound
+# (args: the sound). Sound 700 is named SMOKE in [SOUNDS], and DSSMOKE is a
+# tone; the pistol's own sound is silence and A_FirePistol is taken off.
+# Hearing the tone takes the frame, the pointer and its args, a sound
+# numbered past 255, and the mixer's four-digit commands ('L', 'P').
+if command -v xdotool >/dev/null 2>&1; then
+    say "mbf21: the pistol plays sound 700 through a frame of its own"
+    mkdir -p "$work/mbf21"
+    printf '%s\n' 'Patch File for DeHackEd v3.0' 'Doom version = 2021' \
+        'Patch format = 6' '' 'Frame 14' 'Next frame = 5000' '' \
+        'Frame 5000' 'Sprite number = 3' 'Sprite subnumber = 1' \
+        'Duration = 4' 'Next frame = 15' 'Args1 = 700' '' '[CODEPTR]' \
+        'FRAME 14 = NULL' 'FRAME 5000 = WeaponSound' '' '[SOUNDS]' \
+        '700 = SMOKE' >"$work/mbf21/dehacked"
+    python3 -c "import struct, sys; sys.stdout.buffer.write(struct.pack('<HHI', 3, 11025, 4000) + bytes([128]) * 4000)" \
+        >"$work/mbf21/dspistol"
+    python3 -c "import math, struct, sys; n = 11025; sys.stdout.buffer.write(struct.pack('<HHI', 3, 11025, n) + bytes(int(128 + 100 * math.sin(2 * math.pi * 440 * i / 11025)) for i in range(n)))" \
+        >"$work/mbf21/dssmoke"
+    add_lumps "$wad" "$work/mbf21/doom1.wad" \
+        DEHACKED "$work/mbf21/dehacked" DSPISTOL "$work/mbf21/dspistol" \
+        DSSMOKE "$work/mbf21/dssmoke" \
+        || die "could not add the patch and the sounds"
+    start_x 24
+    start_mixer
+    printf 'music_volume 0\nsfx_volume 15\n' >"$work/.doomrc"
+    DOOM_SFX_SOCKET="$work/sfx.sock" DOOM_MUSIC_PIPE="$work/music.pipe" \
+    DOOM_AUDIO_RATE=22050 game_iwad="$work/mbf21/doom1.wad" \
+        start_game mbf21.log -warp 1 1 -nojoy
+    game_iwad=
+    i=0
+    until grep -q "I_InitGraphics" "$work/mbf21.log" 2>/dev/null; do
+        i=$((i + 1))
+        [ "$i" -gt 200 ] && { tail -20 "$work/mbf21.log" >&2; die "the engine never opened its window; see $work/mbf21.log"; }
+        sleep 0.1
+    done
+    grep -q "^DEHACKED: doom1.wad: [0-9]* changes" "$work/mbf21.log" \
+        && ! grep -q "^DEHACKED: .*line" "$work/mbf21.log" \
+        || die "the patch was not read without complaint; see $work/mbf21.log"
+    sleep 2
+    python3 "$client" peak --audio "$audio_port" --secs 3 &
+    listener=$!
+    sleep 0.5
+    DISPLAY="$disp" xdotool keydown Control_L
+    sleep 1
+    DISPLAY="$disp" xdotool keyup Control_L
+    wait "$listener" \
+        || die "sound 700 was not heard: the frame, the pointer or the mixer failed; see $work/mbf21.log and $work/audiostream.log"
+    kill "$game_pid" 2>/dev/null
+    wait_game 10
+    stop_mixer
+    stop_x
+    say "frame 5000's A_WeaponSound played sound 700, the patch's own"
+else
+    say "mbf21: skipped, xdotool is not installed"
 fi
 
 # ---------------------------------------------------------------------- ogg
