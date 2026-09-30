@@ -46,6 +46,7 @@ rcsid[] = "$Id: hu_stuff.c,v 1.4 1997/02/03 16:47:52 b1 Exp $";
 // Data.
 #include "dstrings.h"
 #include "sounds.h"
+#include "d_deh.h"
 
 //
 // Locally used constants, shortcuts.
@@ -491,7 +492,7 @@ void HU_Start(void)
 		       hu_font,
 		       HU_FONTSTART);
     
-    s = HU_Title ();
+    s = (char*) D_Text (HU_Title ());	// a patch's name for it, if any
     while (*s)
 	HUlib_addCharToTextLine(&w_title, *(s++));
 
@@ -632,7 +633,8 @@ void HU_Ticker(void)
 	if ((plr->message && !message_nottobefuckedwith)
 	    || (plr->message && message_dontfuckwithme))
 	{
-	    HUlib_addMessageToSText(&w_message, 0, plr->message);
+	    HUlib_addMessageToSText(&w_message, 0,
+				    (char*) D_Text (plr->message));
 	    plr->message = 0;
 	    message_on = true;
 	    message_counter = HU_MSGTIMEOUT;

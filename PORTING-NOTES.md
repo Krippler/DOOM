@@ -889,6 +889,60 @@ tables were raised eightfold: `MAXVISPLANES`, `MAXOPENINGS`, `MAXDRAWSEGS`,
 Only memory depends on them. The scrolling-wall list, which the original
 filled with no check at all, stops at its end now.
 
+## DEHACKED, and a mod's own sounds
+
+`d_deh.c` reads DeHackEd patches: every WAD's `DEHACKED` lump in load order
+(`D_LoadDehacked`, right after `W_InitMultipleFiles`, before anything reads
+the tables), then a `.deh`/`.bex` of the same name beside each mod file, then
+`-deh`/`-bex` files. Sections, by what they change:
+
+- **Thing** n (1-based) — `mobjinfo[n-1]`: every DeHackEd field, Bits as a
+  number or BEX's flag names.
+- **Frame** n — `states[n]`: sprite, subnumber, duration, next, the two misc
+  values. **Pointer** m (Frame n) with `Codep Frame = k` gives frame n the
+  action frame k had *before any patch* (`origaction`, saved once), as
+  DeHackEd meant.
+- **Weapon**, **Ammo** (`maxammo`, `clipammo`), **Sound** (singularity and
+  priority; its other fields were addresses in the DOS executable).
+- **Misc** — id's compiled-in numbers, now `deh_*` variables in the six
+  places that used them: `G_PlayerReborn`, the pickups in `P_TouchSpecialThing`,
+  iddqd/idfa/idkfa in `st_stuff.c`, BFG ammo in `p_pspr.c`, and the
+  same-species check in `PIT_CheckThing` ("Monsters Infight = 221").
+- **Text** old new — a sprite name, a sound name or a music name if the old
+  text is one, else a replacement text. id's texts are macros compiled into
+  their uses, so replacements are found by what the text said: `D_Text` is
+  asked where texts reach the screen (the message line, the level's name,
+  the finale, the cast, `M_StartMessage`, the quit messages), and the quick
+  save and load prompts, used as formats, take a replacement only if it has
+  exactly one `%s` (`M_OneStringFormat`).
+- BEX: **[STRINGS]** by id's macro names (d_englsh.h's, generated into the
+  table), **[CODEPTR]** by action name with or without `A_`, **[SPRITES]**,
+  **[SOUNDS]**, **[MUSIC]** renames, and **[PARS]**, which `U_ReadBexPars`
+  already read from lumps and now reads from files too.
+
+Not supported, and said once in the log: Cheat (the cheats are id's and
+their aliases), [HELPER], INCLUDE, MBF's and MBF21's code pointers and
+fields, and numbers past DOOM's own frames, things and sounds (DEHEXTRA).
+
+**The mixer's sounds.** `audiostream`, and the desktop build's sound server,
+loaded every effect from one IWAD they found in `DOOMWADDIR` -- DOOM II's
+before DOOM's -- through `grabdata`. The engine only ever sent numbers. So a
+mod's sounds were never heard, nor a patch's renamed ones. The engine now
+sends, once connected, one line per effect: `l`, the number, the lump's
+offset and length, and the path of the file it is in (from
+`/proc/self/fd`), for whatever `W_CheckNumForName("ds" + name)` finds --
+mods first, as for everything else. `loadsfx` in `sndserv/soundsrv.c` reads
+it for both mixers; a sound at another rate than 11025 Hz is resampled to
+it, where id's mixer played it at the wrong speed.
+
+Checked: SIGIL II's patch makes its Spider Mastermind 9000 health (3000
+before); a test patch using every section changes exactly what it names, on
+screen (the clip message, 150% health, 77 of 300 bullets); a mod whose pistol
+is silence fires silently, a patch renaming the pistol to a mod's own sound
+plays that, and a 22050 Hz pistol of 0.3 s lasts 0.29 s; all 21 demos end as
+on 1.16.0, `rndindex` included. The smoke test's `dehacked` phase checks a
+lump patch and a silent pistol.
+
 ## Switches in The Ultimate DOOM, and SWITCHES and ANIMATED
 
 `P_InitSwitchList` took the switch pairs by `gamemode`: episode 1's for

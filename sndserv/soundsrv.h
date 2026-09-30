@@ -74,4 +74,7 @@ I_SubmitOutputBuffer
 void I_ShutdownSound(void);
 void I_ShutdownMusic(void);
 
+// "l" from the engine: load a sound from where the engine says it is
+int loadsfx (const char* spec);
+
 #endif

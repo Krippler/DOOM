@@ -94,6 +94,55 @@ static void I_SendSound (const char* cmd, int len)
     fflush (sndserver);
   }
 }
+
+
+//
+// Where every sound effect is, for the mixer. The mixer loads the effects
+// itself, and used to take them from the one IWAD it found -- DOOM II's
+// before DOOM's -- so a mod's own sounds, and the names a DEHACKED patch
+// gives them, never reached it: the game sounded like whatever IWAD sat in
+// the folder. Now the engine, which has every WAD loaded, says for each
+// effect which file its lump is in, where, and how long:
+//
+//	l<sound, 2 hex><offset, 8 hex><length, 8 hex><path>\n
+//
+// and the mixer reads it from there (loadsfx in sndserv/soundsrv.c). The
+// file's path is the one this process has open, from /proc/self/fd.
+//
+static void I_SendSoundLumps (void)
+{
+    int		i, lump, n, sent = 0;
+    char	name[16], fdpath[64], path[1024], cmd[1200];
+    ssize_t	len;
+
+    if (sndsock < 0 && !sndserver)
+	return;
+
+    for (i = 1; i < NUMSFX; i++)
+    {
+	if (S_sfx[i].link || !S_sfx[i].name)
+	    continue;
+	snprintf (name, sizeof(name), "ds%s", S_sfx[i].name);
+	lump = W_CheckNumForName (name);
+	if (lump < 0 || lumpinfo[lump].handle < 0)
+	    continue;
+	snprintf (fdpath, sizeof(fdpath), "/proc/self/fd/%d",
+		  lumpinfo[lump].handle);
+	len = readlink (fdpath, path, sizeof(path) - 1);
+	if (len <= 0)
+	    continue;
+	path[len] = 0;
+	n = snprintf (cmd, sizeof(cmd), "l%2.2x%8.8x%8.8x%s\n", i & 0xff,
+		      (unsigned) lumpinfo[lump].position,
+		      (unsigned) lumpinfo[lump].size, path);
+	if (n > 0 && n < (int) sizeof(cmd))
+	{
+	    I_SendSound (cmd, n);
+	    sent++;
+	}
+    }
+    fprintf (stderr, "sound: told the mixer where %d effects are\n", sent);
+}
 #elif SNDINTR
 
 // Update all 30 millisecs, approx. 30fps synchronized.
@@ -857,6 +906,8 @@ I_InitSound()
     else
       fprintf(stderr, "Could not start sound server [%s]\n", buffer);
   }
+
+  I_SendSoundLumps ();
 #else
     
   int i;

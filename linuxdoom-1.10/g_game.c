@@ -71,6 +71,7 @@ rcsid[] = "$Id: g_game.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 #include "i_pad.h"
 #include "u_mapinfo.h"
 #include "g_game.h"
+#include "d_deh.h"
 
 
 // 180K in 1994, and taken from the screen buffers, past the end of which
@@ -1036,11 +1037,11 @@ void G_PlayerReborn (int player)
  
     p->usedown = p->attackdown = true;	// don't do anything immediately 
     p->playerstate = PST_LIVE;       
-    p->health = MAXHEALTH; 
+    p->health = deh_initial_health;	// MAXHEALTH, or a patch's Misc
     p->readyweapon = p->pendingweapon = wp_pistol; 
     p->weaponowned[wp_fist] = true; 
     p->weaponowned[wp_pistol] = true; 
-    p->ammo[am_clip] = 50; 
+    p->ammo[am_clip] = deh_initial_bullets; 
 	 
     for (i=0 ; i<NUMAMMO ; i++) 
 	p->maxammo[i] = maxammo[i]; 

@@ -435,6 +435,11 @@ def peak(a):
     t0 = time.time()
     time.sleep(a.secs)
     loud = audio.peak(t0, time.time())
+    if a.quiet:
+        if loud >= 1000:
+            die('something was heard: peak %d in %.0f seconds' % (loud, a.secs))
+        say('nothing heard, as it should be: peak %d' % loud)
+        return
     if loud < 1000:
         die('nothing was heard: peak %d in %.0f seconds' % (loud, a.secs))
     say('heard: peak %d' % loud)
@@ -451,6 +456,8 @@ def main():
     p.add_argument('--src', help="the engine's v_video.c, for its gamma table")
     p.add_argument('--out', default='.')
     p.add_argument('--secs', type=float, default=5)
+    p.add_argument('--quiet', action='store_true',
+                   help='peak: expect silence rather than sound')
     a = p.parse_args()
     {'level': level, 'music': music, 'ogg': ogg,
      'compare': compare, 'peak': peak}[a.phase](a)

@@ -41,6 +41,7 @@ rcsid[] = "$Id: p_pspr.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 
 #include "p_pspr.h"
 #include "i_pad.h"
+#include "d_deh.h"
 
 #define LOWERSPEED		FRACUNIT*6
 #define RAISESPEED		FRACUNIT*6
@@ -168,7 +169,7 @@ boolean P_CheckAmmo (player_t* player)
 
     // Minimal amount for one shot varies.
     if (player->readyweapon == wp_bfg)
-	count = BFGCELLS;
+	count = deh_bfg_cells_per_shot;	// BFGCELLS, or a patch's Misc
     else if (player->readyweapon == wp_supershotgun)
 	count = 2;	// Double barrel.
     else
@@ -589,7 +590,7 @@ A_FireBFG
 ( player_t*	player,
   pspdef_t*	psp ) 
 {
-    player->ammo[weaponinfo[player->readyweapon].ammo] -= BFGCELLS;
+    player->ammo[weaponinfo[player->readyweapon].ammo] -= deh_bfg_cells_per_shot;
     P_SpawnPlayerMissile (player->mo, MT_BFG);
 
     if (player == &players[consoleplayer])

@@ -117,4 +117,7 @@ void U_MapName (char* buf, int episode, int map);
 // A par time from a DEHACKED lump's [PARS] section, in seconds, or 0.
 int U_BexPar (int episode, int map);
 
+// Boom's DEHACKED [PARS] section, from a patch's text: par times.
+void U_ReadBexPars (const char* text);
+
 #endif

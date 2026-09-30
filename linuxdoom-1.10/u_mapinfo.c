@@ -711,7 +711,7 @@ static void U_Parse (const char* text, const char* what)
 // is that and nothing else: the par times of its E5. The rest of DEHACKED,
 // which changes things, weapons and text, this engine does not read.
 //
-static void U_ReadBexPars (const char* text)
+void U_ReadBexPars (const char* text)
 {
     char	line[256];
     boolean	inpars = false;
