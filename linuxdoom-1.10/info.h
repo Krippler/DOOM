@@ -167,6 +167,8 @@ typedef enum
     SPR_BRS1,
     SPR_TLMP,
     SPR_TLP2,
+    // Boom's, and later ports', after id's so that numbers stay put
+    SPR_TNT1,		// nothing: an invisible thing
     NUMSPRITES
 
 } spritenum_t;
@@ -1140,6 +1142,8 @@ typedef enum
     S_TECH2LAMP2,
     S_TECH2LAMP3,
     S_TECH2LAMP4,
+    // Boom's
+    S_TNT1,		// invisible, for MT_PUSH and MT_PULL
     NUMSTATES
 } statenum_t;
 
@@ -1298,6 +1302,9 @@ typedef enum {
     MT_MISC84,
     MT_MISC85,
     MT_MISC86,
+    // Boom's point pushers (p_spec.c, line 226)
+    MT_PUSH,
+    MT_PULL,
     NUMMOBJTYPES
 
 } mobjtype_t;

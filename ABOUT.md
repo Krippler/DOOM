@@ -86,9 +86,10 @@ And under the menus, the engine is **limit-removing**, as UZDoom is for maps
 in DOOM's own format: the 1993 engine's fixed tables grow, node builders'
 extended formats are read, walls tile at their own height, and a mod's
 textures and sprites join the game's instead of replacing them. So maps made
-for newer engines, SIGIL II among them, play here, and the original games
-play exactly as they did: their demos end in the same state, to the random
-number.
+for newer engines, SIGIL II among them, play here. So do **Boom** maps, with
+their generalized doors and lifts, scrollers, conveyors, ice, wind, deep
+water and translucent walls. And the original games play exactly as they
+did: their demos end in the same state, to the random number.
 
 How to use them is in [DOCKER.md](DOCKER.md); how they were built, in
 [PORTING-NOTES.md](PORTING-NOTES.md#added).

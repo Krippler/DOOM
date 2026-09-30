@@ -120,6 +120,8 @@ const char* D_Text (const char* s)
 
 
 // BEX [STRINGS] names: id's macro names, which are what Boom used
+// (not HUSTR_KEYGREEN and the other three: those are the chat keys, as
+// characters, not texts)
 static const struct { const char* name; const char* text; } bexstrings[] =
 {
     {"PRESSKEY", PRESSKEY},
@@ -189,6 +191,15 @@ static const struct { const char* name; const char* text; } bexstrings[] =
     {"PD_BLUEK", PD_BLUEK},
     {"PD_REDK", PD_REDK},
     {"PD_YELLOWK", PD_YELLOWK},
+    {"PD_BLUEC", PD_BLUEC},
+    {"PD_REDC", PD_REDC},
+    {"PD_YELLOWC", PD_YELLOWC},
+    {"PD_BLUES", PD_BLUES},
+    {"PD_REDS", PD_REDS},
+    {"PD_YELLOWS", PD_YELLOWS},
+    {"PD_ANY", PD_ANY},
+    {"PD_ALL3", PD_ALL3},
+    {"PD_ALL6", PD_ALL6},
     {"GGSAVED", GGSAVED},
     {"HUSTR_MSGU", HUSTR_MSGU},
     {"HUSTR_E1M1", HUSTR_E1M1},
@@ -343,10 +354,6 @@ static const struct { const char* name; const char* text; } bexstrings[] =
     {"HUSTR_PLRINDIGO", HUSTR_PLRINDIGO},
     {"HUSTR_PLRBROWN", HUSTR_PLRBROWN},
     {"HUSTR_PLRRED", HUSTR_PLRRED},
-    {"HUSTR_KEYGREEN", HUSTR_KEYGREEN},
-    {"HUSTR_KEYINDIGO", HUSTR_KEYINDIGO},
-    {"HUSTR_KEYBROWN", HUSTR_KEYBROWN},
-    {"HUSTR_KEYRED", HUSTR_KEYRED},
     {"AMSTR_FOLLOWON", AMSTR_FOLLOWON},
     {"AMSTR_FOLLOWOFF", AMSTR_FOLLOWOFF},
     {"AMSTR_GRIDON", AMSTR_GRIDON},

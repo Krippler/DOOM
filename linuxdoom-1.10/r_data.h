@@ -56,6 +56,17 @@ int R_CheckFlatNumForName (char* name);	// -1 if there is no such flat
 // Called by P_Ticker for switches and animations,
 // returns the texture number for the texture name.
 int R_TextureNumForName (char *name);
+
+// Boom's colormaps: which a name is (0 COLORMAP, -1 none), and its table.
+int R_ColormapNumForName (char* name);
+lighttable_t* R_Colormap (int n);
+int R_NumColormaps (void);
+
+// Boom's translucency tables: the one made from the palette (or TRANMAP),
+// and the one R_DrawTLColumn draws with.
+extern byte*	main_tranmap;
+extern byte*	tranmap;
+void R_InitTranMap (void);
 int R_CheckTextureNumForName (char *name);
 
 #endif

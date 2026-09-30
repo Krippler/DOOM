@@ -134,6 +134,9 @@ typedef struct
 // Set if already seen, thus drawn in automap.
 #define ML_MAPPED		256
 
+// Boom: a use passes through this line to the ones behind it.
+#define ML_PASSUSE		512
+
 
 
 

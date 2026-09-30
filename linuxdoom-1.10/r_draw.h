@@ -62,6 +62,10 @@ void 	R_DrawFuzzColumnLow (void);
 //  for player sprite rendering,
 //  Green/Red/Blue/Indigo shirts.
 void	R_DrawTranslatedColumn (void);
+
+// Boom's translucent columns (tranmap)
+void	R_DrawTLColumn (void);
+void	R_DrawTLColumnLow (void);
 void	R_DrawTranslatedColumnLow (void);
 
 void

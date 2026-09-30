@@ -52,6 +52,12 @@ extern lighttable_t**	hscalelight;
 extern lighttable_t**	vscalelight;
 extern lighttable_t**	dscalelight;
 
+// Boom: a sector as the view sees it (242's water, 213 and 261's light),
+// and the flat its F_SKY1 shows (MBF's 271, 272)
+sector_t* R_FakeFlat (sector_t* sec, sector_t* tempsec, int* floorlightlevel,
+		      int* ceilinglightlevel, boolean back);
+int R_PlanePic (sector_t* sec, int pic);
+
 
 typedef void (*drawfunc_t) (int start, int stop);
 

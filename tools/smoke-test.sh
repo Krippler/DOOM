@@ -36,6 +36,9 @@
 #             nodes with children past 15 bits, no BLOCKMAP, walls in a
 #             256-tall texture from a TEXTURE1 of its own, a sprite range of
 #             its own; it stays up and the texture is drawn
+#   boom      E1M1 in a PWAD with Boom's light transfers (213 and 261) from
+#             a dark room to every other: it is read as a Boom map, and the
+#             floors and ceilings go dark, the blue pool with them
 #   dehacked  a DEHACKED lump is read, and a mod's own pistol sound (silence)
 #             is the one the mixer plays (needs xdotool)
 #   ogg       a level whose music is an Ogg Vorbis lump, as SIGIL II's are,
@@ -489,6 +492,87 @@ sys.exit(0 if green > 1000 else 1)
 EOF
 cp "$work/fb24/Xvfb_screen0" "$work/limits.xwd"
 say "compressed ZDBSP nodes, a made blockmap, a 256-tall texture: E1M1 stays up and draws it"
+kill "$game_pid" 2>/dev/null
+wait_game 10
+stop_x
+
+# --------------------------------------------------------------------- boom
+# A Boom map: E1M1 with the darkest room's light put out, and two of its walls
+# made Boom's light transfers, 213 for floors and 261 for ceilings, to every
+# other sector. The map has to come from a PWAD (an IWAD's maps always play
+# as DOOM's), and the shareware IWAD will not take one, so the IWAD here is a
+# copy under a name the engine does not know. The special makes it a Boom
+# map; drawn as one, the start view's floors and ceilings are black, and the
+# blue pool in it (thousands of pixels in DOOM's drawing) is gone.
+say "boom: E1M1 with light transfers (213, 261) from a dark room"
+mkdir -p "$work/boom"
+cp "$wad" "$work/boom/smoke.wad"
+python3 - "$wad" "$work/boom/boom.wad" <<'EOF' || die "could not make the Boom map"
+import struct, sys
+src, out = sys.argv[1], sys.argv[2]
+d = open(src, 'rb').read()
+n, ofs = struct.unpack('<ii', d[4:12])
+lumps = [struct.unpack('<ii8s', d[ofs + 16 * i:ofs + 16 * i + 16]) for i in range(n)]
+lumps = [(nm.rstrip(b'\0').decode(), d[fp:fp + sz]) for fp, sz, nm in lumps]
+i = [nm for nm, _ in lumps].index('E1M1')
+maplumps = lumps[i:i + 11]
+m = dict(maplumps[1:])
+lines = [list(r) for r in struct.iter_unpack('<7H', m['LINEDEFS'])]
+sides = [list(r) for r in struct.iter_unpack('<hh8s8s8sH', m['SIDEDEFS'])]
+secs = [list(r) for r in struct.iter_unpack('<hh8s8shhh', m['SECTORS'])]
+dark = min(range(len(secs)), key=lambda s: secs[s][4])
+secs[dark][4] = 0
+walls = [l for l in lines if l[6] == 0xffff and sides[l[5]][5] == dark]
+walls[0][3:5] = [213, 999]
+walls[1][3:5] = [261, 999]
+for k, s in enumerate(secs):
+    if k != dark:
+        s[6] = 999
+m['LINEDEFS'] = b''.join(struct.pack('<7H', *l) for l in lines)
+m['SECTORS'] = b''.join(struct.pack('<hh8s8shhh', *s) for s in secs)
+body = dirs = b''
+for nm, data in [('E1M1', b'')] + [(k, m[k]) for k, _ in maplumps[1:]]:
+    dirs += struct.pack('<ii8s', 12 + len(body), len(data), nm.encode())
+    body += data
+open(out, 'wb').write(struct.pack('<4sii', b'PWAD', 11, 12 + len(body)) + body + dirs)
+EOF
+start_x 24
+rm -f "$work/.doomrc"
+game_iwad="$work/boom/smoke.wad" start_game boom.log \
+    -file "$work/boom/boom.wad" -warp 1 1 -nojoy
+game_iwad=
+i=0
+until grep -q "I_InitGraphics" "$work/boom.log" 2>/dev/null; do
+    i=$((i + 1))
+    [ "$i" -gt 200 ] && { tail -20 "$work/boom.log" >&2; die "the engine never opened its window; see $work/boom.log"; }
+    sleep 0.1
+done
+sleep 3
+kill -0 "$game_pid" 2>/dev/null \
+    || { tail -20 "$work/boom.log" >&2; die "E1M1 as a Boom map did not stay up; see $work/boom.log"; }
+grep -q "P_SetupLevel: boom.wad's maps play as Boom's" "$work/boom.log" \
+    || die "the map was not read as a Boom map; see $work/boom.log"
+python3 - "$work/fb24/Xvfb_screen0" <<'EOF' \
+    || die "the light transfers were not drawn: the pool is still lit; see $work/boom.log"
+import struct, sys
+d = open(sys.argv[1], 'rb').read()
+hsize, = struct.unpack('>I', d[:4])
+w, h = struct.unpack('>II', d[16:24])
+bpl, = struct.unpack('>I', d[48:52])
+ncolors, = struct.unpack('>I', d[76:80])
+px = d[hsize + ncolors * 12:]
+blue = 0
+for y in range(h):
+    row = px[y * bpl:y * bpl + 4 * w]
+    for x in range(0, 4 * w, 4):
+        b, g, r = row[x], row[x + 1], row[x + 2]
+        if b > 60 and b > 2 * max(r, g):
+            blue += 1
+print('[smoke] %d blue pixels' % blue)
+sys.exit(0 if blue < 100 else 1)
+EOF
+cp "$work/fb24/Xvfb_screen0" "$work/boom.xwd"
+say "a Boom map from a PWAD: read as one, and its light transfers drawn"
 kill "$game_pid" 2>/dev/null
 wait_game 10
 stop_x

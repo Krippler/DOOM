@@ -216,6 +216,18 @@ void 	P_UseLines (player_t* player);
 
 boolean P_ChangeSector (sector_t* sector, boolean crunch);
 
+// p_user.c
+void P_CalcHeight (player_t* player);
+
+// the box of the move being checked (p_map.c)
+extern fixed_t	tmbbox[4];
+
+// Boom's sector node lists (p_map.c)
+extern msecnode_t*	sector_list;
+void P_CreateSecNodeList (mobj_t* thing, fixed_t x, fixed_t y);
+void P_DelSeclist (msecnode_t* node);
+void P_ClearSecnodes (void);
+
 extern mobj_t*	linetarget;	// who got hit (or NULL)
 
 fixed_t

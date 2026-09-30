@@ -179,6 +179,11 @@ fixed_t*	spritetopoffset;
 
 lighttable_t	*colormaps;
 
+// Boom's, from C_START/C_END (R_InitColormaps)
+static lighttable_t**	extracolormaps;
+static int*		extracolormaplumps;
+static int		numextracolormaps;
+
 
 //
 // MAPTEXTURE_T CACHING
@@ -1056,6 +1061,7 @@ void R_InitSpriteLumps (void)
 void R_InitColormaps (void)
 {
     int	lump, length;
+    int	i, inside = 0;
     
     // Load in the light tables, 
     //  256 byte align tables.
@@ -1064,6 +1070,121 @@ void R_InitColormaps (void)
     colormaps = Z_Malloc (length, PU_STATIC, 0); 
     colormaps = (byte *)( ((intptr_t)colormaps + 255)&~0xff); 
     W_ReadLump (lump,colormaps); 
+
+    // Boom's own colormaps, between C_START and C_END in any file: for
+    // the water and sky of a line 242's sectors (R_ColormapNumForName)
+    numextracolormaps = 0;
+    for (i = 0; i < numlumps; i++)
+    {
+	if (!strncasecmp (lumpinfo[i].name, "C_START", 8))
+	    inside = 1;
+	else if (!strncasecmp (lumpinfo[i].name, "C_END", 8))
+	    inside = 0;
+	else if (inside && W_LumpLength (i) >= 256*32)
+	{
+	    lighttable_t*	map;
+
+	    extracolormaps = realloc (extracolormaps, (numextracolormaps + 1)
+				      * sizeof(*extracolormaps));
+	    extracolormaplumps = realloc (extracolormaplumps,
+					  (numextracolormaps + 1)
+					  * sizeof(*extracolormaplumps));
+	    if (!extracolormaps || !extracolormaplumps)
+		I_Error ("R_InitColormaps: no memory for colormaps");
+	    // as long as COLORMAP, whatever this one's length
+	    map = Z_Malloc (length, PU_STATIC, 0);
+	    map = (byte *)( ((intptr_t)map + 255)&~0xff);
+	    memcpy (map, colormaps, length - 255);
+	    W_ReadLump (i, map);
+	    extracolormaps[numextracolormaps] = map;
+	    extracolormaplumps[numextracolormaps++] = i;
+	}
+    }
+    if (numextracolormaps)
+	printf ("R_InitColormaps: %d of Boom's colormaps\n", numextracolormaps);
+}
+
+
+//
+// R_ColormapNumForName
+// Boom: which colormap a name is, for a line 242's side (p_setup.c): 0 for
+// COLORMAP, one of the C_START/C_END lumps from 1 on, -1 for none.
+//
+int R_ColormapNumForName (char* name)
+{
+    int		i;
+
+    if (!strncasecmp (name, "COLORMAP", 8))
+	return 0;
+    for (i = numextracolormaps - 1; i >= 0; i--)
+	if (!strncasecmp (lumpinfo[extracolormaplumps[i]].name, name, 8))
+	    return i + 1;
+    return -1;
+}
+
+//
+// R_InitTranMap
+// Boom's translucency (line 260, and MBF's things): what each palette
+// colour drawn over each other becomes -- tranmap[under<<8 | over] -- two
+// thirds of the new over one third of the old, the nearest there is. A
+// WAD's own TRANMAP lump, a 64K table, is used if it has one.
+//
+byte*	main_tranmap;
+byte*	tranmap;
+
+void R_InitTranMap (void)
+{
+    int		lump = W_CheckNumForName ("TRANMAP");
+    byte*	pal;
+    int		under, over, i;
+
+    if (lump >= 0 && W_LumpLength (lump) == 65536)
+    {
+	main_tranmap = W_CacheLumpNum (lump, PU_STATIC);
+	tranmap = main_tranmap;
+	return;
+    }
+
+    main_tranmap = Z_Malloc (65536, PU_STATIC, 0);
+    pal = W_CacheLumpName ("PLAYPAL", PU_STATIC);
+    for (under = 0; under < 256; under++)
+	for (over = 0; over < 256; over++)
+	{
+	    int	r = (pal[over*3]   * 66 + pal[under*3]   * 34) / 100;
+	    int	g = (pal[over*3+1] * 66 + pal[under*3+1] * 34) / 100;
+	    int	b = (pal[over*3+2] * 66 + pal[under*3+2] * 34) / 100;
+	    int	best = 0, bestdist = 0x7fffffff;
+
+	    for (i = 0; i < 256; i++)
+	    {
+		int	dr = pal[i*3] - r, dg = pal[i*3+1] - g, db = pal[i*3+2] - b;
+		int	dist = dr*dr*3 + dg*dg*4 + db*db*2;
+
+		if (dist < bestdist)
+		{
+		    bestdist = dist;
+		    best = i;
+		    if (!dist)
+			break;
+		}
+	    }
+	    main_tranmap[under<<8 | over] = best;
+	}
+    Z_ChangeTag (pal, PU_CACHE);
+    tranmap = main_tranmap;
+}
+
+
+// How many there are: COLORMAP and Boom's.
+int R_NumColormaps (void)
+{
+    return numextracolormaps + 1;
+}
+
+// Colormap n of those: COLORMAP, or Boom's.
+lighttable_t* R_Colormap (int n)
+{
+    return n > 0 && n <= numextracolormaps ? extracolormaps[n-1] : colormaps;
 }
 
 
@@ -1083,6 +1204,7 @@ void R_InitData (void)
     R_InitSpriteLumps ();
     printf ("\nInitSprites");
     R_InitColormaps ();
+    R_InitTranMap ();
     printf ("\nInitColormaps");
 }
 

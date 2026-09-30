@@ -1442,7 +1442,14 @@ void G_LoadGame (char* name)
 // length of that list and "WADS", four bytes each, to find it by from the
 // end of the file.
 //
-#define SAVEWADSMAGIC	"WADS"
+// "WAD2" in place of "WADS" says the archive is Boom's too: its movers as
+// long as Boom made them, its scrollers, pushers, elevators and
+// flickering lights, and its sectors' texture offsets (p_saveg.c). This
+// engine reads either, and writes WADS when the level has none of those
+// (P_SaveVersion), so that a save on a DOOM map still loads on 1.17.3.
+//
+#define SAVEWADSMAGIC	"WAD2"
+#define SAVEWADSMAGIC1	"WADS"
 
 // Loading a save the engine restarted on its WADs for, from d_main.c: one
 // restart only, whatever happens.
@@ -1484,7 +1491,7 @@ static void G_WriteSaveWads (void)
     *save_p++ = n >> 8;
     *save_p++ = n >> 16;
     *save_p++ = n >> 24;
-    memcpy (save_p, SAVEWADSMAGIC, 4);
+    memcpy (save_p, savegameversion >= 2 ? SAVEWADSMAGIC : SAVEWADSMAGIC1, 4);
     save_p += 4;
 }
 
@@ -1503,8 +1510,10 @@ G_ReadSaveWads
     int		size, n = 0;
 
     *end = buf + length;
+    savegameversion = 0;
     if (length < SAVESTRINGSIZE + VERSIONSIZE + 8
-	|| memcmp (buf + length - 4, SAVEWADSMAGIC, 4))
+	|| (memcmp (buf + length - 4, SAVEWADSMAGIC, 4)
+	    && memcmp (buf + length - 4, SAVEWADSMAGIC1, 4)))
 	return 0;
     p = buf + length - 8;
     size = p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24);
@@ -1515,6 +1524,7 @@ G_ReadSaveWads
     for (p -= size; p < buf + length - 8 && n < max; p += strlen ((char*)p) + 1)
 	files[n++] = (char*) p;
     *end = buf + length - 8 - size;
+    savegameversion = memcmp (buf + length - 4, SAVEWADSMAGIC1, 4) ? 2 : 1;
     return n;
 }
 
@@ -1648,8 +1658,11 @@ void G_DoLoadGame (void)
 	Z_Free (savebuffer);
 	return;				// bad version 
     }
-    // the list of WADs came in with targets saved as numbers
+    // the list of WADs came in with targets saved as numbers (and WAD2
+    // with Boom's; savegameversion, from G_ReadSaveWads)
     savegamerefs = how == SAVE_LISTED;
+    if (how != SAVE_LISTED)
+	savegameversion = 0;
 
     // Made on other WADs than these: restart on them to load it, once.
     if ((how == SAVE_LISTED || how == SAVE_FOUND)
@@ -1790,6 +1803,7 @@ void G_DoSaveGame (void)
     *save_p++ = leveltime>>8; 
     *save_p++ = leveltime; 
  
+    savegameversion = P_SaveVersion ();
     P_ArchivePlayers (); 
     P_ArchiveWorld (); 
     P_ArchiveThinkers (); 

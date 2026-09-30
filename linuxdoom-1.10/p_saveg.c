@@ -30,6 +30,7 @@ rcsid[] = "$Id: p_tick.c,v 1.4 1997/02/03 16:47:55 b1 Exp $";
 #include "i_system.h"
 #include "z_zone.h"
 #include "p_local.h"
+#include "p_saveg.h"
 
 // State.
 #include "doomstat.h"
@@ -74,11 +75,16 @@ int P_ArchiveSize (void)
     BIGGEST(lightflash_t);
     BIGGEST(strobe_t);
     BIGGEST(glow_t);
+    BIGGEST(fireflicker_t);
+    BIGGEST(elevator_t);
+    BIGGEST(scroll_t);
+    BIGGEST(pusher_t);
 #undef BIGGEST
 
     return MAXPLAYERS * (3 + (int)sizeof(player_t))
 	+ numsectors * 7 * 2
 	+ numlines * (3 + 2*5) * 2
+	+ 4 + numsectors * 16		// Boom's sector offsets
 	+ thinkers * (4 + biggest)
 	+ 2;				// the two end markers
 }
@@ -201,6 +207,20 @@ void P_ArchiveWorld (void)
     }
 	
     save_p = (byte *)put;
+
+    if (savegameversion < 2)
+	return;
+
+    // Boom's: the sectors' texture offsets, which its scrollers move
+    PADSAVEP();
+    for (i=0, sec = sectors ; i<numsectors ; i++,sec++)
+    {
+	memcpy (save_p, &sec->floor_xoffs, sizeof(fixed_t));
+	memcpy (save_p + 4, &sec->floor_yoffs, sizeof(fixed_t));
+	memcpy (save_p + 8, &sec->ceiling_xoffs, sizeof(fixed_t));
+	memcpy (save_p + 12, &sec->ceiling_yoffs, sizeof(fixed_t));
+	save_p += 16;
+    }
 }
 
 
@@ -229,7 +249,7 @@ void P_UnArchiveWorld (void)
 	sec->lightlevel = *get++;
 	sec->special = *get++;		// needed?
 	sec->tag = *get++;		// needed?
-	sec->specialdata = 0;
+	sec->floordata = sec->ceilingdata = sec->lightingdata = NULL;
 	sec->soundtarget = 0;
     }
     
@@ -252,6 +272,19 @@ void P_UnArchiveWorld (void)
 	}
     }
     save_p = (byte *)get;	
+
+    if (savegameversion >= 2)
+    {
+	PADSAVEP();
+	for (i=0, sec = sectors ; i<numsectors ; i++,sec++)
+	{
+	    memcpy (&sec->floor_xoffs, save_p, sizeof(fixed_t));
+	    memcpy (&sec->floor_yoffs, save_p + 4, sizeof(fixed_t));
+	    memcpy (&sec->ceiling_xoffs, save_p + 8, sizeof(fixed_t));
+	    memcpy (&sec->ceiling_yoffs, save_p + 12, sizeof(fixed_t));
+	    save_p += 16;
+	}
+    }
 }
 
 
@@ -290,6 +323,7 @@ typedef enum
 // save it has (savegamerefs). id's engine clears target whichever it is.
 //
 boolean			savegamerefs;
+int			savegameversion;
 static mobj_t**		savemobjs;
 static int		numsavemobjs, maxsavemobjs;
 
@@ -458,139 +492,228 @@ enum
     tc_flash,
     tc_strobe,
     tc_glow,
-    tc_endspecials
+    tc_endspecials,
+    // Boom's, after id's end marker so that its number stays put
+    tc_elevator,
+    tc_scroll,
+    tc_pusher,
+    tc_flicker
 
 } specials_e;	
 
 
 
 //
+// The specials: each thinker that moves a floor, ceiling or light, or
+// scrolls or pushes (Boom's), as its class and then the structure as it is
+// in memory, with its sector (and any other pointer) as a number.
+//
+// A save before Boom's (savegameversion under 2) has id's classes only,
+// and its ceilings, doors and floors are as long as id made them
+// (CEILING_SAVESIZE and the rest, p_spec.h); Boom's fields after those
+// stay 0.
+//
 // Things to handle:
 //
 // T_MoveCeiling, (ceiling_t: sector_t * swizzle), - active list
-// T_VerticalDoor, (vldoor_t: sector_t * swizzle),
+// T_VerticalDoor, (vldoor_t: sector_t * swizzle, line_t * swizzle),
 // T_MoveFloor, (floormove_t: sector_t * swizzle),
 // T_LightFlash, (lightflash_t: sector_t * swizzle),
 // T_StrobeFlash, (strobe_t: sector_t *),
 // T_Glow, (glow_t: sector_t *),
 // T_PlatRaise, (plat_t: sector_t *), - active list
+// T_FireFlicker, T_MoveElevator (sector_t *), T_Scroll,
+// T_Pusher (mobj_t * source, as P_SaveRef numbers it)
 //
+
+// Write a thinker of a class, size bytes of it; in a save before Boom's,
+// olddata bytes and the padding after them (OLD_SAVESIZE). Where it went.
+static byte* P_ArchiveOne (int tclass, thinker_t* th, size_t size,
+			   size_t olddata)
+{
+    byte*	p;
+
+    *save_p++ = tclass;
+    PADSAVEP();
+    p = save_p;
+    if (savegameversion >= 2)
+    {
+	memcpy (p, th, size);
+	save_p += size;
+    }
+    else
+    {
+	memset (p, 0, OLD_SAVESIZE(olddata));
+	memcpy (p, th, olddata);
+	save_p += OLD_SAVESIZE(olddata);
+    }
+    return p;
+}
+
+//
+// P_SaveVersion
+// The save format a level needs: id's (1, with the WADs listed) when it
+// has nothing id's format cannot hold, so the save still loads on an engine
+// from before Boom's; Boom's (2) for a Boom map, or for a fire flicker (a
+// sector of type 17 in any map), which id's format leaves out.
+//
+int P_SaveVersion (void)
+{
+    thinker_t*	th;
+
+    if (!demo_compatibility)
+	return 2;
+    for (th = thinkercap.next ; th != &thinkercap ; th=th->next)
+	if (th->function.acp1 == (actionf_p1)T_FireFlicker
+	    || th->function.acp1 == (actionf_p1)T_MoveElevator
+	    || th->function.acp1 == (actionf_p1)T_Scroll
+	    || th->function.acp1 == (actionf_p1)T_Pusher)
+	    return 2;
+    return 1;
+}
+
+#define SECTORNUM(T, p) \
+    (((T*)(p))->sector = (sector_t *)(((T*)(p))->sector - sectors))
+
+// A thinker in stasis (a stopped crusher or plat) has no function; the
+// active lists say which it is.
+static int P_StasisClass (thinker_t* th)
+{
+    int		i;
+
+    for (i = 0; i < maxceilings; i++)
+	if (activeceilings[i] == (ceiling_t *)th)
+	    return tc_ceiling;
+    for (i = 0; i < maxplats; i++)
+	if (activeplats[i] == (plat_t *)th)
+	    return tc_plat;
+    return -1;
+}
+
 void P_ArchiveSpecials (void)
 {
     thinker_t*		th;
-    ceiling_t*		ceiling;
-    vldoor_t*		door;
-    floormove_t*	floor;
-    plat_t*		plat;
-    lightflash_t*	flash;
-    strobe_t*		strobe;
-    glow_t*		glow;
-    int			i;
+    byte*		p;
+    actionf_p1		fn;
 	
-    // save off the current thinkers
     for (th = thinkercap.next ; th != &thinkercap ; th=th->next)
     {
+	fn = th->function.acp1;
+
 	if (th->function.acv == (actionf_v)NULL)
 	{
-	    for (i = 0; i < maxceilings;i++)
-		if (activeceilings[i] == (ceiling_t *)th)
-		    break;
-	    
-	    if (i<maxceilings)
+	    switch (P_StasisClass (th))
 	    {
-		*save_p++ = tc_ceiling;
-		PADSAVEP();
-		ceiling = (ceiling_t *)save_p;
-		memcpy (ceiling, th, sizeof(*ceiling));
-		save_p += sizeof(*ceiling);
-		ceiling->sector = (sector_t *)(ceiling->sector - sectors);
+	      case tc_ceiling:
+		p = P_ArchiveOne (tc_ceiling, th, sizeof(ceiling_t),
+				  offsetof(ceiling_t, newspecial));
+		SECTORNUM(ceiling_t, p);
+		break;
+	      case tc_plat:
+		p = P_ArchiveOne (tc_plat, th, sizeof(plat_t),
+			      sizeof(plat_t));
+		SECTORNUM(plat_t, p);
+		break;
 	    }
 	    continue;
 	}
-			
-	if (th->function.acp1 == (actionf_p1)T_MoveCeiling)
+
+	if (fn == (actionf_p1)T_MoveCeiling)
 	{
-	    *save_p++ = tc_ceiling;
-	    PADSAVEP();
-	    ceiling = (ceiling_t *)save_p;
-	    memcpy (ceiling, th, sizeof(*ceiling));
-	    save_p += sizeof(*ceiling);
-	    ceiling->sector = (sector_t *)(ceiling->sector - sectors);
-	    continue;
+	    p = P_ArchiveOne (tc_ceiling, th, sizeof(ceiling_t),
+				  offsetof(ceiling_t, newspecial));
+	    SECTORNUM(ceiling_t, p);
 	}
-			
-	if (th->function.acp1 == (actionf_p1)T_VerticalDoor)
+	else if (fn == (actionf_p1)T_VerticalDoor)
 	{
-	    *save_p++ = tc_door;
-	    PADSAVEP();
-	    door = (vldoor_t *)save_p;
-	    memcpy (door, th, sizeof(*door));
-	    save_p += sizeof(*door);
-	    door->sector = (sector_t *)(door->sector - sectors);
-	    continue;
+	    vldoor_t*	door;
+
+	    p = P_ArchiveOne (tc_door, th, sizeof(vldoor_t),
+			      offsetof(vldoor_t, line));
+	    SECTORNUM(vldoor_t, p);
+	    door = (vldoor_t *)p;
+	    if (savegameversion >= 2)
+		door->line = (line_t *)(door->line ? door->line - lines + 1 : 0);
 	}
-			
-	if (th->function.acp1 == (actionf_p1)T_MoveFloor)
+	else if (fn == (actionf_p1)T_MoveFloor)
 	{
-	    *save_p++ = tc_floor;
-	    PADSAVEP();
-	    floor = (floormove_t *)save_p;
-	    memcpy (floor, th, sizeof(*floor));
-	    save_p += sizeof(*floor);
-	    floor->sector = (sector_t *)(floor->sector - sectors);
-	    continue;
+	    p = P_ArchiveOne (tc_floor, th, sizeof(floormove_t),
+			      offsetof(floormove_t, oldspecial));
+	    SECTORNUM(floormove_t, p);
 	}
-			
-	if (th->function.acp1 == (actionf_p1)T_PlatRaise)
+	else if (fn == (actionf_p1)T_PlatRaise)
 	{
-	    *save_p++ = tc_plat;
-	    PADSAVEP();
-	    plat = (plat_t *)save_p;
-	    memcpy (plat, th, sizeof(*plat));
-	    save_p += sizeof(*plat);
-	    plat->sector = (sector_t *)(plat->sector - sectors);
-	    continue;
+	    p = P_ArchiveOne (tc_plat, th, sizeof(plat_t),
+			      sizeof(plat_t));
+	    SECTORNUM(plat_t, p);
 	}
-			
-	if (th->function.acp1 == (actionf_p1)T_LightFlash)
+	else if (fn == (actionf_p1)T_LightFlash)
 	{
-	    *save_p++ = tc_flash;
-	    PADSAVEP();
-	    flash = (lightflash_t *)save_p;
-	    memcpy (flash, th, sizeof(*flash));
-	    save_p += sizeof(*flash);
-	    flash->sector = (sector_t *)(flash->sector - sectors);
-	    continue;
+	    p = P_ArchiveOne (tc_flash, th, sizeof(lightflash_t),
+			      sizeof(lightflash_t));
+	    SECTORNUM(lightflash_t, p);
 	}
-			
-	if (th->function.acp1 == (actionf_p1)T_StrobeFlash)
+	else if (fn == (actionf_p1)T_StrobeFlash)
 	{
-	    *save_p++ = tc_strobe;
-	    PADSAVEP();
-	    strobe = (strobe_t *)save_p;
-	    memcpy (strobe, th, sizeof(*strobe));
-	    save_p += sizeof(*strobe);
-	    strobe->sector = (sector_t *)(strobe->sector - sectors);
-	    continue;
+	    p = P_ArchiveOne (tc_strobe, th, sizeof(strobe_t),
+			      sizeof(strobe_t));
+	    SECTORNUM(strobe_t, p);
 	}
-			
-	if (th->function.acp1 == (actionf_p1)T_Glow)
+	else if (fn == (actionf_p1)T_Glow)
 	{
-	    *save_p++ = tc_glow;
-	    PADSAVEP();
-	    glow = (glow_t *)save_p;
-	    memcpy (glow, th, sizeof(*glow));
-	    save_p += sizeof(*glow);
-	    glow->sector = (sector_t *)(glow->sector - sectors);
-	    continue;
+	    p = P_ArchiveOne (tc_glow, th, sizeof(glow_t),
+			      sizeof(glow_t));
+	    SECTORNUM(glow_t, p);
+	}
+	else if (fn == (actionf_p1)T_FireFlicker)
+	{
+	    p = P_ArchiveOne (tc_flicker, th, sizeof(fireflicker_t),
+			      sizeof(fireflicker_t));
+	    SECTORNUM(fireflicker_t, p);
+	}
+	else if (fn == (actionf_p1)T_MoveElevator)
+	{
+	    p = P_ArchiveOne (tc_elevator, th, sizeof(elevator_t),
+			      sizeof(elevator_t));
+	    SECTORNUM(elevator_t, p);
+	}
+	else if (fn == (actionf_p1)T_Scroll)
+	    P_ArchiveOne (tc_scroll, th, sizeof(scroll_t),
+			      sizeof(scroll_t));
+	else if (fn == (actionf_p1)T_Pusher)
+	{
+	    pusher_t*	pusher;
+
+	    p = P_ArchiveOne (tc_pusher, th, sizeof(pusher_t),
+			      sizeof(pusher_t));
+	    pusher = (pusher_t *)p;
+	    pusher->source = (mobj_t *) P_SaveRef (((pusher_t *)th)->source);
 	}
     }
 	
     // add a terminating marker
     *save_p++ = tc_endspecials;	
-
 }
 
+
+// Read a thinker of size bytes; in a save from before Boom's, olddata
+// bytes of it, and the padding after them (OLD_SAVESIZE), with Boom's
+// fields left 0.
+static void* P_UnArchiveOne (size_t size, size_t olddata)
+{
+    void*	th;
+    boolean	boom = savegameversion >= 2;
+
+    PADSAVEP();
+    th = Z_Malloc (size, PU_LEVSPEC, NULL);
+    memset (th, 0, size);
+    memcpy (th, save_p, boom ? size : olddata);
+    save_p += boom ? size : OLD_SAVESIZE(olddata);
+    return th;
+}
+
+#define SECTORPTR(T, p) \
+    (((T*)(p))->sector = &sectors[(intptr_t)((T*)(p))->sector])
 
 //
 // P_UnArchiveSpecials
@@ -605,7 +728,10 @@ void P_UnArchiveSpecials (void)
     lightflash_t*	flash;
     strobe_t*		strobe;
     glow_t*		glow;
-	
+    fireflicker_t*	flick;
+    elevator_t*		elevator;
+    scroll_t*		scroll;
+    pusher_t*		pusher;
 	
     // read in saved thinkers
     while (1)
@@ -617,85 +743,94 @@ void P_UnArchiveSpecials (void)
 	    return;	// end of list
 			
 	  case tc_ceiling:
-	    PADSAVEP();
-	    ceiling = Z_Malloc (sizeof(*ceiling), PU_LEVEL, NULL);
-	    memcpy (ceiling, save_p, sizeof(*ceiling));
-	    save_p += sizeof(*ceiling);
-	    ceiling->sector = &sectors[(intptr_t)ceiling->sector];
-	    ceiling->sector->specialdata = ceiling;
-
+	    ceiling = P_UnArchiveOne (sizeof(*ceiling),
+				      offsetof(ceiling_t, newspecial));
+	    SECTORPTR(ceiling_t, ceiling);
+	    ceiling->sector->ceilingdata = ceiling;
 	    if (ceiling->thinker.function.acp1)
 		ceiling->thinker.function.acp1 = (actionf_p1)T_MoveCeiling;
-
 	    P_AddThinker (&ceiling->thinker);
 	    P_AddActiveCeiling(ceiling);
 	    break;
 				
 	  case tc_door:
-	    PADSAVEP();
-	    door = Z_Malloc (sizeof(*door), PU_LEVEL, NULL);
-	    memcpy (door, save_p, sizeof(*door));
-	    save_p += sizeof(*door);
-	    door->sector = &sectors[(intptr_t)door->sector];
-	    door->sector->specialdata = door;
+	    door = P_UnArchiveOne (sizeof(*door), offsetof(vldoor_t, line));
+	    SECTORPTR(vldoor_t, door);
+	    door->sector->ceilingdata = door;
+	    door->line = (intptr_t)door->line > 0
+		&& (intptr_t)door->line <= numlines
+		? &lines[(intptr_t)door->line - 1] : NULL;
 	    door->thinker.function.acp1 = (actionf_p1)T_VerticalDoor;
 	    P_AddThinker (&door->thinker);
 	    break;
 				
 	  case tc_floor:
-	    PADSAVEP();
-	    floor = Z_Malloc (sizeof(*floor), PU_LEVEL, NULL);
-	    memcpy (floor, save_p, sizeof(*floor));
-	    save_p += sizeof(*floor);
-	    floor->sector = &sectors[(intptr_t)floor->sector];
-	    floor->sector->specialdata = floor;
+	    floor = P_UnArchiveOne (sizeof(*floor),
+				    offsetof(floormove_t, oldspecial));
+	    SECTORPTR(floormove_t, floor);
+	    floor->sector->floordata = floor;
 	    floor->thinker.function.acp1 = (actionf_p1)T_MoveFloor;
 	    P_AddThinker (&floor->thinker);
 	    break;
 				
 	  case tc_plat:
-	    PADSAVEP();
-	    plat = Z_Malloc (sizeof(*plat), PU_LEVEL, NULL);
-	    memcpy (plat, save_p, sizeof(*plat));
-	    save_p += sizeof(*plat);
-	    plat->sector = &sectors[(intptr_t)plat->sector];
-	    plat->sector->specialdata = plat;
-
+	    plat = P_UnArchiveOne (sizeof(*plat), sizeof(*plat));
+	    SECTORPTR(plat_t, plat);
+	    plat->sector->floordata = plat;
 	    if (plat->thinker.function.acp1)
 		plat->thinker.function.acp1 = (actionf_p1)T_PlatRaise;
-
 	    P_AddThinker (&plat->thinker);
 	    P_AddActivePlat(plat);
 	    break;
 				
 	  case tc_flash:
-	    PADSAVEP();
-	    flash = Z_Malloc (sizeof(*flash), PU_LEVEL, NULL);
-	    memcpy (flash, save_p, sizeof(*flash));
-	    save_p += sizeof(*flash);
-	    flash->sector = &sectors[(intptr_t)flash->sector];
+	    flash = P_UnArchiveOne (sizeof(*flash), sizeof(*flash));
+	    SECTORPTR(lightflash_t, flash);
 	    flash->thinker.function.acp1 = (actionf_p1)T_LightFlash;
 	    P_AddThinker (&flash->thinker);
 	    break;
 				
 	  case tc_strobe:
-	    PADSAVEP();
-	    strobe = Z_Malloc (sizeof(*strobe), PU_LEVEL, NULL);
-	    memcpy (strobe, save_p, sizeof(*strobe));
-	    save_p += sizeof(*strobe);
-	    strobe->sector = &sectors[(intptr_t)strobe->sector];
+	    strobe = P_UnArchiveOne (sizeof(*strobe), sizeof(*strobe));
+	    SECTORPTR(strobe_t, strobe);
 	    strobe->thinker.function.acp1 = (actionf_p1)T_StrobeFlash;
 	    P_AddThinker (&strobe->thinker);
 	    break;
 				
 	  case tc_glow:
-	    PADSAVEP();
-	    glow = Z_Malloc (sizeof(*glow), PU_LEVEL, NULL);
-	    memcpy (glow, save_p, sizeof(*glow));
-	    save_p += sizeof(*glow);
-	    glow->sector = &sectors[(intptr_t)glow->sector];
+	    glow = P_UnArchiveOne (sizeof(*glow), sizeof(*glow));
+	    SECTORPTR(glow_t, glow);
 	    glow->thinker.function.acp1 = (actionf_p1)T_Glow;
 	    P_AddThinker (&glow->thinker);
+	    break;
+
+	  case tc_flicker:
+	    flick = P_UnArchiveOne (sizeof(*flick), sizeof(*flick));
+	    SECTORPTR(fireflicker_t, flick);
+	    flick->thinker.function.acp1 = (actionf_p1)T_FireFlicker;
+	    P_AddThinker (&flick->thinker);
+	    break;
+
+	  case tc_elevator:
+	    elevator = P_UnArchiveOne (sizeof(*elevator), sizeof(*elevator));
+	    SECTORPTR(elevator_t, elevator);
+	    elevator->sector->floordata = elevator;
+	    elevator->sector->ceilingdata = elevator;
+	    elevator->thinker.function.acp1 = (actionf_p1)T_MoveElevator;
+	    P_AddThinker (&elevator->thinker);
+	    break;
+
+	  case tc_scroll:
+	    scroll = P_UnArchiveOne (sizeof(*scroll), sizeof(*scroll));
+	    scroll->thinker.function.acp1 = (actionf_p1)T_Scroll;
+	    P_AddThinker (&scroll->thinker);
+	    break;
+
+	  case tc_pusher:
+	    pusher = P_UnArchiveOne (sizeof(*pusher), sizeof(*pusher));
+	    pusher->source = P_LoadRef ((intptr_t) pusher->source);
+	    pusher->thinker.function.acp1 = (actionf_p1)T_Pusher;
+	    P_AddThinker (&pusher->thinker);
 	    break;
 				
 	  default:
@@ -733,6 +868,7 @@ P_SaveFitsMap
   byte*		end,
   int		nsectors,
   int		nlines,
+  int		nsides,
   maplinedef_t*	ml,
   boolean	graphics,
   boolean*	ingame )
@@ -790,6 +926,12 @@ P_SaveFitsMap
 		return false;
 	}
     }
+    if (savegameversion >= 2)	// Boom's sector offsets
+    {
+	PAD();
+	NEED(16 * nsectors);
+	p += 16 * nsectors;
+    }
 
     // things
     while (1)
@@ -823,11 +965,13 @@ P_SaveFitsMap
     if (maxref > (uintptr_t) nmobjs)
 	return false;
 
-    // specials: each has its sector's number where the sector was
+    // specials: each has its sector's number where the sector was, and
+    // Boom's their lines, sides and things
     while (1)
     {
-	int		size, at;
+	int		size, at = -1;
 	sector_t*	sector;
+	boolean		boom = savegameversion >= 2;
 
 	NEED(1);
 	tclass = *p++;
@@ -837,15 +981,15 @@ P_SaveFitsMap
 	    NEED(1);
 	    return *p == 0x1d;		// what G_DoLoadGame checks after
 	  case tc_ceiling:
-	    size = sizeof(ceiling_t);
+	    size = boom ? sizeof(ceiling_t) : CEILING_SAVESIZE;
 	    at = offsetof(ceiling_t, sector);
 	    break;
 	  case tc_door:
-	    size = sizeof(vldoor_t);
+	    size = boom ? sizeof(vldoor_t) : VLDOOR_SAVESIZE;
 	    at = offsetof(vldoor_t, sector);
 	    break;
 	  case tc_floor:
-	    size = sizeof(floormove_t);
+	    size = boom ? sizeof(floormove_t) : FLOOR_SAVESIZE;
 	    at = offsetof(floormove_t, sector);
 	    break;
 	  case tc_plat:
@@ -864,15 +1008,62 @@ P_SaveFitsMap
 	    size = sizeof(glow_t);
 	    at = offsetof(glow_t, sector);
 	    break;
+	  case tc_flicker:
+	    size = sizeof(fireflicker_t);
+	    at = offsetof(fireflicker_t, sector);
+	    break;
+	  case tc_elevator:
+	    size = sizeof(elevator_t);
+	    at = offsetof(elevator_t, sector);
+	    break;
+	  case tc_scroll:
+	    size = sizeof(scroll_t);
+	    break;
+	  case tc_pusher:
+	    size = sizeof(pusher_t);
+	    break;
 	  default:
 	    return false;
 	}
+	if (!boom && tclass > tc_endspecials)
+	    return false;
 	PAD();
 	NEED(size);
-	memcpy (&sector, p + at, sizeof(sector));
+	if (at >= 0)
+	{
+	    memcpy (&sector, p + at, sizeof(sector));
+	    if ((uintptr_t) sector >= (uintptr_t) nsectors)
+		return false;
+	}
+	if (tclass == tc_door && boom)
+	{
+	    vldoor_t	d;
+
+	    memcpy (&d, p, sizeof(d));
+	    if ((uintptr_t) d.line > (uintptr_t) nlines)
+		return false;
+	}
+	if (tclass == tc_scroll)
+	{
+	    scroll_t	sc;
+
+	    memcpy (&sc, p, sizeof(sc));
+	    if ((unsigned) sc.affectee >= (unsigned)
+		(sc.type == sc_side ? nsides : nsectors)
+		|| (unsigned) sc.type > sc_carry
+		|| (sc.control != -1 && (unsigned) sc.control >= (unsigned) nsectors))
+		return false;
+	}
+	if (tclass == tc_pusher)
+	{
+	    pusher_t	pu;
+
+	    memcpy (&pu, p, sizeof(pu));
+	    if ((unsigned) pu.affectee >= (unsigned) nsectors
+		|| (uintptr_t) pu.source > (uintptr_t) nmobjs)
+		return false;
+	}
 	p += size;
-	if ((uintptr_t) sector >= (uintptr_t) nsectors)
-	    return false;
     }
 #undef PAD
 #undef NEED
@@ -888,6 +1079,8 @@ boolean P_SaveGameFits (byte* p, byte* end, int maplump, boolean* ingame)
 			  / sizeof(mapsector_t),
 			  W_LumpLength (maplump + ML_LINEDEFS)
 			  / sizeof(maplinedef_t),
+			  W_LumpLength (maplump + ML_SIDEDEFS)
+			  / sizeof(mapsidedef_t),
 			  W_CacheLumpNum (maplump + ML_LINEDEFS, PU_CACHE),
 			  true, ingame);
 }
@@ -960,8 +1153,10 @@ P_SaveFitsFile
 		|| (int) fread (ml, 1, size, f) != size)
 		break;
 	    fits = P_SaveFitsMap (p, end, LE32(sd + 4) / sizeof(mapsector_t),
-				  size / sizeof(maplinedef_t), ml, false,
-				  ingame);
+				  size / sizeof(maplinedef_t),
+				  LE32(dir + (found + ML_SIDEDEFS)*16 + 4)
+				  / sizeof(mapsidedef_t),
+				  ml, false, ingame);
 	}
     }
 #undef LE32
@@ -972,3 +1167,4 @@ P_SaveFitsFile
     fclose (f);
     return fits;
 }
+

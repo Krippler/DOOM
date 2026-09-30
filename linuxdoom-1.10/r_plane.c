@@ -80,7 +80,13 @@ static unsigned R_VisplaneHash (fixed_t height, int picnum, int lightlevel)
 	    + (unsigned) lightlevel) % VISPLANEHASH;
 }
 
-static visplane_t* R_NewVisplane (fixed_t height, int picnum, int lightlevel)
+static visplane_t*
+R_NewVisplane
+( fixed_t	height,
+  int		picnum,
+  int		lightlevel,
+  fixed_t	xoffs,
+  fixed_t	yoffs )
 {
     visplane_t*		pl;
     visplane_t**	link;
@@ -105,6 +111,8 @@ static visplane_t* R_NewVisplane (fixed_t height, int picnum, int lightlevel)
     pl->height = height;
     pl->picnum = picnum;
     pl->lightlevel = lightlevel;
+    pl->xoffs = xoffs;
+    pl->yoffs = yoffs;
     pl->next = NULL;
 
     link = &visplanehash[R_VisplaneHash (height, picnum, lightlevel)];
@@ -149,6 +157,8 @@ int			spanstop[SCREENHEIGHT];
 //
 lighttable_t**		planezlight;
 fixed_t			planeheight;
+static fixed_t		planexoffs;	// the plane being drawn's (Boom's)
+static fixed_t		planeyoffs;
 
 fixed_t			yslope[SCREENHEIGHT];
 fixed_t			distscale[SCREENWIDTH];
@@ -225,8 +235,8 @@ R_MapPlane
 	
     length = FixedMul (distance,distscale[x1]);
     angle = (viewangle + xtoviewangle[x1])>>ANGLETOFINESHIFT;
-    ds_xfrac = viewx + FixedMul(finecosine[angle], length);
-    ds_yfrac = -viewy - FixedMul(finesine[angle], length);
+    ds_xfrac = viewx + FixedMul(finecosine[angle], length) + planexoffs;
+    ds_yfrac = -viewy - FixedMul(finesine[angle], length) + planeyoffs;
 
     if (fixedcolormap)
 	ds_colormap = fixedcolormap;
@@ -335,7 +345,9 @@ visplane_t*
 R_FindPlane
 ( fixed_t	height,
   int		picnum,
-  int		lightlevel )
+  int		lightlevel,
+  fixed_t	xoffs,
+  fixed_t	yoffs )
 {
     visplane_t*	check;
 	
@@ -343,6 +355,7 @@ R_FindPlane
     {
 	height = 0;			// all skys map together
 	lightlevel = 0;
+	xoffs = yoffs = 0;
     }
 	
     for (check = visplanehash[R_VisplaneHash (height, picnum, lightlevel)];
@@ -350,11 +363,13 @@ R_FindPlane
     {
 	if (height == check->height
 	    && picnum == check->picnum
-	    && lightlevel == check->lightlevel)
+	    && lightlevel == check->lightlevel
+	    && xoffs == check->xoffs
+	    && yoffs == check->yoffs)
 	    return check;
     }
 
-    check = R_NewVisplane (height, picnum, lightlevel);
+    check = R_NewVisplane (height, picnum, lightlevel, xoffs, yoffs);
     check->minx = SCREENWIDTH;
     check->maxx = -1;
     
@@ -415,7 +430,8 @@ R_CheckPlane
     }
 	
     // make a new visplane
-    pl = R_NewVisplane (pl->height, pl->picnum, pl->lightlevel);
+    pl = R_NewVisplane (pl->height, pl->picnum, pl->lightlevel,
+			pl->xoffs, pl->yoffs);
     pl->minx = start;
     pl->maxx = stop;
 
@@ -482,6 +498,36 @@ void R_DrawPlanes (void)
 	    continue;
 
 	
+	// MBF's sky from a line's side (271, 272): its upper texture, its
+	// offsets moving it round and up, and 272 flipped from 271
+	if (pl->picnum & PL_SKYFLAT)
+	{
+	    line_t*	l = &lines[pl->picnum & ~PL_SKYFLAT];
+	    side_t*	s = &sides[l->sidenum[0]];
+	    int		texture = texturetranslation[s->toptexture];
+	    unsigned	flip = l->special == 272 ? 0u : ~0u;
+
+	    dc_iscale = pspriteiscale>>detailshift;
+	    dc_colormap = fullcolormap;
+	    dc_texturemid = s->rowoffset - 28*FRACUNIT;
+	    dc_texheight = textureheight[texture]>>FRACBITS;
+	    for (x=pl->minx ; x <= pl->maxx ; x++)
+	    {
+		dc_yl = pl->top[x];
+		dc_yh = pl->bottom[x];
+
+		if (dc_yl <= dc_yh)
+		{
+		    angle = ((viewangle + s->textureoffset + xtoviewangle[x])
+			     ^ flip) >> ANGLETOSKYSHIFT;
+		    dc_x = x;
+		    dc_source = R_GetColumn (texture, angle);
+		    colfunc ();
+		}
+	    }
+	    continue;
+	}
+
 	// sky flat
 	if (R_IsSkyFlat (pl->picnum))
 	{
@@ -491,7 +537,7 @@ void R_DrawPlanes (void)
 	    //  i.e. colormaps[0] is used.
 	    // Because of this hack, sky is not affected
 	    //  by INVUL inverse mapping.
-	    dc_colormap = colormaps;
+	    dc_colormap = fullcolormap;
 	    dc_texturemid = skytexturemid;
 	    for (x=pl->minx ; x <= pl->maxx ; x++)
 	    {
@@ -516,6 +562,8 @@ void R_DrawPlanes (void)
 				   PU_STATIC);
 	
 	planeheight = abs(pl->height-viewz);
+	planexoffs = pl->xoffs;
+	planeyoffs = pl->yoffs;
 	light = (pl->lightlevel >> LIGHTSEGSHIFT)+extralight;
 
 	if (light >= LIGHTLEVELS)

@@ -527,6 +527,11 @@ void R_ProjectSprite (mobj_t* thing)
     // too far off the side?
     if (abs(tx)>(tz<<2))
 	return;
+
+    // Boom's invisible things (MT_PUSH, MT_PULL): nothing to draw, and no
+    // TNT1 lumps in DOOM's WADs to draw it with
+    if (thing->sprite == SPR_TNT1)
+	return;
     
     // decide which patch to use for sprite relative to player
 #ifdef RANGECHECK
@@ -575,6 +580,7 @@ void R_ProjectSprite (mobj_t* thing)
     // store information in a vissprite
     vis = R_NewVisSprite ();
     vis->mobjflags = thing->flags;
+    vis->heightsec = thing->subsector->sector->heightsec;
     vis->scale = xscale<<detailshift;
     vis->gx = thingx;
     vis->gy = thingy;
@@ -614,7 +620,7 @@ void R_ProjectSprite (mobj_t* thing)
     else if (thing->frame & FF_FULLBRIGHT)
     {
 	// full bright
-	vis->colormap = colormaps;
+	vis->colormap = fullcolormap;
     }
     
     else
@@ -636,7 +642,7 @@ void R_ProjectSprite (mobj_t* thing)
 // R_AddSprites
 // During BSP traversal, this adds sprites by sector.
 //
-void R_AddSprites (sector_t* sec)
+void R_AddSprites (sector_t* sec, int lightlevel)
 {
     mobj_t*		thing;
     int			lightnum;
@@ -651,7 +657,9 @@ void R_AddSprites (sector_t* sec)
     // Well, now it will be done.
     sec->validcount = validcount;
 	
-    lightnum = (sec->lightlevel >> LIGHTSEGSHIFT)+extralight;
+    // lit as the floor and ceiling around them are (R_Subsector): the
+    // sector's light, but for Boom's light transfers and water
+    lightnum = (lightlevel >> LIGHTSEGSHIFT)+extralight;
 
     if (lightnum < 0)		
 	spritelights = scalelight[0];
@@ -720,6 +728,7 @@ void R_DrawPSprite (pspdef_t* psp)
     // store information in a vissprite
     vis = &avis;
     vis->mobjflags = 0;
+    vis->heightsec = -1;
     vis->texturemid = (BASEYCENTER<<FRACBITS)+FRACUNIT/2-(sy-spritetopoffset[lump]);
     vis->x1 = x1 < 0 ? 0 : x1;
     vis->x2 = x2 >= viewwidth ? viewwidth-1 : x2;	
@@ -755,7 +764,7 @@ void R_DrawPSprite (pspdef_t* psp)
     else if (psp->state->frame & FF_FULLBRIGHT)
     {
 	// full bright
-	vis->colormap = colormaps;
+	vis->colormap = fullcolormap;
     }
     else
     {
@@ -960,6 +969,55 @@ void R_DrawSprite (vissprite_t* spr)
 		
     }
     
+    // Boom (killough 3/27/98, 11/98): clip the thing at the surface of
+    // its sector's water and false ceiling (242), from the side of it the
+    // view is on
+    if (spr->heightsec != -1)
+    {
+	fixed_t	h, mh;
+	int	phs = viewplayer->mo->subsector->sector->heightsec;
+
+	if ((mh = sectors[spr->heightsec].floorheight) > spr->gz
+	    && (h = centeryfrac - FixedMul (mh -= viewz, spr->scale)) >= 0
+	    && (h >>= FRACBITS) < viewheight)
+	{
+	    if (mh <= 0 || (phs != -1 && viewz > sectors[phs].floorheight))
+	    {
+		// clip bottom
+		for (x = spr->x1 ; x <= spr->x2 ; x++)
+		    if (clipbot[x] == -2 || h < clipbot[x])
+			clipbot[x] = h;
+	    }
+	    else if (phs != -1 && viewz <= sectors[phs].floorheight)
+	    {
+		// clip top
+		for (x = spr->x1 ; x <= spr->x2 ; x++)
+		    if (cliptop[x] == -2 || h > cliptop[x])
+			cliptop[x] = h;
+	    }
+	}
+
+	if ((mh = sectors[spr->heightsec].ceilingheight) < spr->gzt
+	    && (h = centeryfrac - FixedMul (mh - viewz, spr->scale)) >= 0
+	    && (h >>= FRACBITS) < viewheight)
+	{
+	    if (phs != -1 && viewz >= sectors[phs].ceilingheight)
+	    {
+		// clip bottom
+		for (x = spr->x1 ; x <= spr->x2 ; x++)
+		    if (clipbot[x] == -2 || h < clipbot[x])
+			clipbot[x] = h;
+	    }
+	    else
+	    {
+		// clip top
+		for (x = spr->x1 ; x <= spr->x2 ; x++)
+		    if (cliptop[x] == -2 || h > cliptop[x])
+			cliptop[x] = h;
+	    }
+	}
+    }
+
     // all clipping has been performed, so draw the sprite
 
     // check for unclipped columns

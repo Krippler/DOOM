@@ -87,7 +87,9 @@ static const char* const thingnames[] =
     "Gibs", "HeadOnAStick", "HeadCandles", "DeadStick", "LiveStick",
     "BigTree", "BurningBarrel", "HangNoGuts", "HangBNoBrain",
     "HangTLookingDown", "HangTSkull", "HangTLookingUp", "HangTNoBrain",
-    "ColonGibs", "SmallBloodPool", "BrainStem"
+    "ColonGibs", "SmallBloodPool", "BrainStem",
+    // Boom's
+    "PointPusher", "PointPuller"
 };
 
 // One name for every type there is, or the build stops here.

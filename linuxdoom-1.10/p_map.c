@@ -27,6 +27,7 @@ rcsid[] = "$Id: p_map.c,v 1.5 1997/02/03 22:45:11 b1 Exp $";
 
 #include <stdlib.h>
 
+#include "z_zone.h"
 #include "m_bbox.h"
 #include "m_random.h"
 #include "i_system.h"
@@ -1349,3 +1350,250 @@ P_ChangeSector
     return nofit;
 }
 
+
+
+//
+// Boom's sector node lists (phares 3/14/98), by way of Woof: which sectors
+// each thing touches, and which things each sector, for the effects that
+// act on everything in a sector -- carrying floors, wind and current,
+// friction -- whether or not its centre is there. Kept on Boom's maps only
+// (P_SetThingPosition).
+//
+
+msecnode_t*	sector_list = NULL;	// the one being built
+
+// freed nodes, to use again; zone memory for the level
+static msecnode_t*	headsecnode = NULL;
+
+void P_ClearSecnodes (void)
+{
+    headsecnode = NULL;
+    sector_list = NULL;
+}
+
+static msecnode_t* P_GetSecnode (void)
+{
+    msecnode_t*	node;
+
+    if (headsecnode)
+    {
+	node = headsecnode;
+	headsecnode = node->m_snext;
+	return node;
+    }
+    return Z_Malloc (sizeof(*node), PU_LEVEL, NULL);
+}
+
+static void P_PutSecnode (msecnode_t* node)
+{
+    node->m_snext = headsecnode;
+    headsecnode = node;
+}
+
+// Keep the node for sector s if the list has one, else add one at its
+// head; returns the list's head.
+static msecnode_t*
+P_AddSecnode
+( sector_t*	s,
+  mobj_t*	thing,
+  msecnode_t*	nextnode )
+{
+    msecnode_t*	node;
+
+    for (node = nextnode; node; node = node->m_tnext)
+	if (node->m_sector == s)
+	{
+	    node->m_thing = thing;	// setting m_thing says 'keep it'
+	    return nextnode;
+	}
+
+    node = P_GetSecnode ();
+    node->visited = 0;
+    node->m_sector = s;
+    node->m_thing  = thing;
+    node->m_tprev  = NULL;
+    node->m_tnext  = nextnode;
+    if (nextnode)
+	nextnode->m_tprev = node;
+
+    node->m_sprev  = NULL;
+    node->m_snext  = s->touching_thinglist;
+    if (s->touching_thinglist)
+	node->m_snext->m_sprev = node;
+    return s->touching_thinglist = node;
+}
+
+// Take a node off both its lists; returns the next on its thing's.
+static msecnode_t* P_DelSecnode (msecnode_t* node)
+{
+    msecnode_t*	tp;
+    msecnode_t*	tn;
+    msecnode_t*	sp;
+    msecnode_t*	sn;
+
+    if (!node)
+	return NULL;
+
+    tp = node->m_tprev;
+    tn = node->m_tnext;
+    if (tp)
+	tp->m_tnext = tn;
+    if (tn)
+	tn->m_tprev = tp;
+
+    sp = node->m_sprev;
+    sn = node->m_snext;
+    if (sp)
+	sp->m_snext = sn;
+    else
+	node->m_sector->touching_thinglist = sn;
+    if (sn)
+	sn->m_sprev = sp;
+
+    P_PutSecnode (node);
+    return tn;
+}
+
+void P_DelSeclist (msecnode_t* node)
+{
+    while (node)
+	node = P_DelSecnode (node);
+}
+
+static boolean PIT_GetSectors (line_t* ld)
+{
+    if (tmbbox[BOXRIGHT]  <= ld->bbox[BOXLEFT]   ||
+	tmbbox[BOXLEFT]   >= ld->bbox[BOXRIGHT]  ||
+	tmbbox[BOXTOP]    <= ld->bbox[BOXBOTTOM] ||
+	tmbbox[BOXBOTTOM] >= ld->bbox[BOXTOP])
+	return true;
+
+    if (P_BoxOnLineSide (tmbbox, ld) != -1)
+	return true;
+
+    // the line crosses the thing: both its sectors are touched
+    sector_list = P_AddSecnode (ld->frontsector, tmthing, sector_list);
+    if (ld->backsector && ld->backsector != ld->frontsector)
+	sector_list = P_AddSecnode (ld->backsector, tmthing, sector_list);
+
+    return true;
+}
+
+// The sectors the thing touches at (x,y), in sector_list: the nodes of the
+// list it had kept where they still apply, the others freed.
+void P_CreateSecNodeList (mobj_t* thing, fixed_t x, fixed_t y)
+{
+    int		xl, xh, yl, yh, bx, by;
+    msecnode_t*	node;
+    // what the move being checked is using these for
+    mobj_t*	saved_tmthing = tmthing;
+    int		saved_tmflags = tmflags;
+    fixed_t	saved_tmx = tmx, saved_tmy = tmy;
+    fixed_t	saved_bbox[4];
+
+    memcpy (saved_bbox, tmbbox, sizeof(saved_bbox));
+
+    for (node = sector_list; node; node = node->m_tnext)
+	node->m_thing = NULL;
+
+    tmthing = thing;
+    tmflags = thing->flags;
+    tmx = x;
+    tmy = y;
+
+    tmbbox[BOXTOP]    = y + tmthing->radius;
+    tmbbox[BOXBOTTOM] = y - tmthing->radius;
+    tmbbox[BOXRIGHT]  = x + tmthing->radius;
+    tmbbox[BOXLEFT]   = x - tmthing->radius;
+
+    validcount++;
+
+    xl = (tmbbox[BOXLEFT] - bmaporgx)>>MAPBLOCKSHIFT;
+    xh = (tmbbox[BOXRIGHT] - bmaporgx)>>MAPBLOCKSHIFT;
+    yl = (tmbbox[BOXBOTTOM] - bmaporgy)>>MAPBLOCKSHIFT;
+    yh = (tmbbox[BOXTOP] - bmaporgy)>>MAPBLOCKSHIFT;
+
+    for (bx = xl; bx <= xh; bx++)
+	for (by = yl; by <= yh; by++)
+	    P_BlockLinesIterator (bx, by, PIT_GetSectors);
+
+    // and the one its centre is in
+    sector_list = P_AddSecnode (thing->subsector->sector, thing, sector_list);
+
+    // free the nodes no longer needed
+    for (node = sector_list; node; )
+	if (node->m_thing == NULL)
+	{
+	    if (node == sector_list)
+		sector_list = node->m_tnext;
+	    node = P_DelSecnode (node);
+	}
+	else
+	    node = node->m_tnext;
+
+    tmthing = saved_tmthing;
+    tmflags = saved_tmflags;
+    tmx = saved_tmx;
+    tmy = saved_tmy;
+    memcpy (tmbbox, saved_bbox, sizeof(saved_bbox));
+}
+
+
+//
+// P_GetFriction (killough 8/28/98, by way of Woof)
+// The friction of the floor the thing is on, and how much a push counts for
+// there (*factor): its sector's, if Boom's 223 made it icy or muddy and the
+// thing is on its floor, or under the water above it; the muddiest of those
+// it touches. DOOM's everywhere else, and on DOOM's own maps.
+//
+int P_GetFriction (const mobj_t* mo, int* factor)
+{
+    int			friction = ORIG_FRICTION;
+    int			movefactor = ORIG_FRICTION_FACTOR;
+    const msecnode_t*	m;
+    const sector_t*	sec;
+
+    if (!demo_compatibility && !(mo->flags & (MF_NOCLIP|MF_NOGRAVITY)))
+	for (m = mo->touching_sectorlist; m; m = m->m_tnext)
+	    if ((sec = m->m_sector)->special & FRICTION_MASK
+		&& (sec->friction < friction || friction == ORIG_FRICTION)
+		&& (mo->z <= sec->floorheight
+		    || (sec->heightsec != -1
+			&& mo->z <= sectors[sec->heightsec].floorheight)))
+	    {
+		friction = sec->friction;
+		movefactor = sec->movefactor;
+	    }
+
+    if (factor)
+	*factor = movefactor;
+    return friction;
+}
+
+//
+// P_GetMoveFactor
+// How much the player's push to move counts for: less on mud, and less
+// still standing still there, getting better as they get going.
+//
+#define MORE_FRICTION_MOMENTUM	15000
+
+int P_GetMoveFactor (const mobj_t* mo, int* frictionp)
+{
+    int		movefactor, friction;
+
+    if ((friction = P_GetFriction (mo, &movefactor)) < ORIG_FRICTION)
+    {
+	int	momentum = P_AproxDistance (mo->momx, mo->momy);
+
+	if (momentum > MORE_FRICTION_MOMENTUM<<2)
+	    movefactor <<= 3;
+	else if (momentum > MORE_FRICTION_MOMENTUM<<1)
+	    movefactor <<= 2;
+	else if (momentum > MORE_FRICTION_MOMENTUM)
+	    movefactor <<= 1;
+    }
+
+    if (frictionp)
+	*frictionp = friction;
+    return movefactor;
+}

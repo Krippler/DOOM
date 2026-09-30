@@ -889,6 +889,100 @@ tables were raised eightfold: `MAXVISPLANES`, `MAXOPENINGS`, `MAXDRAWSEGS`,
 Only memory depends on them. The scrolling-wall list, which the original
 filled with no check at all, stops at its end now.
 
+## Boom maps
+
+Boom (1998) is what most maps made since expect of an engine: its line
+types, sector flags and a few renderer tricks, frozen by PrBoom+ as
+"complevel 9" and carried on by MBF21. This engine now plays them, as the
+first stage toward Legacy of Rust (ID24 is built on MBF21, which is built on
+Boom).
+
+**Two ways to play.** A level plays either as DOOM's -- every behaviour
+id's, bugs included, so the demos stay in sync -- or as Boom's, with the
+fixes MBF21 makes by default. `P_SetCompatibility`, run by `P_SetupLevel`
+once the linedefs are in, decides per WAD. An IWAD's maps are always
+DOOM's. A mod with a `COMPLVL` lump (DSDA-Doom's) plays as Boom's unless it
+says `vanilla`. Otherwise a mod plays as Boom's if any of its maps has a
+line special from 142 to 0x7fff (Boom's and the generalized ones; 0xffff,
+in The Ultimate DOOM's E2M7, does nothing) or a sector special of 32 or
+more (Boom's flag bits). It prints which, with the file's name
+(`P_LumpFile`). The mode is `demo_compatibility`, `demo_version` and
+`comp[]`, the names the ported code tests: DOOM's is `comp[]` all 1; Boom's
+is MBF21's defaults, all 0 but `comp_zombie`, `comp_pursuit`,
+`comp_ledgeblock`, `comp_friendlyspawn` and `comp_reservedlineflag`.
+
+**Where the code came from.** Woof! (GPL, like this), which has all of it
+in C against the same structures: `p_floor.c`, `p_ceilng.c`, `p_plats.c`,
+`p_doors.c` and `p_lights.c` are its, `p_genlin.c` is new, and the line
+dispatch in `p_spec.c` (crossing, shooting, `P_UseSpecialLine` in
+`p_switch.c`), the silent teleports in `p_telept.c`, and the scrollers,
+friction and pushers are too. It was converted rather than rewritten: its
+arena allocations are `Z_Malloc (..., PU_LEVSPEC)`, its line `args[0]` is
+`tag`, `P_CheckSector` is `P_ChangeSector`, and its ID24 cases are left
+out for now. What stays this engine's: the growable ceiling and plat
+lists, the anims and switch tables, `P_UpdateSpecials` (line 48 stays in
+`linespeciallist`), and the message and sound calls.
+
+Sectors grow Boom's fields: `floordata`, `ceilingdata` and `lightingdata`
+in place of `specialdata` (in DOOM's mode `P_SectorActive` counts all
+three, as the one field was); flat offsets; `heightsec` and its colormaps;
+light and sky transfers; tag lists (`firsttag`, `nexttag`) for finding
+tagged sectors and lines; friction; and the list of things touching each
+sector (`msecnode_t`, `P_CreateSecNodeList`), which Boom's movers use to
+decide what they crush and pushers what they push. That list is only kept
+in Boom's mode, and so is friction's effect on movement.
+
+**The renderer.** `R_FakeFlat` makes the sector a viewer sees through a
+242 (deep water, fake floors and ceilings): its floor, ceiling and light
+depend on which side of the control sector's planes the eye is, and the
+view takes that sector's colormap (`C_START`/`C_END` lumps, loaded by
+`R_InitColormaps`; `scalelight` and `zlight` now point into one set of
+tables per colormap). Sprites under the fake floor are clipped to it.
+Planes take their offsets (scrollers) and light (213, 261) separately; a
+sky can be a wall's texture (271, 272, drawn from `sectors[].sky`); and a
+260 wall's middle texture is drawn translucent through `tranmap`, the
+`TRANMAP` lump or one made at start-up.
+
+**Saves.** Boom's movers are longer than id's (a door remembers its line,
+a ceiling what it changes to), and scrollers, pushers, elevators and fire
+flickers have no class in id's format. A save that needs them ends its WAD
+list in `WAD2` rather than `WADS`, and has 16 bytes of flat offsets per
+sector after the world and every special at its full length. id's classes
+in a `WADS` save are read at id's length (`OLD_SAVESIZE`, which rounds up
+to the padding the old structure had) with Boom's fields left 0. What a
+save needs is decided when it is written (`P_SaveVersion`): Boom's format
+for a Boom map, or for any level with a fire flicker (sector type 17, in
+DOOM's code since 1993 but never saved: it went out on load); id's, as
+before, for everything else, so those saves still load on 1.17.3, which
+refuses the others as not fitting their map.
+
+**A blockmap fix.** `P_CreateBlockMap`, which makes a blockmap for maps
+without one, left out lines lying exactly on a block's edge. Boom's test
+maps found it: a generalized line on a 128-unit grid line was never
+crossed. The line's box is now widened by a unit each way before the
+blocks it touches are counted. Demos on maps with the lump removed still
+do not match those with id's own blockmap, as before, since id's builder
+made its own choices; one more of the seven now does.
+
+Checked: all 21 demos end as on 1.17.1, and every format conversion as
+before; vanilla start views are identical; saves from 1.17.3 load, and
+saves round-trip on every map of DOOM, DOOM II and SIGIL II tried. Maps
+made for the purpose test each feature, most by a demo and the state at
+its end: generalized floors, doors (locked ones refused without the key,
+opened with it), stairs, lifts and crushers; 142; the elevator; the silent
+line teleport; damage and secret bits; ice (the player slides 433 units
+where the same map without it stops at 270); the conveyor; wind (and none
+without the sector's push flag); the point pusher. Others by picture: deep
+water with a blue colormap, light transfers, translucency, a wall sky, a
+floor scroll. A save on a map with every new thinker running loads with
+the same thinkers, the pusher still tied to its thing, and the flat
+offsets. The smoke test's `boom` phase plays E1M1 from a PWAD with 213 and
+261 lines putting every floor and ceiling in a dark room's light.
+
+Not yet: MBF's and MBF21's things, frames, code pointers, flags and
+DEHACKED fields (Boom's `MT_PUSH` and `MT_PULL` are here, as the pushers
+need them), and ID24.
+
 ## A savegame from another game or mod
 
 id's savegame is the level by number: the players, then each sector's
@@ -1168,7 +1262,8 @@ uses nothing but DOOM's own line types and things, and is bigger or busier
 than the 1993 engine's fixed tables allow. UZDoom is one such engine, among
 much else. This one now is too, for maps in DOOM's own format; UZDoom's
 Boom line types, UDMF and Hexen maps, ACS, DECORATE and ZScript are not
-here and are not the same kind of work.
+here and are not the same kind of work. (Boom's came later: see Boom
+maps.)
 
 The rule throughout: nothing the original games do may change. Every table
 that grows starts at id's size and doubles, and keeps id's order, so the same

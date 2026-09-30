@@ -71,6 +71,7 @@ OBJS=				\
 		$(O)/p_doors.o		\
 		$(O)/p_enemy.o		\
 		$(O)/p_floor.o		\
+		$(O)/p_genlin.o		\
 		$(O)/p_inter.o		\
 		$(O)/p_lights.o		\
 		$(O)/p_map.o			\

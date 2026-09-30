@@ -29,6 +29,7 @@ rcsid[] = "$Id: p_setup.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <ctype.h>
 
 #include "p_inflate.h"
 #include "m_argv.h"
@@ -49,6 +50,7 @@ rcsid[] = "$Id: p_setup.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 #include "s_sound.h"
 
 #include "doomstat.h"
+#include "d_main.h"
 
 
 void	P_SpawnMapThing (mapthing_t*	mthing);
@@ -276,6 +278,16 @@ void P_LoadSectors (int lump)
 	ss->special = SHORT(ms->special);
 	ss->tag = SHORT(ms->tag);
 	ss->thinglist = NULL;
+
+	// Boom's: none of its effects until its specials say
+	ss->heightsec = -1;
+	ss->floorlightsec = -1;
+	ss->ceilinglightsec = -1;
+	ss->friction = ORIG_FRICTION;
+	ss->movefactor = ORIG_FRICTION_FACTOR;
+	ss->stairlock = 0;
+	ss->prevsec = -1;
+	ss->nextsec = -1;
     }
 	
     Z_Free (data);
@@ -740,6 +752,23 @@ void P_LoadLineDefs (int lump)
 	    ld->backsector = 0;
     }
 	
+    // Boom's translucent middle textures (260): this line, or with a tag,
+    // every line of that tag; its side said which table (P_LoadSideDefs)
+    for (i = 0; i < numlines; i++)
+	lines[i].tranlump = -1;
+    for (i = 0; i < numlines; i++)
+	if (lines[i].special == 260 && lines[i].sidenum[0] != -1)
+	{
+	    int	lump = sides[lines[i].sidenum[0]].special;
+
+	    if (!lines[i].tag)
+		lines[i].tranlump = lump;
+	    else
+		for (j = 0; j < numlines; j++)
+		    if (lines[j].tag == lines[i].tag)
+			lines[j].tranlump = lump;
+	}
+	
     Z_Free (data);
 }
 
@@ -747,7 +776,42 @@ void P_LoadLineDefs (int lump)
 //
 // P_LoadSideDefs
 //
-void P_LoadSideDefs (int lump)
+//
+// A 242 or 260 line's side names colormaps or a translucency table where
+// textures would go (Boom). Each side is told its line's special first,
+// from the LINEDEFS lump, since the lines are read after the sides.
+//
+static void P_SideSpecials (int linelump)
+{
+    maplinedef_t*	ml = W_CacheLumpNum (linelump, PU_STATIC);
+    int			n = W_LumpLength (linelump) / sizeof(maplinedef_t);
+    int			i;
+    unsigned		sn;
+
+    for (i = 0; i < n; i++)
+    {
+	short	special = SHORT(ml[i].special);
+
+	if (special != 242 && special != 260)
+	    continue;
+	sn = (unsigned short) SHORT(ml[i].sidenum[0]);
+	if (sn < (unsigned) numsides)
+	    sides[sn].special = special;
+    }
+    Z_Free (ml);
+}
+
+// A 242 line's texture: a colormap in C_START/C_END (*map, and no texture)
+// if it names one, else a texture as ever
+static short P_ColormapOrTexture (char* name, int* map)
+{
+    if ((*map = R_ColormapNumForName (name)) >= 0)
+	return 0;
+    *map = 0;
+    return R_TextureNumForName (name);
+}
+
+void P_LoadSideDefs (int lump, int linelump)
 {
     byte*		data;
     int			i;
@@ -758,6 +822,8 @@ void P_LoadSideDefs (int lump)
     sides = Z_Malloc (numsides*sizeof(side_t),PU_LEVEL,0);	
     memset (sides, 0, numsides*sizeof(side_t));
     data = W_CacheLumpNum (lump,PU_STATIC);
+
+    P_SideSpecials (linelump);
 	
     msd = (mapsidedef_t *)data;
     sd = sides;
@@ -765,9 +831,6 @@ void P_LoadSideDefs (int lump)
     {
 	sd->textureoffset = SHORT(msd->textureoffset)<<FRACBITS;
 	sd->rowoffset = SHORT(msd->rowoffset)<<FRACBITS;
-	sd->toptexture = R_TextureNumForName(msd->toptexture);
-	sd->bottomtexture = R_TextureNumForName(msd->bottomtexture);
-	sd->midtexture = R_TextureNumForName(msd->midtexture);
 	{
 	    unsigned	sec = (unsigned short) SHORT(msd->sector);
 
@@ -775,6 +838,53 @@ void P_LoadSideDefs (int lump)
 		I_Error ("P_LoadSideDefs: sidedef %d has sector %u, of %d",
 			 i, sec, numsectors);
 	    sd->sector = &sectors[sec];
+	}
+	switch (sd->special)
+	{
+	  case 242:
+	    // Boom: the colormaps under, in and above the water of the
+	    // sectors it is the heights of (r_bsp.c)
+	    sd->bottomtexture = P_ColormapOrTexture (msd->bottomtexture,
+						     &sd->sector->bottommap);
+	    sd->midtexture = P_ColormapOrTexture (msd->midtexture,
+						  &sd->sector->midmap);
+	    sd->toptexture = P_ColormapOrTexture (msd->toptexture,
+						  &sd->sector->topmap);
+	    break;
+
+	  case 260:
+	    // Boom: the middle texture may name a translucency table, a
+	    // 64K lump, or TRANMAP for the one made from the palette;
+	    // special keeps which (the lump plus one, 0 for TRANMAP)
+	    if (!strncasecmp (msd->midtexture, "TRANMAP", 8))
+	    {
+		sd->special = 0;
+		sd->midtexture = 0;
+	    }
+	    else
+	    {
+		int	l = W_CheckNumForName (msd->midtexture);
+
+		if (l >= 0 && W_LumpLength (l) == 65536)
+		{
+		    sd->special = l + 1;
+		    sd->midtexture = 0;
+		}
+		else
+		{
+		    sd->special = 0;
+		    sd->midtexture = R_TextureNumForName (msd->midtexture);
+		}
+	    }
+	    sd->toptexture = R_TextureNumForName (msd->toptexture);
+	    sd->bottomtexture = R_TextureNumForName (msd->bottomtexture);
+	    break;
+
+	  default:
+	    sd->toptexture = R_TextureNumForName(msd->toptexture);
+	    sd->bottomtexture = R_TextureNumForName(msd->bottomtexture);
+	    sd->midtexture = R_TextureNumForName(msd->midtexture);
+	    break;
 	}
     }
 	
@@ -864,11 +974,18 @@ static void P_CreateBlockMap (void)
     for (i = 0; i < numlines; i++)
     {
 	line_t*	ld = &lines[i];
-	int	bx0 = (ld->bbox[BOXLEFT] - bmaporgx) >> MAPBLOCKSHIFT;
-	int	bx1 = (ld->bbox[BOXRIGHT] - bmaporgx) >> MAPBLOCKSHIFT;
-	int	by0 = (ld->bbox[BOXBOTTOM] - bmaporgy) >> MAPBLOCKSHIFT;
-	int	by1 = (ld->bbox[BOXTOP] - bmaporgy) >> MAPBLOCKSHIFT;
+	// a unit past its ends, so that a line along a block's edge is in
+	// the blocks on both sides of it
+	int	bx0 = (ld->bbox[BOXLEFT] - FRACUNIT - bmaporgx) >> MAPBLOCKSHIFT;
+	int	bx1 = (ld->bbox[BOXRIGHT] + FRACUNIT - bmaporgx) >> MAPBLOCKSHIFT;
+	int	by0 = (ld->bbox[BOXBOTTOM] - FRACUNIT - bmaporgy) >> MAPBLOCKSHIFT;
+	int	by1 = (ld->bbox[BOXTOP] + FRACUNIT - bmaporgy) >> MAPBLOCKSHIFT;
 	int	bx, by;
+
+	if (bx0 < 0) bx0 = 0;
+	if (by0 < 0) by0 = 0;
+	if (bx1 >= bmapwidth) bx1 = bmapwidth - 1;
+	if (by1 >= bmapheight) by1 = bmapheight - 1;
 
 	for (by = by0; by <= by1; by++)
 	    for (bx = bx0; bx <= bx1; bx++)
@@ -876,11 +993,14 @@ static void P_CreateBlockMap (void)
 		fixed_t	box[4];
 
 		// a line crosses a block unless all four corners are on one
-		// side of it
-		box[BOXLEFT] = bmaporgx + (bx << MAPBLOCKSHIFT);
-		box[BOXRIGHT] = box[BOXLEFT] + MAPBLOCKSIZE;
-		box[BOXBOTTOM] = bmaporgy + (by << MAPBLOCKSHIFT);
-		box[BOXTOP] = box[BOXBOTTOM] + MAPBLOCKSIZE;
+		// side of it -- the block a unit bigger all round, for a line
+		// along its edge: id's rule missed those, and a move beside
+		// such a line went through it (a map without a BLOCKMAP lump,
+		// with lines on the 128-unit grid)
+		box[BOXLEFT] = bmaporgx + (bx << MAPBLOCKSHIFT) - FRACUNIT;
+		box[BOXRIGHT] = box[BOXLEFT] + MAPBLOCKSIZE + 2*FRACUNIT;
+		box[BOXBOTTOM] = bmaporgy + (by << MAPBLOCKSHIFT) - FRACUNIT;
+		box[BOXTOP] = box[BOXBOTTOM] + MAPBLOCKSIZE + 2*FRACUNIT;
 		if (P_BoxOnLineSide (box, ld) != -1)
 		    continue;
 
@@ -1091,6 +1211,148 @@ void P_GroupLines (void)
 
 
 //
+// P_SetCompatibility
+// Whether the map is played as DOOM played it, or as a Boom map (by way of
+// MBF21, which Boom's descendants play them as): demo_compatibility,
+// demo_version, mbf21, and the comp flags (doomstat.h).
+//
+// Decided for a whole WAD, not map by map, so that a mod's maps all play
+// by the rules its author made them for, even one that happens to use
+// nothing Boom added: a COMPLVL lump in it says (as DSDA-Doom reads it),
+// else any of its maps using a line or sector type Boom added makes it a
+// Boom WAD. The IWAD's maps, and a mod's that use nothing of Boom's, are
+// DOOM's -- and their demos play back.
+//
+typedef enum { WADCOMP_UNKNOWN, WADCOMP_VANILLA, WADCOMP_BOOM } wadcomp_e;
+
+static boolean P_MapUsesBoom (int marker)
+{
+    maplinedef_t*	ml;
+    mapsector_t*	ms;
+    int			n, i;
+    boolean		boom = false;
+
+    if (marker + ML_SECTORS >= numlumps
+	|| strncasecmp (lumpinfo[marker + ML_LINEDEFS].name, "LINEDEFS", 8)
+	|| strncasecmp (lumpinfo[marker + ML_SECTORS].name, "SECTORS", 8))
+	return false;
+
+    ml = W_CacheLumpNum (marker + ML_LINEDEFS, PU_STATIC);
+    n = W_LumpLength (marker + ML_LINEDEFS) / sizeof(maplinedef_t);
+    for (i = 0; i < n && !boom; i++)
+    {
+	unsigned	special = (unsigned short) SHORT(ml[i].special);
+
+	// DOOM's go to 141; Boom's and the generalized ones up to 0x7fff.
+	// 0xffff is in The Ultimate DOOM's E2M7, and does nothing.
+	if (special > 141 && special < GenEnd)
+	    boom = true;
+    }
+    Z_Free (ml);
+
+    ms = W_CacheLumpNum (marker + ML_SECTORS, PU_STATIC);
+    n = W_LumpLength (marker + ML_SECTORS) / sizeof(mapsector_t);
+    for (i = 0; i < n && !boom; i++)
+	if ((unsigned short) SHORT(ms[i].special) >= 32)	// Boom's bits
+	    boom = true;
+    Z_Free (ms);
+
+    return boom;
+}
+
+static wadcomp_e P_WadCompatibility (int handle)
+{
+    int		i;
+    wadcomp_e	c = WADCOMP_VANILLA;
+
+    // a COMPLVL lump, as DSDA-Doom reads it
+    for (i = 0; i < numlumps; i++)
+	if (lumpinfo[i].handle == handle
+	    && !strncasecmp (lumpinfo[i].name, "COMPLVL", 8))
+	{
+	    char	text[16];
+	    char*	data = W_CacheLumpNum (i, PU_STATIC);
+	    int		len = W_LumpLength (i), k = 0, j;
+
+	    for (j = 0; j < len && k < 15; j++)
+		if (!isspace ((unsigned char) data[j]))
+		    text[k++] = tolower ((unsigned char) data[j]);
+	    text[k] = 0;
+	    Z_Free (data);
+	    printf ("COMPLVL: %s\n", text);
+	    return strcmp (text, "vanilla") ? WADCOMP_BOOM : WADCOMP_VANILLA;
+	}
+
+    for (i = 0; i < numlumps; i++)
+	if (lumpinfo[i].handle == handle
+	    && i + 1 < numlumps
+	    && !strncasecmp (lumpinfo[i + 1].name, "THINGS", 8)
+	    && P_MapUsesBoom (i))
+	    return WADCOMP_BOOM;
+    return c;
+}
+
+//
+// P_LumpFile
+// The name of the file a lump came from, for messages: each file's lumps
+// are together, in the order of wadfiles.
+//
+static const char* P_LumpFile (int lumpnum)
+{
+    const char*	name;
+    const char*	slash;
+    int		i;
+    int		n = 0;
+
+    for (i = 1; i <= lumpnum; i++)
+	if (lumpinfo[i].handle != lumpinfo[i-1].handle)
+	    n++;
+    for (i = 0; i < n && wadfiles[i]; i++)
+	;
+    if (!wadfiles[i])
+	return "?";
+    name = wadfiles[i];
+    slash = strrchr (name, '/');
+    return slash ? slash + 1 : name;
+}
+
+void P_SetCompatibility (int lumpnum)
+{
+    static int		lasthandle = -1;
+    static wadcomp_e	last;
+    int			handle = lumpinfo[lumpnum].handle;
+    int			i;
+
+    if (handle == lumpinfo[0].handle)
+	last = WADCOMP_VANILLA;		// the IWAD's
+    else if (handle != lasthandle)
+    {
+	last = P_WadCompatibility (handle);
+	printf ("P_SetupLevel: %s's maps play as %s\n",
+		P_LumpFile (lumpnum),
+		last == WADCOMP_BOOM ? "Boom's (MBF21)" : "DOOM's");
+    }
+    lasthandle = handle;
+
+    demo_compatibility = last != WADCOMP_BOOM;
+    demo_version = demo_compatibility ? DV_VANILLA : DV_MBF21;
+    mbf21 = !demo_compatibility;
+
+    // DOOM's behaviour in full, or the fixes as MBF21 has them
+    for (i = 0; i < COMP_TOTAL; i++)
+	comp[i] = demo_compatibility;
+    if (!demo_compatibility)
+    {
+	comp[comp_zombie] = 1;
+	comp[comp_pursuit] = 1;
+	comp[comp_ledgeblock] = 1;
+	comp[comp_friendlyspawn] = 1;
+	comp[comp_reservedlineflag] = 1;
+    }
+}
+
+
+//
 // P_SetupLevel
 //
 void
@@ -1164,9 +1426,16 @@ P_SetupLevel
     // note: most of this ordering is important
     P_LoadVertexes (lumpnum+ML_VERTEXES);
     P_LoadSectors (lumpnum+ML_SECTORS);
-    P_LoadSideDefs (lumpnum+ML_SIDEDEFS);
+    P_LoadSideDefs (lumpnum+ML_SIDEDEFS, lumpnum+ML_LINEDEFS);
 
     P_LoadLineDefs (lumpnum+ML_LINEDEFS);
+
+    // Boom: the sectors and lines of each tag, chained; and whether this
+    // map plays as DOOM's or as a Boom map (which the things' linking into
+    // their sectors needs to know)
+    P_InitTagLists ();
+    P_ClearSecnodes ();
+    P_SetCompatibility (lumpnum);
 
     // after the lines, which a blockmap's lists name and one made needs
     P_LoadBlockMap (lumpnum+ML_BLOCKMAP);

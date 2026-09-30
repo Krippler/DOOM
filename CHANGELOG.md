@@ -12,6 +12,36 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [Unreleased]
+
+### Added
+- **Boom maps**: mods whose text file asks for a Boom-compatible port
+  ("Boom", "PrBoom+", "complevel 9") now play. Generalized floors,
+  ceilings, doors (locked ones too), lifts, stairs and crushers; Boom's
+  further line types (elevators, silent teleports, texture and type
+  changes, lights); scrolling walls, floors and ceilings, and conveyors
+  that carry what stands on them; ice, mud, wind, currents, and point
+  pushers and pullers; damaging and secret sectors by flag; deep water and
+  other fake floors and ceilings, with their own colormaps; light
+  transfers; translucent walls; and skies taken from a wall's texture. A
+  mod plays as Boom when one of its maps uses any of that, or its `COMPLVL`
+  lump says so, and the log says which: `P_SetupLevel: foo.wad's maps play
+  as Boom's (MBF21)`. The games themselves and every other mod play as
+  before, to the random number. This is the first step toward Legacy of
+  Rust; MBF21's monsters and code pointers, then ID24, come next.
+- Saves keep Boom's movers, scrollers and pushers, and fire flickers
+  (sector type 17), which saves used to lose. A save on any other map is
+  written as before and still loads on 1.17.3.
+
+### Fixed
+- A map without a `BLOCKMAP` lump, which the engine makes its own for,
+  left out lines lying exactly on a block's edge, so a wall there could be
+  walked through and a line there crossed without triggering.
+- A DEHACKED patch whose `[STRINGS]` named `HUSTR_KEYGREEN`,
+  `HUSTR_KEYINDIGO`, `HUSTR_KEYBROWN` or `HUSTR_KEYRED` crashed the engine:
+  those are the chat keys, as characters, not texts. They are now left out
+  with a warning, as any unknown name is.
+
 ## [1.17.3] — 2026-09-30
 
 ### Changed

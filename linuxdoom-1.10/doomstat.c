@@ -40,6 +40,10 @@ Language_t   language = english;
 
 // Set if homebrew PWAD stuff has been added.
 boolean	modifiedgame;
+boolean	demo_compatibility = true;
+int	demo_version = DV_VANILLA;
+boolean	mbf21;
+int	comp[COMP_TOTAL];
 boolean	nervepack;
 
 

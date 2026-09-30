@@ -297,6 +297,9 @@ typedef struct mobj_s
     // (p_saveg.c).
     int			saveindex;
 
+    // Boom: the sectors it touches (msecnode_t, r_defs.h), on Boom's maps.
+    struct msecnode_s*	touching_sectorlist;
+
 } mobj_t;
 
 // How much of a mobj_t a save holds.

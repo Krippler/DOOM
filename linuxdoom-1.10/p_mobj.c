@@ -235,10 +235,18 @@ void P_XYMovement (mobj_t* mo)
 	mo->momx = 0;
 	mo->momy = 0;
     }
-    else
+    else if (demo_compatibility)
     {
 	mo->momx = FixedMul (mo->momx, FRICTION);
 	mo->momy = FixedMul (mo->momy, FRICTION);
+    }
+    else
+    {
+	// Boom: the ice or mud under it (P_GetFriction)
+	fixed_t	friction = P_GetFriction (mo, NULL);
+
+	mo->momx = FixedMul (mo->momx, friction);
+	mo->momy = FixedMul (mo->momy, friction);
     }
 }
 
@@ -569,6 +577,13 @@ void P_RemoveMobj (mobj_t* mobj)
 	
     // unlink from sector and block lists
     P_UnsetThingPosition (mobj);
+
+    // Boom: and the sectors it touched
+    if (sector_list)
+    {
+	P_DelSeclist (sector_list);
+	sector_list = NULL;
+    }
     
     // stop any playing sound
     S_StopSound (mobj);

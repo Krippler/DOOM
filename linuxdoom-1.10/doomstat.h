@@ -57,6 +57,61 @@ extern  boolean	devparm;	// DEBUG: launched with -devparm
 // -----------------------------------------------------
 // Game Mode - identify IWAD as shareware, retail etc.
 //
+// How the level being played behaves (P_SetCompatibility, p_setup.c).
+//
+// demo_compatibility: exactly as DOOM did, for a map of its own -- and its
+// demos, which only play back if nothing changes. False for a map made for
+// Boom or later (its line or sector types, or a COMPLVL lump saying so),
+// which then has Boom's specials and the fixes the comp flags leave on.
+// Named as Boom and the ports after it name it, so their code reads the
+// same here.
+extern boolean	demo_compatibility;
+
+// The same as the version a port's demo of it would be: DV_VANILLA for a
+// map of DOOM's own, else the level of the extensions it was made for
+// (P_SetCompatibility), which the code taken from Boom's descendants tests
+// as they do. mbf21: at least MBF21.
+#define DV_VANILLA	109
+#define DV_BOOM		202
+#define DV_MBF		203
+#define DV_MBF21	221
+#define DV_ID24		224
+extern int	demo_version;
+extern boolean	mbf21;
+
+// The fixes to DOOM's behaviour Boom and MBF made, each one off (0) to have
+// the fix, as MBF21 sets them; all on under demo_compatibility.
+enum
+{
+    comp_telefrag,
+    comp_dropoff,
+    comp_vile,
+    comp_pain,
+    comp_skull,
+    comp_blazing,
+    comp_doorlight,
+    comp_model,
+    comp_god,
+    comp_falloff,
+    comp_floors,
+    comp_skymap,
+    comp_pursuit,
+    comp_doorstuck,
+    comp_staylift,
+    comp_zombie,
+    comp_stairs,
+    comp_infcheat,
+    comp_zerotags,
+    comp_respawn,
+    comp_soul,
+    comp_ledgeblock,
+    comp_friendlyspawn,
+    comp_voodooscroller,
+    comp_reservedlineflag,
+    COMP_TOTAL
+};
+extern int	comp[COMP_TOTAL];
+
 extern GameMode_t	gamemode;
 extern GameMission_t	gamemission;
 
@@ -278,7 +333,11 @@ extern int*		flatskytexture;
 
 // Whether a flat is sky: F_SKY1, showing the map's sky, or one of those.
 #define R_IsSkyFlat(pic) \
-	((pic) == skyflatnum || flatskytexture[pic] >= 0)
+	((pic) & PL_SKYFLAT || (pic) == skyflatnum || flatskytexture[pic] >= 0)
+
+// A visplane's picnum for a sky MBF's 271 or 272 transferred: the line's
+// number, with this bit (r_plane.c).
+#define PL_SKYFLAT		0x40000000
 
 
 

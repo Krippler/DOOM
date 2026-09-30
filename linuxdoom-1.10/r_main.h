@@ -74,9 +74,12 @@ extern int		loopcount;
 #define MAXLIGHTZ	       128
 #define LIGHTZSHIFT		20
 
-extern lighttable_t*	scalelight[LIGHTLEVELS][MAXLIGHTSCALE];
+// The light tables of the colormap the view is in (R_SetupFrame): COLORMAP,
+// or one of Boom's, for a player in or over a line 242's water.
+extern lighttable_t*	(*scalelight)[MAXLIGHTSCALE];
 extern lighttable_t*	scalelightfixed[MAXLIGHTSCALE];
-extern lighttable_t*	zlight[LIGHTLEVELS][MAXLIGHTZ];
+extern lighttable_t*	(*zlight)[MAXLIGHTZ];
+extern lighttable_t*	fullcolormap;
 
 extern int		extralight;
 extern lighttable_t*	fixedcolormap;

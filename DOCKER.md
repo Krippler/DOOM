@@ -75,9 +75,14 @@ changes to monsters, weapons, frames, sounds and texts that classic mods make �
 whether the patch is a `DEHACKED` lump inside the WAD or a `.deh` (or `.bex`)
 file of the same name beside it in the WAD folder; `-deh file.deh` after the
 image name loads any other. A mod's own sound effects are played, and its
-`SWITCHES` and `ANIMATED` lumps read. Mods that need Boom or more (Boom's line
-types, UDMF maps, ACS, DECORATE, ZScript — "Boom-compatible", "MBF21",
-"GZDoom only") do not work.
+`SWITCHES` and `ANIMATED` lumps read. **Boom-compatible** mods play too
+("Boom", "PrBoom+", "complevel 9"): generalized and extended line types,
+scrollers, conveyors, ice, wind and pushers, deep water and colormaps,
+translucent walls and wall-texture skies. The log names how each mod's
+maps play (`P_SetupLevel: foo.wad's maps play as Boom's (MBF21)`); the
+games themselves always play as DOOM's. Mods that need more — MBF or MBF21
+monsters and code pointers, ID24 (Legacy of Rust), UDMF maps, ACS,
+DECORATE, ZScript, "GZDoom only" — do not work yet, or at all.
 
 ## The browser client
 
