@@ -2627,6 +2627,33 @@ void P_SpawnSpecials (void)
 	    for (s = -1; (s = P_FindSectorFromLineTag (lines + i, s)) >= 0;)
 		sectors[s].sky = i + 1;
 	    break;
+
+	  // ID24's: the tagged sectors' floor (2048), ceiling (2049) or
+	  // both (2050) offset by the line's length along x and y, so a flat
+	  // lines up where the line says. 2051-2056 also rotate them by the
+	  // line's angle, which this renderer cannot: they only offset.
+	  case 2048: case 2049: case 2050:
+	  case 2054: case 2055: case 2056:
+	    {
+		int	sp = lines[i].special;
+		boolean	fl = sp == 2048 || sp == 2050 || sp == 2054 || sp == 2056;
+		boolean	cl = sp == 2049 || sp == 2050 || sp == 2055 || sp == 2056;
+
+		for (s = -1; (s = P_FindSectorFromLineTag (lines + i, s)) >= 0;)
+		{
+		    if (fl)
+		    {
+			sectors[s].floor_xoffs -= lines[i].dx;
+			sectors[s].floor_yoffs += lines[i].dy;
+		    }
+		    if (cl)
+		    {
+			sectors[s].ceiling_xoffs -= lines[i].dx;
+			sectors[s].ceiling_yoffs += lines[i].dy;
+		    }
+		}
+	    }
+	    break;
 	}
     }
 }
@@ -2846,6 +2873,51 @@ static void P_SpawnScrollers (void)
 	    break;
 
 	  case 85:	// scroll first side, the other way from 48
+	    Add_Scroller (sc_side, -FRACUNIT, 0, -1, lines[i].sidenum[0],
+			  accel);
+	    break;
+
+	  // ID24's: the tagged lines' walls scrolled as 255 scrolls its own,
+	  // by this line's offsets over 8; 1025/2085 moved by the heights of
+	  // this line's sector, 1026/2086 accelerated too; 2084-2086 scroll
+	  // the back side as well, the other way
+	  case 1026:
+	  case 2086:
+	    accel = 1;
+	    // fall through
+	  case 1025:
+	  case 2085:
+	    control = sides[l->sidenum[0]].sector - sectors;
+	    // fall through
+	  case 1024:
+	  case 2084:
+	    s = l->sidenum[0];
+	    dx = -sides[s].textureoffset / 8;
+	    dy = sides[s].rowoffset / 8;
+	    for (s = -1; (s = P_FindLineFromLineTag (l, s)) >= 0;)
+		if (s != i)
+		{
+		    Add_Scroller (sc_side, dx, dy, control, lines[s].sidenum[0],
+				  accel);
+		    if (special >= 2084 && lines[s].sidenum[1] != -1)
+			Add_Scroller (sc_side, -dx, dy, control,
+				      lines[s].sidenum[1], accel);
+		}
+	    break;
+
+	  // ID24's: both sides of the line scroll, left (2082, as 48) or
+	  // right (2083, as 85)
+	  case 2082:
+	    if (lines[i].sidenum[1] != -1)
+		Add_Scroller (sc_side, -FRACUNIT, 0, -1, lines[i].sidenum[1],
+			      accel);
+	    Add_Scroller (sc_side, FRACUNIT, 0, -1, lines[i].sidenum[0], accel);
+	    break;
+
+	  case 2083:
+	    if (lines[i].sidenum[1] != -1)
+		Add_Scroller (sc_side, FRACUNIT, 0, -1, lines[i].sidenum[1],
+			      accel);
 	    Add_Scroller (sc_side, -FRACUNIT, 0, -1, lines[i].sidenum[0],
 			  accel);
 	    break;

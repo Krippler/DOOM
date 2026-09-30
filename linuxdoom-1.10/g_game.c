@@ -1223,6 +1223,53 @@ void G_ExitLevel (void)
     gameaction = ga_completed; 
 } 
 
+//
+// The levels played this game, by number: an ID24 intermission can show
+// which. A save keeps them after the consistency marker, where 1.17.3 and
+// before, which read only up to it, never look: VISITEDMAGIC, how many,
+// and their numbers, a byte each.
+//
+#define MAXVISITED	100
+#define VISITEDMAGIC	"VIST"
+
+boolean		visitedmaps[MAXVISITED];
+
+static void G_WriteVisited (void)
+{
+    byte*	count;
+    int		i;
+
+    for (i = 1; i < MAXVISITED && !visitedmaps[i]; i++)
+	;
+    if (i == MAXVISITED)
+	return;
+    memcpy (save_p, VISITEDMAGIC, 4);
+    save_p += 4;
+    count = save_p++;
+    *count = 0;
+    for (i = 1; i < MAXVISITED; i++)
+	if (visitedmaps[i])
+	{
+	    *save_p++ = i;
+	    (*count)++;
+	}
+}
+
+// From p, just after the marker, up to end, where the list of WADs starts.
+static void G_ReadVisited (byte* p, byte* end)
+{
+    int		n;
+
+    memset (visitedmaps, 0, sizeof(visitedmaps));
+    if (end - p < 5 || memcmp (p, VISITEDMAGIC, 4))
+	return;
+    p += 4;
+    n = *p++;
+    for (; n > 0 && p < end; n--, p++)
+	if (*p < MAXVISITED)
+	    visitedmaps[*p] = true;
+}
+
 // Here's for the german edition.
 void G_SecretExitLevel (void) 
 { 
@@ -1378,6 +1425,10 @@ void G_DoCompleted (void)
     viewactive = false; 
     automapactive = false; 
  
+    if (gamemap > 0 && gamemap < MAXVISITED)
+	visitedmaps[gamemap] = true;
+    wminfo.visited = visitedmaps;
+
     if (statcopy)
 	memcpy (statcopy, &wminfo, sizeof(wminfo));
 	
@@ -1726,6 +1777,7 @@ void G_DoLoadGame (void)
  
     if (*save_p != 0x1d) 
 	I_Error ("Bad savegame");
+    G_ReadVisited (save_p + 1, end);
     printf ("G_DoLoadGame: %s, %s\n", savename, mapname);
     
     // done 
@@ -1774,7 +1826,7 @@ void G_DoSaveGame (void)
 	static byte*	buffer;
 	static int	buffersize;
 	int		needed = SAVEGAMEHEAD + P_ArchiveSize ()
-				     + G_SaveWadsSize ();
+				     + 5 + MAXVISITED + G_SaveWadsSize ();
 
 	if (needed > buffersize)
 	{
@@ -1810,6 +1862,7 @@ void G_DoSaveGame (void)
     P_ArchiveSpecials (); 
 	 
     *save_p++ = 0x1d;		// consistancy marker 
+    G_WriteVisited ();
     G_WriteSaveWads ();
 	 
     length = save_p - savebuffer; 
@@ -1997,6 +2050,7 @@ G_InitNew
     gameepisode = episode; 
     gamemap = map; 
     gameskill = skill; 
+    memset (visitedmaps, 0, sizeof(visitedmaps));
  
     viewactive = true;
     

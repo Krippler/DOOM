@@ -42,18 +42,32 @@ patch whatever was in it.
   monsters, work on Boom maps. A map thing the engine does not know is
   left out, with a line in the log, where it used to stop the game, and
   a frame with no pictures is not drawn rather than fatal.
-- **Legacy of Rust, the first half**: with `id1.wad` from the 2024
-  re-release beside `doom2.wad`, its 16 maps start and play, with its new
-  monsters, the Incinerator and the Calamity Blade. What ID24 adds beyond
-  MBF21 comes next: its status bar and intermission definitions, its line
-  specials, and the pickup, respawn and weapon-slot fields its patch uses
-  (the log names each one it leaves out).
+- **Legacy of Rust**: with `id1.wad` from the 2024 re-release beside
+  `doom2.wad`, its 16 maps play, with its new monsters, the Incinerator
+  and the Calamity Blade, and its two episodes, The Vulcan Abyss and
+  Counterfeit Eden, are offered on New Game. Between levels its
+  intermissions are its own: each episode's map, with the levels played so
+  far burnt out and a "You are here" at the next.
+- **ID24**, what the 2024 re-release adds for mods, as far as Legacy of
+  Rust uses it: `INTERLEVEL` intermissions (a UMAPINFO map's `exitanim`
+  and `enteranim`: a background, music, and layers of animations shown by
+  conditions such as the levels played), the `GAMECONF` lump (the WAD list
+  names the mod by its title, and it goes on the game it names), wall
+  scrollers by tag (1024-1026, 2084-2086) and on both sides (2082, 2083),
+  and flat offsets (2048-2050; 2051-2056 offset without rotating). A save
+  keeps the levels played, where 1.17.3 does not look, and still loads
+  there. The status bar is DOOM II's with Legacy of Rust's pictures; its
+  `SBARDEF` layout is not read.
 - Saves keep Boom's movers, scrollers and pushers, fire flickers (sector
   type 17), which saves used to lose, and the MBF21 flags that a patch's
   code pointers change. A save on any other map is written as before and
   still loads on 1.17.3.
 
 ### Fixed
+- The intermission's animations on DOOM's episode maps -- the lights, the
+  moving things, the flashing Tower of Babel -- were never drawn: id's Linux
+  code tested `commercial` where it meant `gamemode == commercial`, which
+  is always true. They are there now, as on DOS.
 - A map without a `BLOCKMAP` lump, which the engine makes its own for,
   left out lines lying exactly on a block's edge, so a wall there could be
   walked through and a line there crossed without triggering.

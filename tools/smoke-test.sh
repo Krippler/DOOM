@@ -46,6 +46,9 @@
 #             that plays sound 700 (A_WeaponSound), a tone of the patch's
 #             own; the tone is heard, so the engine and the mixer both
 #             took a sound numbered past 255 (needs xdotool)
+#   id24      E1M1 ends by itself (special 11, on the easiest skill), and
+#             its tally is an INTERLEVEL lump's: the background, and of its
+#             layer's two squares the one whose condition holds
 #   ogg       a level whose music is an Ogg Vorbis lump, as SIGIL II's are,
 #             is heard at the tone's own pitch (needs oggenc, from
 #             vorbis-tools, and a soundfont; skipped without)
@@ -690,6 +693,115 @@ if command -v xdotool >/dev/null 2>&1; then
 else
     say "mbf21: skipped, xdotool is not installed"
 fi
+
+# -------------------------------------------------------------------- id24
+# An ID24 intermission, as Legacy of Rust's are: UMAPINFO gives E1M1 an
+# exitanim, an INTERLEVEL lump of JSON whose background is a patch of solid
+# blue and whose one layer, for the tally, has two squares -- green, shown
+# when E1M1 has been played, and yellow, when E1M5 has. Every sector of E1M1
+# is made special 11, the one that ends E1M8: on the easiest skill, which
+# halves the damage, the player comes down to 10% and the level ends by
+# itself, eight seconds in. The tally has to be blue, with the green square
+# and without the yellow.
+say "id24: E1M1's tally an INTERLEVEL lump's, with a layer of conditions"
+mkdir -p "$work/id24"
+python3 - "$wad" "$work/id24" <<'EOF' || die "could not make the intermission's lumps"
+import json, struct, sys
+src, out = sys.argv[1], sys.argv[2]
+d = open(src, 'rb').read()
+n, ofs = struct.unpack('<ii', d[4:12])
+lumps = [struct.unpack('<ii8s', d[ofs + 16 * i:ofs + 16 * i + 16]) for i in range(n)]
+lumps = [(nm.rstrip(b'\0').decode(), d[fp:fp + sz]) for fp, sz, nm in lumps]
+i = [nm for nm, _ in lumps].index('E1M1')
+for nm, data in lumps[i:i + 11]:
+    if nm == 'SECTORS':
+        secs = [list(r) for r in struct.iter_unpack('<hh8s8shhh', data)]
+        for s in secs:
+            s[5] = 11
+        data = b''.join(struct.pack('<hh8s8shhh', *s) for s in secs)
+    open('%s/%s' % (out, nm.lower() or 'e1m1'), 'wb').write(data)
+def patch(w, h, colour):
+    cols = b''.join(bytes([0, h, 0]) + bytes([colour]) * h + bytes([0, 255])
+                    for x in range(w))
+    head = struct.pack('<hhhh', w, h, 0, 0)
+    size = h + 5
+    return head + b''.join(struct.pack('<i', 8 + 4 * w + x * size)
+                           for x in range(w)) + cols
+open(out + '/smokebg', 'wb').write(patch(320, 200, 200))    # blue
+open(out + '/smokegrn', 'wb').write(patch(30, 20, 112))     # green
+open(out + '/smokeyel', 'wb').write(patch(30, 20, 231))    # yellow
+def square(x, image, visited):
+    return {'x': x, 'y': 130,
+            'frames': [{'image': image, 'type': 1, 'duration': 0,
+                        'maxduration': 0}],
+            'conditions': [{'condition': 3, 'param': visited}]}
+json.dump({'type': 'interlevel', 'version': '1.0.0', 'metadata': {},
+           'data': {'music': 'D_INTER', 'backgroundimage': 'SMOKEBG',
+                    'layers': [{'anims': [square(130, 'SMOKEGRN', 1),
+                                          square(180, 'SMOKEYEL', 5)],
+                                'conditions': [{'condition': 6,
+                                                'param': 0}]}]}},
+          open(out + '/smokeil', 'w'))
+open(out + '/umapinfo', 'w').write('map E1M1\n{\n    exitanim = "SMOKEIL"\n}\n')
+EOF
+m="$work/id24"
+add_lumps "$wad" "$m/doom1.wad" E1M1 "$m/e1m1" THINGS "$m/things" \
+    LINEDEFS "$m/linedefs" SIDEDEFS "$m/sidedefs" VERTEXES "$m/vertexes" \
+    SEGS "$m/segs" SSECTORS "$m/ssectors" NODES "$m/nodes" \
+    SECTORS "$m/sectors" REJECT "$m/reject" BLOCKMAP "$m/blockmap" \
+    UMAPINFO "$m/umapinfo" SMOKEIL "$m/smokeil" SMOKEBG "$m/smokebg" \
+    SMOKEGRN "$m/smokegrn" SMOKEYEL "$m/smokeyel" \
+    || die "could not add the map and the lumps"
+start_x 24
+rm -f "$work/.doomrc"
+game_iwad="$work/id24/doom1.wad" start_game id24.log -warp 1 1 -skill 1 -nojoy
+game_iwad=
+python3 - "$work/fb24/Xvfb_screen0" <<'EOF' \
+    || { tail -20 "$work/id24.log" >&2; die "the INTERLEVEL tally was not drawn as it should be; see $work/id24.log"; }
+import struct, sys, time
+def colours():
+    d = open(sys.argv[1], 'rb').read()
+    hsize, = struct.unpack('>I', d[:4])
+    w, h = struct.unpack('>II', d[16:24])
+    bpl, = struct.unpack('>I', d[48:52])
+    ncolors, = struct.unpack('>I', d[76:80])
+    px = d[hsize + ncolors * 12:]
+    def at(x, y):
+        o = y * bpl + 4 * x
+        return px[o + 2], px[o + 1], px[o]
+    blue = sum(1 for y in range(0, h, 4) for x in range(0, w, 4)
+               if at(x, y)[2] > 200 and max(at(x, y)[:2]) < 60)
+    def square(x0):
+        # the square, at 320x200's (x0, 130), 30 by 20, on the doubled screen
+        green = yellow = 0
+        for y in range(2 * 130, 2 * 150):
+            for x in range(2 * x0, 2 * (x0 + 30)):
+                r, g, b = at(x, y)
+                green += g > 200 and r < 160 and b < 160
+                yellow += r > 200 and g > 200 and b < 60
+        return green, yellow
+    return blue * 16, w * h, square(130)[0], square(180)[1]
+for i in range(300):
+    time.sleep(0.1)
+    try:
+        blue, total, green, yellow = colours()
+    except (OSError, struct.error):
+        continue
+    if blue > total // 2:
+        break
+time.sleep(1)
+blue, total, green, yellow = colours()
+print('[smoke] tally: %d of %d pixels blue, green square %d, yellow %d'
+      % (blue, total, green, yellow))
+sys.exit(0 if blue > total // 2 and green > 1500 and yellow < 100 else 1)
+EOF
+cp "$work/fb24/Xvfb_screen0" "$work/id24.xwd"
+kill -0 "$game_pid" 2>/dev/null \
+    || die "the engine did not stay up through the intermission; see $work/id24.log"
+say "E1M1 ended by itself, and its tally was the INTERLEVEL's, conditions kept"
+kill "$game_pid" 2>/dev/null
+wait_game 10
+stop_x
 
 # ---------------------------------------------------------------------- ogg
 if [ -z "$soundfont" ] || ! command -v oggenc >/dev/null 2>&1; then

@@ -84,9 +84,9 @@ games themselves always play as DOOM's. **MBF** and **MBF21** mods play too:
 their DEHACKED patches' new monsters, weapons and code pointers, with
 frames, things, sprites and sounds numbered as far past DOOM's as they
 like. **Legacy of Rust** (`id1.wad`, from the 2024 re-release, with
-`doom2.wad`) starts and plays its maps, monsters and weapons; its ID24
-extras — status bar and intermission definitions, some line specials — are
-not here yet. Mods that need more — UDMF maps, ACS, DECORATE, ZScript,
+`doom2.wad`) plays: its maps, monsters and weapons, its two episodes, and
+its own intermissions (ID24's `INTERLEVEL`); the WAD list calls it by name
+and puts it on DOOM II. Its status bar is DOOM II's, with its pictures. Mods that need more — UDMF maps, ACS, DECORATE, ZScript,
 "GZDoom only" — do not work.
 
 ## The browser client

@@ -1099,6 +1099,84 @@ loads with every thing as it was; saves on DOOM's maps still load on
 1.17.3 and 1.17.3's here. The smoke test's `mbf21` phase has the pistol
 play sound 700 through a frame of its own, and hears it.
 
+## ID24
+
+ID24 is what the 2024 re-release adds for mods on top of MBF21, and Legacy
+of Rust is written in it. Most of the expansion is MBF21 (above); what is
+ID24's own, and what of it is here:
+
+**Intermissions** (`wi_interlvl.c`, `wi_stuff.c`). A UMAPINFO map's
+`exitanim` and `enteranim` name `INTERLEVEL` lumps, JSON: a background,
+music, and layers of animations, each layer and each animation shown only
+when its conditions hold: on the tally or on the next level's screen,
+the level's number above a given one or equal to it, a given level
+played, the level not a secret one, a secret one played. Frames last
+forever, a fixed time or a random one. Legacy of Rust's put a splat on each level of the episode played so far and a flashing "You
+are here" on the next, as DOOM's episode maps do, over pictures of its
+own. It is read as Woof! reads it: the tally uses the level left's
+`exitanim`, the next level's screen the next's `enteranim`, and that screen
+is shown in DOOM II too when there is one, except in a demo, whose tics
+would fall out of step with an intermission a screen longer. The random
+frames take `M_Random`, never the game's.
+
+"Levels played" is new state: `visitedmaps[]` in `g_game.c`, cleared by
+`G_InitNew` and marked by `G_DoCompleted`. A save keeps it after the
+consistency marker -- `VIST`, a count and the levels' numbers -- where
+1.17.3 and every version before it, which stop reading at the marker,
+never look; a save without it loads with none played.
+
+JSON is new to the engine too. `m_json.c` reads it whole into a tree
+(objects, arrays, strings with their escapes, numbers, `true`, `false`,
+`null`) that is asked for its parts by key and index; `JS_ParseLump` also
+checks the lump's `"type"`. The SKYDEFS reader in `r_sky.c`, written
+before it, still picks its fields out by hand.
+
+**GAMECONF** (`m_menu.c`). A mod's JSON lump naming it and the game it is
+for. The WAD list shows its `title` first ("Legacy of Rust", where the
+file is `id1.wad`), and `M_IwadFor` puts the mod on the IWAD its `iwad`
+names when that file is running or in the WAD folder, before guessing from
+the maps. Its other fields (`executable`, `mode`, `options`, further
+`pwadfiles` and `dehfiles`) are not read.
+
+**Line specials** (`p_spec.c`). 1024-1026 and 2084-2086 scroll the walls
+of the tagged lines by this line's offsets over 8 -- as 255 scrolls its
+own -- plain, by the control sector's heights, or accelerating; 2084 on
+also scroll their back sides, the other way. 2082 and 2083 scroll both
+sides of the line itself, as 48 and 85 scroll the front. 2048-2050 offset
+the tagged sectors' floor, ceiling or both by the line's length along x
+and y; 2051-2056 also rotate them by the line's angle, which a renderer
+drawing flats along the axes cannot, so they only offset. Legacy of Rust
+uses 1024, 2048 and 2083 of these; its other two, 1023 and 1080, Woof!
+leaves alone too, and so does this. The music changers, colormap tints and
+exits that reset the inventory are not here: Legacy of Rust has none.
+
+**New Game** offered a mod with one run of maps its first map straight
+away, skipping the episode menu; Legacy of Rust's UMAPINFO makes two
+episodes of MAP01-MAP16, so a mod with more than one UMAPINFO episode now
+gets the menu.
+
+**Not here**: `SBARDEF`, the status bar as JSON -- DOOM II's is drawn,
+with Legacy of Rust's own pictures in it, fuel counted where cells were;
+the weapon carousel and its icons; the DEHACKED fields for pickup
+messages (Legacy of Rust's own `[STRINGS]` already give the fuel and its
+weapons the right messages) and for how soon a monster respawns on
+Nightmare. The log names each field it leaves out.
+
+**And a fix of id's** found on the way: `WI_drawAnimatedBack` began
+`if (commercial) return;` -- the enumeration's value, 2, not the game
+mode -- so on Linux DOOM's episode maps never showed their animations
+between levels. It reads `gamemode == commercial` now, and they do.
+
+Checked: the 21 demos end as they did on the MBF21 build, the Boom test
+maps and the MBF21 test patch as before; Legacy of Rust's 16 maps start
+and run; MAP03 and MAP10, ended from the debugger with levels marked played, show each
+episode's picture with a splat on each and "You are here" at the next;
+episode 1 on DOOM shows its animations where 1.17.3 showed none; a save
+with levels played loads on 1.17.3 and here with them. The smoke test's
+`id24` phase ends E1M1 by itself (every sector special 11, on the easiest
+skill) into an `INTERLEVEL` tally of its own, and checks its background
+and that of two squares only the one whose condition holds is drawn.
+
 ## A savegame from another game or mod
 
 id's savegame is the level by number: the players, then each sector's

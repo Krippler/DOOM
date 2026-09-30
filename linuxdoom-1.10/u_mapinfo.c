@@ -208,6 +208,18 @@ umapentry_t* U_ThisMap (void)
     return U_FindMap (gameepisode, gamemap);
 }
 
+// Whether a level is one some map's secret exit leads to.
+boolean U_IsSecretMap (int episode, int map)
+{
+    int		i;
+
+    for (i = 0; i < nummaps; i++)
+	if (maps[i].secretmap == map
+	    && (gamemode == commercial || maps[i].secretepisode == episode))
+	    return true;
+    return false;
+}
+
 
 //
 // SCANNER
@@ -578,6 +590,10 @@ static void U_Key (umapentry_t* m, const char* key)
 	U_LumpValue (m->exitpic, key);
     else if (!strcasecmp (key, "enterpic"))
 	U_LumpValue (m->enterpic, key);
+    else if (!strcasecmp (key, "exitanim"))
+	U_LumpValue (m->exitanim, key);
+    else if (!strcasecmp (key, "enteranim"))
+	U_LumpValue (m->enteranim, key);
     else if (!strcasecmp (key, "interbackdrop"))
 	U_LumpValue (m->interbackdrop, key);
     else if (!strcasecmp (key, "intermusic"))

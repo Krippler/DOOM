@@ -59,6 +59,8 @@ typedef struct
     char	music[9];
     char	exitpic[9];
     char	enterpic[9];
+    char	exitanim[9];	// ID24 INTERLEVEL lumps
+    char	enteranim[9];
     char	endpic[9];
     char	interbackdrop[9];
     char	intermusic[9];
@@ -107,6 +109,9 @@ umapentry_t* U_FindMap (int episode, int map);
 
 // The entry for the map being played, or NULL.
 umapentry_t* U_ThisMap (void);
+
+// Whether a level is one some map's secret exit leads to.
+boolean U_IsSecretMap (int episode, int map);
 
 // "E5M1" or "MAP21" to an episode and a map, in the form this game uses.
 boolean U_ParseMapName (const char* name, int* episode, int* map);
