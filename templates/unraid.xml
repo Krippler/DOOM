@@ -39,6 +39,11 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.17.1
+- The New Game and Load WAD lists name games and mods ("SIGIL II", "The
+  Ultimate DOOM") rather than their files, with the file named above the
+  list.
+
 ### 1.17.0
 - DEHACKED patches are applied, the way classic mods change monsters,
   weapons, frames, sounds and texts: from a mod's DEHACKED lump, a .deh

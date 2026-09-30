@@ -371,8 +371,14 @@ can vibrate, and whether it reached the game.
 ## Loading WADs from the game
 
 **New Game** first asks what to play: everything in the mounted WAD
-directory, in alphabetical order, marked `GAME` for an IWAD and `MOD` for a
-PWAD, with the one running now marked `PLAYING` and the cursor on it. Pick
+directory, by the name of the game or mod rather than the file — SIGIL II,
+The Ultimate DOOM, No Rest for the Living — in alphabetical order, marked
+`GAME` for an IWAD and `MOD` for a PWAD, with the one running now marked
+`PLAYING` and the cursor on it. The file the cursor is on is named above the
+list. The name comes from the WAD itself (its UMAPINFO or GAMEINFO), from the
+"Title" line of a `.txt` of the same name beside it, as mods from the idgames
+archive come, or, for a game, from what its maps say it is; failing all of
+those, it is the file's name. Pick
 that one and you go straight on to the difficulty, as before. Pick another
 and the engine restarts with it and opens on the difficulty menu itself.
 A mod whose maps are all one episode — SIGIL, SIGIL II, any `MAP01`-style
