@@ -12,7 +12,7 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
-## [Unreleased]
+## [1.18.1] — 2026-09-30
 
 ### Fixed
 - Legacy of Rust's nukage and blood floors (and any mod's animated floor or
