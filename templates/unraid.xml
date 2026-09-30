@@ -39,6 +39,12 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.17.3
+- Saves from before 1.17.2 find their own game or mod in the WAD folder,
+  and loading one restarts on it.
+- The Load and Save Game menus name the game the highlighted save was
+  made in.
+
 ### 1.17.2
 - Loading a game saved with another game or mod no longer crashes: saves
   remember their WADs, and loading one restarts on them. Older saves that

@@ -834,9 +834,69 @@ EOF
         || die "refusing a save, the engine went away; see $work/savegame3.log"
     kill "$game_pid" 2>/dev/null
     wait_game 10
+
+    # A save from before saves listed their WADs, made on a game whose E1M1
+    # is not the running game's -- E1M2's lumps under E1M1's name, last in
+    # the file -- is looked for in the WAD folder by its map, found, and
+    # loaded on it.
+    python3 - "$wad" "$work/wads/doom1c.wad" <<'EOF'
+import struct, sys
+d = open(sys.argv[1], 'rb').read()
+n, ofs = struct.unpack('<ii', d[4:12])
+lumps = [struct.unpack('<ii8s', d[ofs + 16*i:ofs + 16*i + 16]) for i in range(n)]
+names = [l[2].rstrip(b'\0') for l in lumps]
+m = names.index(b'E1M2')
+# the old lumps, then E1M1 again, from E1M2's
+out, dirs = b'', []
+for fp, sz, nm in lumps:
+    dirs.append((12 + len(out), sz, nm))
+    out += d[fp:fp + sz]
+for i in range(m, m + 11):
+    fp, sz, nm = lumps[i]
+    dirs.append((12 + len(out), sz, b'E1M1' if i == m else nm))
+    out += d[fp:fp + sz]
+open(sys.argv[2], 'wb').write(b'IWAD' + struct.pack('<ii', len(dirs), 12 + len(out))
+    + out + b''.join(struct.pack('<ii8s', *x) for x in dirs))
+EOF
+    game_iwad="$work/wads/doom1c.wad" start_game savegame4.log -warp 1 1 -nojoy
+    wait_window savegame4.log
+    for k in F2 Down Down Return c Return; do
+        DISPLAY="$disp" xdotool key "$k"
+        sleep 0.5
+    done
+    i=0
+    until grep -q "^G_DoSaveGame: doomsav2.dsg" "$work/savegame4.log"; do
+        i=$((i + 1))
+        [ "$i" -gt 100 ] && die "the game was not saved; see $work/savegame4.log"
+        sleep 0.1
+    done
+    kill "$game_pid" 2>/dev/null
+    wait_game 10
+    python3 - "$work/doomsav2.dsg" <<'EOF'
+import struct, sys
+d = open(sys.argv[1], 'rb').read()
+n = struct.unpack('<i', d[-8:-4])[0]
+open(sys.argv[1], 'wb').write(d[:-8 - n])     # as saves were before
+EOF
+    start_game savegame5.log -nojoy -loadgame 2
+    i=0
+    until grep -q "^G_DoLoadGame: doomsav2.dsg, E1M1" "$work/savegame5.log"; do
+        i=$((i + 1))
+        [ "$i" -gt 200 ] && { tail -20 "$work/savegame5.log" >&2;
+            die "a save from before was not loaded on the game it fits; see $work/savegame5.log"; }
+        sleep 0.1
+    done
+    grep -q "^G_DoLoadGame: doomsav2.dsg was not saved on these, but fits .*/doom1c.wad" \
+            "$work/savegame5.log" \
+        && grep -q "^ adding .*/doom1c.wad" "$work/savegame5.log" \
+        || die "a save from before was loaded, but not on the game it fits; see $work/savegame5.log"
+    kill "$game_pid" 2>/dev/null
+    wait_game 10
+    say "a save from before, found its game in the WAD folder, and loaded on it"
+
     stop_x
     game_dir=
-    rm -f "$work/wads/doom1b.wad" "$work"/doomsav*.dsg
+    rm -f "$work/wads/doom1b.wad" "$work/wads/doom1c.wad" "$work"/doomsav*.dsg
     say "a save that does not fit its map is refused, and the engine goes on"
 else
     say "savegame: skipped, xdotool is not installed"

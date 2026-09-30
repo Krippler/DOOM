@@ -12,6 +12,17 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [1.17.3] — 2026-09-30
+
+### Changed
+- **Saves from before 1.17.2 find their own game**: they do not say what
+  they were saved in, so each game and mod in the WAD folder is tried
+  against the save's map, and loading one restarts on the one it fits, as
+  newer saves do. The message that told you only to load "another game or
+  mod" first now appears only when none in the folder fits.
+- The Load and Save Game menus say under the slots what the one the cursor
+  is on was saved in: "SAVED IN SIGIL II".
+
 ## [1.17.2] — 2026-09-30
 
 ### Fixed

@@ -1527,6 +1527,76 @@ static boolean G_SameWad (char* a, char* b)
     return sa.st_dev == sb.st_dev && sa.st_ino == sb.st_ino;
 }
 
+// Whether files are the WADs running, in the same order.
+static boolean G_RunningWads (char** files, int n)
+{
+    int		i;
+
+    for (i = 0; i < n; i++)
+	if (!wadfiles[i] || !G_SameWad (files[i], wadfiles[i]))
+	    return false;
+    return !wadfiles[n];
+}
+
+
+//
+// G_SaveGameWads
+// What the savegame in buf was made on, for loading it and for the Load and
+// Save Game menus to name. The WADs go in files, up to max of them, and how
+// they were known is returned:
+//   SAVE_LISTED   the save lists them itself
+//   SAVE_RUNNING  a save from before the list, that fits the game running
+//   SAVE_FOUND    one from before that does not, but fits the map of a
+//                 game or mod in the WAD folder (M_FindSaveWads)
+//   SAVE_UNKNOWN  one from before that fits nothing here: files is empty
+//   SAVE_BAD      not a savegame this engine reads
+// *end is where its archive ends; *header, where its skill, episode, map
+// and players are.
+//
+savewads_t
+G_SaveGameWads
+( byte*		buf,
+  int		length,
+  char**	files,
+  int		max,
+  int*		numfiles,
+  byte**	header,
+  byte**	end )
+{
+    char	vcheck[VERSIONSIZE];
+    boolean	ingame[MAXPLAYERS];
+    char	mapname[9];
+    byte*	p;
+    int		i;
+
+    *numfiles = 0;
+    memset (vcheck, 0, sizeof(vcheck));
+    sprintf (vcheck, "version %i", VERSION);
+    if (length < SAVEGAMEHEAD
+	|| strncmp ((char*) buf + SAVESTRINGSIZE, vcheck, VERSIONSIZE))
+	return SAVE_BAD;
+    p = *header = buf + SAVESTRINGSIZE + VERSIONSIZE;
+
+    if ((*numfiles = G_ReadSaveWads (buf, length, files, max, end)))
+	return SAVE_LISTED;
+
+    for (i = 0; i < MAXPLAYERS; i++)
+	ingame[i] = p[3 + i];
+    U_MapName (mapname, p[1], p[2]);
+    if (P_SaveGameFits (p + 3 + MAXPLAYERS + 3, *end,
+			W_CheckNumForName (mapname), ingame))
+    {
+	for (i = 0; wadfiles[i] && i < max; i++)
+	    files[i] = wadfiles[i];
+	*numfiles = i;
+	return SAVE_RUNNING;
+    }
+
+    *numfiles = M_FindSaveWads (p + 3 + MAXPLAYERS + 3, *end, p[1], p[2],
+				ingame, files);
+    return *numfiles ? SAVE_FOUND : SAVE_UNKNOWN;
+}
+
 
 // Not loaded: why, and the buffer freed. The game going on goes on; with
 // none -- -loadgame, or the restart for one -- the title screen, which
@@ -1551,7 +1621,6 @@ void G_DoLoadGame (void)
     int		length; 
     int		i; 
     int		a,b,c; 
-    char	vcheck[VERSIONSIZE]; 
     char*	files[256];
     int		numfiles;
     byte*	end;
@@ -1560,6 +1629,7 @@ void G_DoLoadGame (void)
     char	mapname[9];
     FILE*	f;
     boolean	restarted = loadgame_restarted;
+    savewads_t	how;
 	 
     gameaction = ga_nothing; 
     loadgame_restarted = false;		// for this load only
@@ -1570,48 +1640,36 @@ void G_DoLoadGame (void)
     fclose (f);
 	 
     length = M_ReadFile (savename, &savebuffer); 
-    save_p = savebuffer + SAVESTRINGSIZE;
-    
-    // skip the description field 
-    memset (vcheck,0,sizeof(vcheck)); 
-    sprintf (vcheck,"version %i",VERSION); 
-    if (length < SAVEGAMEHEAD || strcmp ((char*)save_p, vcheck))
+    how = G_SaveGameWads (savebuffer, length, files,
+			  sizeof(files)/sizeof(*files), &numfiles,
+			  &save_p, &end);
+    if (how == SAVE_BAD)
     {
 	Z_Free (savebuffer);
 	return;				// bad version 
     }
-    save_p += VERSIONSIZE; 
-
-    // Saved on other WADs than these: restart on them to load it, once.
-    numfiles = G_ReadSaveWads (savebuffer, length, files,
-			       sizeof(files)/sizeof(*files), &end);
     // the list of WADs came in with targets saved as numbers
-    savegamerefs = numfiles > 0;
-    if (numfiles)
+    savegamerefs = how == SAVE_LISTED;
+
+    // Made on other WADs than these: restart on them to load it, once.
+    if ((how == SAVE_LISTED || how == SAVE_FOUND)
+	&& !G_RunningWads (files, numfiles))
     {
-	boolean	same = true;
+	char*	missing = files[numfiles-1];
 
-	for (i = 0; i < numfiles && same; i++)
-	    same = wadfiles[i] && G_SameWad (files[i], wadfiles[i]);
-	if (same && wadfiles[numfiles])
-	    same = false;
-	if (!same)
-	{
-	    char*	missing = files[numfiles-1];
-
-	    printf ("G_DoLoadGame: %s was saved on", savename);
-	    for (i = 0; i < numfiles; i++)
-		printf (" %s", files[i]);
-	    printf ("\n");
-	    // (a demo on the title screen is no reason not to: loading
-	    // ends it anyway)
-	    if (!netgame && !restarted)
-		M_LoadSaveOn (files, numfiles, savename, &missing);
-	    // not restarted: one of them is not here
-	    printf ("G_DoLoadGame: not found: %s\n", missing);
-	    G_LoadFailed (missing);
-	    return;
-	}
+	printf ("G_DoLoadGame: %s was %s", savename,
+		how == SAVE_LISTED ? "saved on" : "not saved on these, but fits");
+	for (i = 0; i < numfiles; i++)
+	    printf (" %s", files[i]);
+	printf ("\n");
+	// (a demo on the title screen is no reason not to: loading ends
+	// it anyway)
+	if (!netgame && !restarted)
+	    M_LoadSaveOn (files, numfiles, savename, &missing);
+	// not restarted: one of them is not here
+	printf ("G_DoLoadGame: not found: %s\n", missing);
+	G_LoadFailed (missing);
+	return;
     }
 			 
     skill = *save_p++; 

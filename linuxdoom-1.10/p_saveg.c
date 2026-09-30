@@ -724,22 +724,27 @@ void P_UnArchiveSpecials (void)
 // tables and the engine fell over in P_UnArchiveSpecials. Here each is held
 // to what this map and this game have.
 //
-boolean P_SaveGameFits (byte* p, byte* end, int maplump, boolean* ingame)
+// The map as numbers: nsectors, and nlines lines as its LINEDEFS lump has
+// them, for which sides each has. graphics: the flats and textures are the
+// game's running now, and held to its tables too.
+static boolean
+P_SaveFitsMap
+( byte*		p,
+  byte*		end,
+  int		nsectors,
+  int		nlines,
+  maplinedef_t*	ml,
+  boolean	graphics,
+  boolean*	ingame )
 {
-    int			nsectors, nlines, i, j;
+    int			i, j;
     int			nmobjs = 0;
     uintptr_t		maxref = 0;
-    maplinedef_t*	ml;
     short		v[5];
     byte		tclass;
 
 #define PAD()	p += (4 - ((intptr_t) p & 3)) & 3
 #define NEED(n)	if (end - p < (int)(n)) return false
-
-    if (maplump < 0 || maplump + ML_SECTORS >= numlumps)
-	return false;
-    nsectors = W_LumpLength (maplump + ML_SECTORS) / sizeof(mapsector_t);
-    nlines = W_LumpLength (maplump + ML_LINEDEFS) / sizeof(maplinedef_t);
 
     // players
     for (i = 0; i < MAXPLAYERS; i++)
@@ -763,10 +768,10 @@ boolean P_SaveGameFits (byte* p, byte* end, int maplump, boolean* ingame)
 	NEED(7 * sizeof(short));
 	memcpy (v, p, 4 * sizeof(short));
 	p += 7 * sizeof(short);
-	if (v[2] < 0 || v[2] >= numflats || v[3] < 0 || v[3] >= numflats)
+	if (graphics
+	    && (v[2] < 0 || v[2] >= numflats || v[3] < 0 || v[3] >= numflats))
 	    return false;
     }
-    ml = W_CacheLumpNum (maplump + ML_LINEDEFS, PU_CACHE);
     for (i = 0; i < nlines; i++)
     {
 	NEED(3 * sizeof(short));
@@ -778,9 +783,10 @@ boolean P_SaveGameFits (byte* p, byte* end, int maplump, boolean* ingame)
 	    NEED(5 * sizeof(short));
 	    memcpy (v, p, 5 * sizeof(short));
 	    p += 5 * sizeof(short);
-	    if (v[2] < 0 || v[2] >= numtextures
-		|| v[3] < 0 || v[3] >= numtextures
-		|| v[4] < 0 || v[4] >= numtextures)
+	    if (graphics
+		&& (v[2] < 0 || v[2] >= numtextures
+		    || v[3] < 0 || v[3] >= numtextures
+		    || v[4] < 0 || v[4] >= numtextures))
 		return false;
 	}
     }
@@ -870,4 +876,99 @@ boolean P_SaveGameFits (byte* p, byte* end, int maplump, boolean* ingame)
     }
 #undef PAD
 #undef NEED
+}
+
+
+boolean P_SaveGameFits (byte* p, byte* end, int maplump, boolean* ingame)
+{
+    if (maplump < 0 || maplump + ML_SECTORS >= numlumps)
+	return false;
+    return P_SaveFitsMap (p, end,
+			  W_LumpLength (maplump + ML_SECTORS)
+			  / sizeof(mapsector_t),
+			  W_LumpLength (maplump + ML_LINEDEFS)
+			  / sizeof(maplinedef_t),
+			  W_CacheLumpNum (maplump + ML_LINEDEFS, PU_CACHE),
+			  true, ingame);
+}
+
+
+//
+// P_SaveFitsFile
+// Whether the archive fits the map of that episode and number in the WAD
+// file at path, by the WAD's own lumps, not the game's loaded: which game
+// or mod a save from before saves listed their WADs was made on. Its map
+// is looked for by either kind of name, since the game running decides
+// which the save's numbers mean. The flats and textures are the running
+// game's, so they are not held to anything here.
+//
+boolean
+P_SaveFitsFile
+( byte*		p,
+  byte*		end,
+  char*		path,
+  int		episode,
+  int		map,
+  boolean*	ingame )
+{
+    FILE*		f = fopen (path, "rb");
+    unsigned char	head[12];
+    unsigned char*	dir = NULL;
+    maplinedef_t*	ml = NULL;
+    char		names[2][9];
+    int			numlumps, ofs, i, k, found;
+    boolean		fits = false;
+
+#define LE32(b)	((b)[0] | ((b)[1] << 8) | ((b)[2] << 16) | ((b)[3] << 24))
+
+    if (!f)
+	return false;
+    if (fread (head, 1, 12, f) != 12
+	|| (memcmp (head, "IWAD", 4) && memcmp (head, "PWAD", 4)))
+	goto done;
+    numlumps = LE32(head + 4);
+    ofs = LE32(head + 8);
+    if (numlumps <= 0 || numlumps > 1 << 20
+	|| !(dir = malloc (numlumps * 16))
+	|| fseek (f, ofs, SEEK_SET)
+	|| (int) fread (dir, 16, numlumps, f) != numlumps)
+	goto done;
+
+    snprintf (names[0], 9, "E%dM%d", episode % 10, map % 100);
+    snprintf (names[1], 9, "MAP%02d", map % 100);
+    for (k = 0; k < 2 && !fits; k++)
+    {
+	// the last of that name, as W_CheckNumForName finds it
+	found = -1;
+	for (i = 0; i < numlumps - ML_SECTORS; i++)
+	    if (!strncasecmp ((char*) dir + i*16 + 8, names[k], 8)
+		&& !strncasecmp ((char*) dir + (i + ML_LINEDEFS)*16 + 8,
+				 "LINEDEFS", 8)
+		&& !strncasecmp ((char*) dir + (i + ML_SECTORS)*16 + 8,
+				 "SECTORS", 8))
+		found = i;
+	if (found < 0)
+	    continue;
+	{
+	    unsigned char*	ld = dir + (found + ML_LINEDEFS)*16;
+	    unsigned char*	sd = dir + (found + ML_SECTORS)*16;
+	    int			size = LE32(ld + 4);
+
+	    free (ml);
+	    if (size < 0 || !(ml = malloc (size ? size : 1))
+		|| fseek (f, LE32(ld), SEEK_SET)
+		|| (int) fread (ml, 1, size, f) != size)
+		break;
+	    fits = P_SaveFitsMap (p, end, LE32(sd + 4) / sizeof(mapsector_t),
+				  size / sizeof(maplinedef_t), ml, false,
+				  ingame);
+	}
+    }
+#undef LE32
+
+  done:
+    free (ml);
+    free (dir);
+    fclose (f);
+    return fits;
 }
