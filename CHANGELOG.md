@@ -12,6 +12,70 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [1.18.0] — 2026-09-30
+
+### Added
+- **Boom maps**: mods whose text file asks for a Boom-compatible port
+  ("Boom", "PrBoom+", "complevel 9") now play. Generalized floors,
+  ceilings, doors (locked ones too), lifts, stairs and crushers; Boom's
+  further line types (elevators, silent teleports, texture and type
+  changes, lights); scrolling walls, floors and ceilings, and conveyors
+  that carry what stands on them; ice, mud, wind, currents, and point
+  pushers and pullers; damaging and secret sectors by flag; deep water and
+  other fake floors and ceilings, with their own colormaps; light
+  transfers; translucent walls; and skies taken from a wall's texture. A
+  mod plays as Boom when one of its maps uses any of that, or its `COMPLVL`
+  lump says so, and the log says which: `P_SetupLevel: foo.wad's maps play
+  as Boom's (MBF21)`. The games themselves and every other mod play as
+  before, to the random number.
+- **MBF and MBF21 mods**: DEHACKED patches can use MBF's and MBF21's code
+  pointers (spawning things, parameterized monster and weapon attacks,
+  seeking missiles, jumps on health, sight, distance or flags, flags
+  added and removed, weapon sounds, ammunition taken and checked), their
+  fields for things, frames and weapons (MBF21 Bits, infighting,
+  projectile and splash groups, fast speed, melee range, rip sound,
+  dropped item, frame arguments, ammo per shot, weapon flags), and MBF's
+  translucent, bouncing, touchy and friendly things. A patch can number
+  frames, things, sprites and sounds past DOOM's own, as far as it likes
+  (DEHEXTRA, DSDHacked), and the tables grow to fit. MBF21's line flags
+  that block players or monsters that walk, and its sectors that kill
+  monsters, work on Boom maps. A map thing the engine does not know is
+  left out, with a line in the log, where it used to stop the game, and
+  a frame with no pictures is not drawn rather than fatal.
+- **Legacy of Rust**: with `id1.wad` from the 2024 re-release beside
+  `doom2.wad`, its 16 maps play, with its new monsters, the Incinerator
+  and the Calamity Blade, and its two episodes, The Vulcan Abyss and
+  Counterfeit Eden, are offered on New Game. Between levels its
+  intermissions are its own: each episode's map, with the levels played so
+  far burnt out and a "You are here" at the next.
+- **ID24**, what the 2024 re-release adds for mods, as far as Legacy of
+  Rust uses it: `INTERLEVEL` intermissions (a UMAPINFO map's `exitanim`
+  and `enteranim`: a background, music, and layers of animations shown by
+  conditions such as the levels played), the `GAMECONF` lump (the WAD list
+  names the mod by its title, and it goes on the game it names), wall
+  scrollers by tag (1024-1026, 2084-2086) and on both sides (2082, 2083),
+  and flat offsets (2048-2050; 2051-2056 offset without rotating). A save
+  keeps the levels played, where 1.17.3 does not look, and still loads
+  there. The status bar is DOOM II's with Legacy of Rust's pictures; its
+  `SBARDEF` layout is not read.
+- Saves keep Boom's movers, scrollers and pushers, fire flickers (sector
+  type 17), which saves used to lose, and the MBF21 flags that a patch's
+  code pointers change. A save on any other map is written as before and
+  still loads on 1.17.3.
+
+### Fixed
+- The intermission's animations on DOOM's episode maps -- the lights, the
+  moving things, the flashing Tower of Babel -- were never drawn: id's Linux
+  code tested `commercial` where it meant `gamemode == commercial`, which
+  is always true. They are there now, as on DOS.
+- A map without a `BLOCKMAP` lump, which the engine makes its own for,
+  left out lines lying exactly on a block's edge, so a wall there could be
+  walked through and a line there crossed without triggering.
+- A DEHACKED patch whose `[STRINGS]` named `HUSTR_KEYGREEN`,
+  `HUSTR_KEYINDIGO`, `HUSTR_KEYBROWN` or `HUSTR_KEYRED` crashed the engine:
+  those are the chat keys, as characters, not texts. They are now left out
+  with a warning, as any unknown name is.
+
 ## [1.17.3] — 2026-09-30
 
 ### Changed

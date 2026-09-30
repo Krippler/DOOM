@@ -120,6 +120,8 @@ const char* D_Text (const char* s)
 
 
 // BEX [STRINGS] names: id's macro names, which are what Boom used
+// (not HUSTR_KEYGREEN and the other three: those are the chat keys, as
+// characters, not texts)
 static const struct { const char* name; const char* text; } bexstrings[] =
 {
     {"PRESSKEY", PRESSKEY},
@@ -189,6 +191,15 @@ static const struct { const char* name; const char* text; } bexstrings[] =
     {"PD_BLUEK", PD_BLUEK},
     {"PD_REDK", PD_REDK},
     {"PD_YELLOWK", PD_YELLOWK},
+    {"PD_BLUEC", PD_BLUEC},
+    {"PD_REDC", PD_REDC},
+    {"PD_YELLOWC", PD_YELLOWC},
+    {"PD_BLUES", PD_BLUES},
+    {"PD_REDS", PD_REDS},
+    {"PD_YELLOWS", PD_YELLOWS},
+    {"PD_ANY", PD_ANY},
+    {"PD_ALL3", PD_ALL3},
+    {"PD_ALL6", PD_ALL6},
     {"GGSAVED", GGSAVED},
     {"HUSTR_MSGU", HUSTR_MSGU},
     {"HUSTR_E1M1", HUSTR_E1M1},
@@ -343,10 +354,6 @@ static const struct { const char* name; const char* text; } bexstrings[] =
     {"HUSTR_PLRINDIGO", HUSTR_PLRINDIGO},
     {"HUSTR_PLRBROWN", HUSTR_PLRBROWN},
     {"HUSTR_PLRRED", HUSTR_PLRRED},
-    {"HUSTR_KEYGREEN", HUSTR_KEYGREEN},
-    {"HUSTR_KEYINDIGO", HUSTR_KEYINDIGO},
-    {"HUSTR_KEYBROWN", HUSTR_KEYBROWN},
-    {"HUSTR_KEYRED", HUSTR_KEYRED},
     {"AMSTR_FOLLOWON", AMSTR_FOLLOWON},
     {"AMSTR_FOLLOWOFF", AMSTR_FOLLOWOFF},
     {"AMSTR_GRIDON", AMSTR_GRIDON},
@@ -409,6 +416,47 @@ static const struct { const char* name; const char* text; } bexstrings[] =
 
 
 // Code pointers by name, for [CODEPTR]
+void A_Detonate ();
+void A_Mushroom ();
+void A_Die ();
+void A_Spawn ();
+void A_Turn ();
+void A_Face ();
+void A_Scratch ();
+void A_PlaySound ();
+void A_RandomJump ();
+void A_LineEffect ();
+void A_FireOldBFG ();
+void A_BetaSkullAttack ();
+void A_Stop ();
+void A_SpawnObject ();
+void A_MonsterProjectile ();
+void A_MonsterBulletAttack ();
+void A_MonsterMeleeAttack ();
+void A_RadiusDamage ();
+void A_NoiseAlert ();
+void A_HealChase ();
+void A_SeekTracer ();
+void A_FindTracer ();
+void A_ClearTracer ();
+void A_JumpIfHealthBelow ();
+void A_JumpIfTargetInSight ();
+void A_JumpIfTargetCloser ();
+void A_JumpIfTracerInSight ();
+void A_JumpIfTracerCloser ();
+void A_JumpIfFlagsSet ();
+void A_AddFlags ();
+void A_RemoveFlags ();
+void A_WeaponProjectile ();
+void A_WeaponBulletAttack ();
+void A_WeaponMeleeAttack ();
+void A_WeaponSound ();
+void A_WeaponAlert ();
+void A_WeaponJump ();
+void A_ConsumeAmmo ();
+void A_CheckAmmo ();
+void A_RefireTo ();
+void A_GunFlashTo ();
 void A_BFGSpray ();
 void A_BFGsound ();
 void A_BabyMetal ();
@@ -484,7 +532,15 @@ void A_VileTarget ();
 void A_WeaponReady ();
 void A_XScream ();
 
-static const struct { const char* name; void (*fn) (); } codeptrs[] =
+// with, for MBF21's, how many of a frame's args it takes and what they are
+// when a patch leaves them unset
+static const struct
+{
+    const char*	name;
+    void	(*fn) ();
+    int		argcount;
+    int		args[MAXSTATEARGS];
+} codeptrs[] =
 {
     {"BFGSpray", A_BFGSpray},
     {"BFGsound", A_BFGsound},
@@ -560,6 +616,49 @@ static const struct { const char* name; void (*fn) (); } codeptrs[] =
     {"VileTarget", A_VileTarget},
     {"WeaponReady", A_WeaponReady},
     {"XScream", A_XScream},
+    // MBF's
+    {"Detonate", A_Detonate},
+    {"Mushroom", A_Mushroom},
+    {"Die", A_Die},
+    {"Spawn", A_Spawn},
+    {"Turn", A_Turn},
+    {"Face", A_Face},
+    {"Scratch", A_Scratch},
+    {"PlaySound", A_PlaySound},
+    {"RandomJump", A_RandomJump},
+    {"LineEffect", A_LineEffect},
+    {"FireOldBFG", A_FireOldBFG},
+    {"BetaSkullAttack", A_BetaSkullAttack},
+    {"Stop", A_Stop},
+    // MBF21's
+    {"SpawnObject", A_SpawnObject, 8},
+    {"MonsterProjectile", A_MonsterProjectile, 5},
+    {"MonsterBulletAttack", A_MonsterBulletAttack, 5, {0, 0, 1, 3, 5}},
+    {"MonsterMeleeAttack", A_MonsterMeleeAttack, 4, {3, 8, 0, 0}},
+    {"RadiusDamage", A_RadiusDamage, 2},
+    {"NoiseAlert", A_NoiseAlert, 0},
+    {"HealChase", A_HealChase, 2},
+    {"SeekTracer", A_SeekTracer, 2},
+    {"FindTracer", A_FindTracer, 2, {0, 10}},
+    {"ClearTracer", A_ClearTracer, 0},
+    {"JumpIfHealthBelow", A_JumpIfHealthBelow, 2},
+    {"JumpIfTargetInSight", A_JumpIfTargetInSight, 2},
+    {"JumpIfTargetCloser", A_JumpIfTargetCloser, 2},
+    {"JumpIfTracerInSight", A_JumpIfTracerInSight, 2},
+    {"JumpIfTracerCloser", A_JumpIfTracerCloser, 2},
+    {"JumpIfFlagsSet", A_JumpIfFlagsSet, 3},
+    {"AddFlags", A_AddFlags, 2},
+    {"RemoveFlags", A_RemoveFlags, 2},
+    {"WeaponProjectile", A_WeaponProjectile, 5},
+    {"WeaponBulletAttack", A_WeaponBulletAttack, 5, {0, 0, 1, 5, 3}},
+    {"WeaponMeleeAttack", A_WeaponMeleeAttack, 5, {2, 10, FRACUNIT, 0, 0}},
+    {"WeaponSound", A_WeaponSound, 2},
+    {"WeaponAlert", A_WeaponAlert, 0},
+    {"WeaponJump", A_WeaponJump, 2},
+    {"ConsumeAmmo", A_ConsumeAmmo, 1},
+    {"CheckAmmo", A_CheckAmmo, 2},
+    {"RefireTo", A_RefireTo, 2},
+    {"GunFlashTo", A_GunFlashTo, 2},
     {NULL, NULL}
 };
 
@@ -596,6 +695,49 @@ static const struct { const char* name; int bit; } thingflags[] =
     {"TRANSLATION", MF_TRANSLATION},
     {"TRANSLATION1", 1 << MF_TRANSSHIFT},
     {"TRANSLATION2", 2 << MF_TRANSSHIFT},
+    // MBF's
+    {"TOUCHY", MF_TOUCHY},
+    {"BOUNCES", MF_BOUNCES},
+    {"FRIEND", MF_FRIEND},
+    {"TRANSLUCENT", MF_TRANSLUCENT},
+    {NULL, 0}
+};
+
+// MBF21's: a thing's, a frame's and a weapon's own
+static const struct { const char* name; int bit; } mbf21flags[] =
+{
+    {"LOGRAV", MF2_LOGRAV},
+    {"SHORTMRANGE", MF2_SHORTMRANGE},
+    {"DMGIGNORED", MF2_DMGIGNORED},
+    {"NORADIUSDMG", MF2_NORADIUSDMG},
+    {"FORCERADIUSDMG", MF2_FORCERADIUSDMG},
+    {"HIGHERMPROB", MF2_HIGHERMPROB},
+    {"RANGEHALF", MF2_RANGEHALF},
+    {"NOTHRESHOLD", MF2_NOTHRESHOLD},
+    {"LONGMELEE", MF2_LONGMELEE},
+    {"BOSS", MF2_BOSS},
+    {"MAP07BOSS1", MF2_MAP07BOSS1},
+    {"MAP07BOSS2", MF2_MAP07BOSS2},
+    {"E1M8BOSS", MF2_E1M8BOSS},
+    {"E2M8BOSS", MF2_E2M8BOSS},
+    {"E3M8BOSS", MF2_E3M8BOSS},
+    {"E4M6BOSS", MF2_E4M6BOSS},
+    {"E4M8BOSS", MF2_E4M8BOSS},
+    {"RIP", MF2_RIP},
+    {"FULLVOLSOUNDS", MF2_FULLVOLSOUNDS},
+    {NULL, 0}
+}, frameflags[] =
+{
+    {"SKILL5FAST", STATEF_SKILL5FAST},
+    {NULL, 0}
+}, weaponflags[] =
+{
+    {"NOTHRUST", WPF_NOTHRUST},
+    {"SILENT", WPF_SILENT},
+    {"NOAUTOFIRE", WPF_NOAUTOFIRE},
+    {"FLEEMELEE", WPF_FLEEMELEE},
+    {"AUTOSWITCHFROM", WPF_AUTOSWITCHFROM},
+    {"NOAUTOSWITCHTO", WPF_NOAUTOSWITCHTO},
     {NULL, 0}
 };
 
@@ -606,8 +748,10 @@ static const struct { const char* name; int bit; } thingflags[] =
 static const char*	dehname;	// for the log
 static int		dehline;
 static int		dehchanges;
-static actionf_t	origaction[NUMSTATES];
-static boolean		origsaved;
+static actionf_t*	origaction;	// each frame's before any patch
+static int		numorigaction;
+static unsigned char*	argsset;	// which of a frame's args a patch set
+static int		numargsset;
 
 static void D_Warn (const char* fmt, ...)
 {
@@ -638,7 +782,9 @@ static int D_Number (const char* s)
 }
 
 // Bits: a number, or BEX's flag names joined by +, |, commas or spaces
-static int D_Bits (const char* s)
+typedef struct { const char* name; int bit; } dehflag_t;
+
+static int D_BitsIn (const char* s, const dehflag_t* flags, const char* what)
 {
     char	word[32];
     int		bits = 0;
@@ -661,15 +807,50 @@ static int D_Bits (const char* s)
 	word[n] = 0;
 	if (!n)
 	    break;
-	for (i = 0; thingflags[i].name; i++)
-	    if (!strcmp (word, thingflags[i].name))
+	for (i = 0; flags[i].name; i++)
+	    if (!strcmp (word, flags[i].name))
 		break;
-	if (thingflags[i].name)
-	    bits |= thingflags[i].bit;
+	if (flags[i].name)
+	    bits |= flags[i].bit;
 	else
-	    D_Warn ("thing flag %s is not one of DOOM's; left out", word);
+	    D_Warn ("%s %s is not one known here; left out", what, word);
     }
     return bits;
+}
+
+#define D_Bits(s)	D_BitsIn (s, (const dehflag_t *) thingflags, "thing flag")
+
+// A frame, sound, sprite or thing that a field names is made if it is past
+// the table's end (DSDHacked): the field then points at something.
+static int D_StateRef (int x)
+{
+    if (D_GrowStates (x))
+	return x;
+    D_Warn ("no frame %d can be; frame 0 instead", x);
+    return 0;
+}
+
+static int D_SoundRef (int x)
+{
+    if (x == 0 || D_GrowSounds (x))
+	return x;
+    D_Warn ("no sound %d can be; none instead", x);
+    return 0;
+}
+
+static int D_SpriteRef (int x)
+{
+    if (D_GrowSprites (x))
+	return x;
+    D_Warn ("no sprite %d can be; sprite 0 instead", x);
+    return 0;
+}
+
+static int D_ThingRef (int x)	// from 1, as patches number things
+{
+    if (x >= 1 && D_GrowThings (x - 1))
+	return x - 1;
+    return MT_NULL;
 }
 
 
@@ -678,32 +859,51 @@ static int D_Bits (const char* s)
 //
 static void D_Thing (int n, const char* key, const char* v)
 {
-    mobjinfo_t*	m = &mobjinfo[n];
+    mobjinfo_t*	m;
     int		x = D_Number (v);
 
+    // a thing this names may grow the table (as in D_Frame)
+    if (!strcasecmp (key, "Dropped item"))
+	x = D_ThingRef (x);
+    m = &mobjinfo[n];
+
     if (!strcasecmp (key, "ID #"))			m->doomednum = x;
-    else if (!strcasecmp (key, "Initial frame"))	m->spawnstate = x;
+    else if (!strcasecmp (key, "Initial frame"))	m->spawnstate = D_StateRef (x);
     else if (!strcasecmp (key, "Hit points"))		m->spawnhealth = x;
-    else if (!strcasecmp (key, "First moving frame"))	m->seestate = x;
-    else if (!strcasecmp (key, "Alert sound"))		m->seesound = x;
+    else if (!strcasecmp (key, "First moving frame"))	m->seestate = D_StateRef (x);
+    else if (!strcasecmp (key, "Alert sound"))		m->seesound = D_SoundRef (x);
     else if (!strcasecmp (key, "Reaction time"))	m->reactiontime = x;
-    else if (!strcasecmp (key, "Attack sound"))		m->attacksound = x;
-    else if (!strcasecmp (key, "Injury frame"))		m->painstate = x;
+    else if (!strcasecmp (key, "Attack sound"))		m->attacksound = D_SoundRef (x);
+    else if (!strcasecmp (key, "Injury frame"))		m->painstate = D_StateRef (x);
     else if (!strcasecmp (key, "Pain chance"))		m->painchance = x;
-    else if (!strcasecmp (key, "Pain sound"))		m->painsound = x;
-    else if (!strcasecmp (key, "Close attack frame"))	m->meleestate = x;
-    else if (!strcasecmp (key, "Far attack frame"))	m->missilestate = x;
-    else if (!strcasecmp (key, "Death frame"))		m->deathstate = x;
-    else if (!strcasecmp (key, "Exploding frame"))	m->xdeathstate = x;
-    else if (!strcasecmp (key, "Death sound"))		m->deathsound = x;
+    else if (!strcasecmp (key, "Pain sound"))		m->painsound = D_SoundRef (x);
+    else if (!strcasecmp (key, "Close attack frame"))	m->meleestate = D_StateRef (x);
+    else if (!strcasecmp (key, "Far attack frame"))	m->missilestate = D_StateRef (x);
+    else if (!strcasecmp (key, "Death frame"))		m->deathstate = D_StateRef (x);
+    else if (!strcasecmp (key, "Exploding frame"))	m->xdeathstate = D_StateRef (x);
+    else if (!strcasecmp (key, "Death sound"))		m->deathsound = D_SoundRef (x);
     else if (!strcasecmp (key, "Speed"))		m->speed = x;
     else if (!strcasecmp (key, "Width"))		m->radius = x;
     else if (!strcasecmp (key, "Height"))		m->height = x;
     else if (!strcasecmp (key, "Mass"))			m->mass = x;
     else if (!strcasecmp (key, "Missile damage"))	m->damage = x;
-    else if (!strcasecmp (key, "Action sound"))		m->activesound = x;
+    else if (!strcasecmp (key, "Action sound"))		m->activesound = D_SoundRef (x);
     else if (!strcasecmp (key, "Bits"))			m->flags = D_Bits (v);
-    else if (!strcasecmp (key, "Respawn frame"))	m->raisestate = x;
+    else if (!strcasecmp (key, "Respawn frame"))	m->raisestate = D_StateRef (x);
+    // DEHEXTRA's
+    else if (!strcasecmp (key, "Dropped item"))		m->droppeditem = x;
+    // MBF21's
+    else if (!strcasecmp (key, "MBF21 Bits"))
+	m->flags2 = D_BitsIn (v, (const dehflag_t *) mbf21flags, "MBF21 flag");
+    else if (!strcasecmp (key, "Infighting group"))
+	m->infighting_group = x < 0 ? IG_DEFAULT : x + IG_END;
+    else if (!strcasecmp (key, "Projectile group"))
+	m->projectile_group = x < 0 ? PG_GROUPLESS : x + PG_END;
+    else if (!strcasecmp (key, "Splash group"))
+	m->splash_group = x < 0 ? SG_DEFAULT : x + SG_END;
+    else if (!strcasecmp (key, "Rip sound"))		m->ripsound = D_SoundRef (x);
+    else if (!strcasecmp (key, "Fast speed"))		m->altspeed = x;
+    else if (!strcasecmp (key, "Melee range"))		m->meleerange = x;
     else
     {
 	D_Warn ("Thing has no \"%s\"; left out", key);
@@ -714,8 +914,16 @@ static void D_Thing (int n, const char* key, const char* v)
 
 static void D_Frame (int n, const char* key, const char* v)
 {
-    state_t*	s = &states[n];
+    state_t*	s;
     int		x = D_Number (v);
+
+    // A frame or sprite this names may grow its table, which can move it:
+    // the entry is found once that is done.
+    if (!strcasecmp (key, "Next frame"))
+	x = D_StateRef (x);
+    else if (!strcasecmp (key, "Sprite number"))
+	x = D_SpriteRef (x);
+    s = &states[n];
 
     if (!strcasecmp (key, "Sprite number"))		s->sprite = x;
     else if (!strcasecmp (key, "Sprite subnumber"))	s->frame = x;
@@ -725,13 +933,36 @@ static void D_Frame (int n, const char* key, const char* v)
     else if (!strcasecmp (key, "Unknown 2"))		s->misc2 = x;
     else if (!strcasecmp (key, "Codep frame"))
     {
-	if (x < 0 || x >= NUMSTATES)
+	if (x < 0 || x >= numstates)
 	{
 	    D_Warn ("no frame %d to take a code pointer from", x);
 	    return;
 	}
-	s->action = origaction[x];
+	// a frame past id's had none before any patch
+	if (x < numorigaction)
+	    s->action = origaction[x];
+	else
+	    s->action.acv = NULL;
     }
+    // MBF21's
+    else if (!strncasecmp (key, "Args", 4) && key[4] >= '1' && key[4] <= '8'
+	     && !key[5])
+    {
+	int	k = key[4] - '1';
+
+	s->args[k] = x;
+	if (numargsset < numstates)
+	{
+	    argsset = realloc (argsset, numstates);
+	    if (!argsset)
+		I_Error ("DEHACKED: out of memory");
+	    memset (argsset + numargsset, 0, numstates - numargsset);
+	    numargsset = numstates;
+	}
+	argsset[n] |= 1 << k;
+    }
+    else if (!strcasecmp (key, "MBF21 Bits"))
+	s->flags = D_BitsIn (v, (const dehflag_t *) frameflags, "frame flag");
     else
     {
 	D_Warn ("Frame has no \"%s\"; left out", key);
@@ -746,11 +977,19 @@ static void D_Weapon (int n, const char* key, const char* v)
     int			x = D_Number (v);
 
     if (!strcasecmp (key, "Ammo type"))			w->ammo = x;
-    else if (!strcasecmp (key, "Deselect frame"))	w->upstate = x;
-    else if (!strcasecmp (key, "Select frame"))		w->downstate = x;
-    else if (!strcasecmp (key, "Bobbing frame"))	w->readystate = x;
-    else if (!strcasecmp (key, "Shooting frame"))	w->atkstate = x;
-    else if (!strcasecmp (key, "Firing frame"))		w->flashstate = x;
+    else if (!strcasecmp (key, "Deselect frame"))	w->upstate = D_StateRef (x);
+    else if (!strcasecmp (key, "Select frame"))		w->downstate = D_StateRef (x);
+    else if (!strcasecmp (key, "Bobbing frame"))	w->readystate = D_StateRef (x);
+    else if (!strcasecmp (key, "Shooting frame"))	w->atkstate = D_StateRef (x);
+    else if (!strcasecmp (key, "Firing frame"))		w->flashstate = D_StateRef (x);
+    // MBF21's
+    else if (!strcasecmp (key, "Ammo per shot"))
+    {
+	w->ammopershot = x;
+	w->intflags |= WIF_ENABLEAPS;
+    }
+    else if (!strcasecmp (key, "MBF21 Bits"))
+	w->flags = D_BitsIn (v, (const dehflag_t *) weaponflags, "weapon flag");
     else
     {
 	D_Warn ("Weapon has no \"%s\"; left out", key);
@@ -858,8 +1097,8 @@ static boolean D_RenameSprite (const char* from, const char* to)
 
     if (strlen (from) != 4 || strlen (to) != 4)
 	return false;
-    for (i = 0; i < NUMSPRITES; i++)
-	if (!strcasecmp (sprnames[i], from))
+    for (i = 0; i < numspritenames; i++)
+	if (sprnames[i] && !strcasecmp (sprnames[i], from))
 	{
 	    sprnames[i] = D_Upper (to);
 	    dehchanges++;
@@ -874,7 +1113,7 @@ static boolean D_RenameSound (const char* from, const char* to)
 
     if (strlen (to) > 6)
 	return false;
-    for (i = 1; i < NUMSFX; i++)
+    for (i = 1; i < numsfx; i++)
 	if (S_sfx[i].name && !strcasecmp (S_sfx[i].name, from))
 	{
 	    S_sfx[i].name = D_Lower (to);
@@ -932,9 +1171,9 @@ static void D_BexCodeptr (const char* key, const char* v)
 	D_Warn ("[CODEPTR] expects \"FRAME n = name\"");
 	return;
     }
-    if (frame < 0 || frame >= NUMSTATES)
+    if (!D_GrowStates (frame))
     {
-	D_Warn ("frame %d is past DOOM's %d; left out", frame, NUMSTATES);
+	D_Warn ("no frame %d can be; left out", frame);
 	return;
     }
     if (!strncasecmp (name, "A_", 2))
@@ -952,7 +1191,7 @@ static void D_BexCodeptr (const char* key, const char* v)
 	    dehchanges++;
 	    return;
 	}
-    D_Warn ("code pointer %s is not DOOM's (MBF's?); left out", v);
+    D_Warn ("code pointer %s is not one known here; left out", v);
 }
 
 
@@ -998,13 +1237,16 @@ static void D_ProcessDeh (char* text, const char* name, boolean lump)
     dehline = 0;
     dehchanges = 0;
 
-    if (!origsaved)
+    if (!origaction)
     {
 	int	i;
 
-	for (i = 0; i < NUMSTATES; i++)
+	numorigaction = numstates;
+	origaction = malloc (numorigaction * sizeof(*origaction));
+	if (!origaction)
+	    I_Error ("DEHACKED: out of memory");
+	for (i = 0; i < numorigaction; i++)
 	    origaction[i] = states[i].action;
-	origsaved = true;
     }
 
     while (*p)
@@ -1101,31 +1343,29 @@ static void D_ProcessDeh (char* text, const char* name, boolean lump)
 	{
 	    // Thing n (name), Frame n, Pointer n (Frame m), ...
 	    sec = SEC_IGNORE;
+	    // past the tables' ends, the tables grow (DSDHacked)
 	    if (!strcasecmp (word, "Thing"))
 	    {
-		if (a >= 1 && a <= NUMMOBJTYPES)
+		if (a >= 1 && D_GrowThings (a - 1))
 		    sec = SEC_THING, index = a - 1;
 		else
-		    D_Warn ("Thing %d is past DOOM's %d; left out", a,
-			    NUMMOBJTYPES);
+		    D_Warn ("no Thing %d can be; left out", a);
 	    }
 	    else if (!strcasecmp (word, "Frame"))
 	    {
-		if (a >= 0 && a < NUMSTATES)
+		if (D_GrowStates (a))
 		    sec = SEC_FRAME, index = a;
 		else
-		    D_Warn ("Frame %d is past DOOM's %d; left out", a,
-			    NUMSTATES);
+		    D_Warn ("no Frame %d can be; left out", a);
 	    }
 	    else if (!strcasecmp (word, "Pointer"))
 	    {
 		char*	f = strchr (key, '(');
 
-		if (f && sscanf (f, "(Frame %d)", &b) == 1
-		    && b >= 0 && b < NUMSTATES)
+		if (f && sscanf (f, "(Frame %d)", &b) == 1 && D_GrowStates (b))
 		    sec = SEC_POINTER, index = b;
 		else
-		    D_Warn ("Pointer without a frame DOOM has; left out");
+		    D_Warn ("Pointer without a frame there can be; left out");
 	    }
 	    else if (!strcasecmp (word, "Weapon"))
 	    {
@@ -1139,7 +1379,7 @@ static void D_ProcessDeh (char* text, const char* name, boolean lump)
 	    }
 	    else if (!strcasecmp (word, "Sound"))
 	    {
-		if (a >= 1 && a < NUMSFX)
+		if (a >= 1 && D_GrowSounds (a))
 		    sec = SEC_SOUND, index = a;
 	    }
 	    else if (!strcasecmp (word, "Misc"))
@@ -1209,11 +1449,33 @@ static void D_ProcessDeh (char* text, const char* name, boolean lump)
 	    }
 	    break;
 	  case SEC_SPRITES:
-	    if (!D_RenameSprite (key, val))
+	    // "SARG = DEMN", or DSDHacked's "245 = GHUL"
+	    if (isdigit ((unsigned char) *key))
+	    {
+		if (strlen (val) == 4 && D_GrowSprites (atoi (key)))
+		{
+		    sprnames[atoi (key)] = D_Upper (val);
+		    dehchanges++;
+		}
+		else
+		    D_Warn ("no sprite %s to name %s", key, val);
+	    }
+	    else if (!D_RenameSprite (key, val))
 		D_Warn ("no sprite %s to rename", key);
 	    break;
 	  case SEC_SOUNDS:
-	    if (!D_RenameSound (key, val))
+	    if (isdigit ((unsigned char) *key))
+	    {
+		if (strlen (val) <= 6 && atoi (key) >= 1
+		    && D_GrowSounds (atoi (key)))
+		{
+		    S_sfx[atoi (key)].name = D_Lower (val);
+		    dehchanges++;
+		}
+		else
+		    D_Warn ("no sound %s to name %s", key, val);
+	    }
+	    else if (!D_RenameSound (key, val))
 		D_Warn ("no sound %s to rename", key);
 	    break;
 	  case SEC_MUSIC:
@@ -1269,6 +1531,62 @@ static void D_LoadDehFile (const char* path)
 // and for each mod file a .deh or .bex of the same name beside it, which
 // is how many mods of the 1990s came.
 //
+// MBF21's code pointers take args from their frame: those a patch left
+// unset are the pointer's defaults, and a frame, thing or sound an arg (or
+// misc1, for MBF's) names is made if it is past the table's end.
+static void D_FinishDehacked (void)
+{
+    int		i, k, c;
+    state_t*	st;
+    long	misc1;
+    int		args[MAXSTATEARGS];
+
+    for (i = 0; i < numstates; i++)
+    {
+	st = &states[i];
+	if (!st->action.acv)
+	    continue;
+	for (c = 0; codeptrs[c].name; c++)
+	    if ((actionf_v) codeptrs[c].fn == st->action.acv)
+		break;
+	if (!codeptrs[c].name)
+	    continue;
+	for (k = 0; k < codeptrs[c].argcount; k++)
+	    if (i >= numargsset || !(argsset[i] & (1 << k)))
+		st->args[k] = codeptrs[c].args[k];
+
+	// what the pointer names, copied out: growing a table can move it
+	misc1 = st->misc1;
+	memcpy (args, st->args, sizeof(args));
+
+#define IS(n)	(!strcmp (codeptrs[c].name, n))
+	if (IS ("RandomJump"))
+	    D_GrowStates (misc1);
+	else if (IS ("HealChase") || IS ("JumpIfHealthBelow")
+		 || IS ("JumpIfTargetInSight") || IS ("JumpIfTargetCloser")
+		 || IS ("JumpIfTracerInSight") || IS ("JumpIfTracerCloser")
+		 || IS ("JumpIfFlagsSet") || IS ("WeaponJump")
+		 || IS ("CheckAmmo") || IS ("RefireTo") || IS ("GunFlashTo"))
+	    D_GrowStates (args[0]);
+	if (IS ("Spawn"))
+	    D_GrowThings (misc1 - 1);
+	else if (IS ("SpawnObject") || IS ("MonsterProjectile")
+		 || IS ("WeaponProjectile"))
+	    D_GrowThings (args[0] - 1);
+	if (IS ("PlaySound"))
+	    D_GrowSounds (misc1);
+	else if (IS ("MonsterMeleeAttack"))
+	    D_GrowSounds (args[2]);
+	else if (IS ("HealChase"))
+	    D_GrowSounds (args[1]);
+	else if (IS ("WeaponMeleeAttack"))
+	    D_GrowSounds (args[3]);
+	else if (IS ("WeaponSound"))
+	    D_GrowSounds (args[0]);
+#undef IS
+    }
+}
+
 void D_LoadDehacked (void)
 {
     int		i, p;
@@ -1340,4 +1658,6 @@ void D_LoadDehacked (void)
 	    D_LoadDehFile (myargv[p]);
 	p--;
     }
+
+    D_FinishDehacked ();
 }

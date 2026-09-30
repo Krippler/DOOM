@@ -86,8 +86,12 @@ typedef struct
 
 
 
-// the complete set of sound effects
-extern sfxinfo_t	S_sfx[];
+// the complete set of sound effects: id's and MBF's, then any a DEHACKED
+// patch names past them (D_GrowSounds)
+extern sfxinfo_t	original_S_sfx[];
+extern sfxinfo_t*	S_sfx;
+extern int		numsfx;
+void	S_InitSfxInfo (void);
 
 // the complete set of music
 extern musicinfo_t	S_music[];
@@ -285,6 +289,12 @@ typedef enum
     sfx_skesit,
     sfx_skeatk,
     sfx_radio,
+    // MBF's: the helper dog
+    sfx_dgsit,
+    sfx_dgatk,
+    sfx_dgact,
+    sfx_dgdth,
+    sfx_dgpain,
     NUMSFX
 } sfxenum_t;
 

@@ -26,6 +26,7 @@ rcsid[] = "$Id: wi_stuff.c,v 1.7 1997/02/03 22:45:13 b1 Exp $";
 
 #include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "z_zone.h"
@@ -53,6 +54,7 @@ rcsid[] = "$Id: wi_stuff.c,v 1.7 1997/02/03 22:45:13 b1 Exp $";
 #include "v_video.h"
 
 #include "wi_stuff.h"
+#include "wi_interlvl.h"
 
 //
 // Data needed to add patches to full screen intermission pics.
@@ -405,6 +407,25 @@ static char		enterpic[9];
 // and splats belong on it
 static boolean		custombg;
 
+// ID24 intermissions, from the UMAPINFO exitanim of the level left and the
+// enteranim of the next; NULL for none
+static interlevel_t*	exitanim;
+static interlevel_t*	enteranim;
+
+// the one on screen, and its animations whose conditions hold
+static interlevel_t*	ilshown;
+
+typedef struct
+{
+    ilanim_t*	anim;
+    int		frame;
+    int		left;		// tics until the next frame
+    boolean	start;		// its first
+} ilstate_t;
+
+static ilstate_t*	ilstates;
+static int		numilstates;
+
 extern patch_t*		hu_font[HU_FONTSIZE];
 
 //
@@ -547,6 +568,165 @@ void WI_drawEL(void)
 }
 
 //
+// ID24 INTERLEVEL
+// As Woof! and the 2024 re-release show them: a background, and layers of
+// animations, each put up when its conditions hold -- on the tally or the
+// screen of the next level, the level's number, which have been played.
+//
+
+static boolean WI_ilConditions (ilcond_t* c, int n, boolean entering)
+{
+    int		episode = entering ? wbs->nextep + 1 : wbs->epsd + 1;
+    int		map = entering ? wbs->next + 1 : wbs->last + 1;
+    boolean	met = true;
+
+    for (; n > 0; n--, c++)
+	switch (c->condition)
+	{
+	  case IC_MAPGREATER:
+	    met &= map > c->param;
+	    break;
+	  case IC_MAPEQUAL:
+	    met &= map == c->param;
+	    break;
+	  case IC_MAPVISITED:
+	    met &= wbs->visited && c->param > 0 && c->param < 100
+		   && wbs->visited[c->param];
+	    break;
+	  case IC_MAPNOTSECRET:
+	    met &= !U_IsSecretMap (episode, map);
+	    break;
+	  case IC_SECRETVISITED:
+	    met &= wbs->didsecret;
+	    break;
+	  case IC_TALLY:
+	    met &= !entering;
+	    break;
+	  case IC_ENTERING:
+	    met &= entering;
+	    break;
+	}
+    return met;
+}
+
+// Onto the screen: il, for the tally or the next level, or none.
+static void WI_ilShow (interlevel_t* il, boolean entering)
+{
+    int		i;
+    int		j;
+    illayer_t*	l;
+    ilanim_t*	a;
+
+    free (ilstates);
+    ilstates = NULL;
+    numilstates = 0;
+    ilshown = il;
+    if (!il)
+	return;
+
+    for (i = 0; i < il->numlayers; i++)
+	numilstates += il->layers[i].numanims;
+    ilstates = calloc (numilstates ? numilstates : 1, sizeof(*ilstates));
+    numilstates = 0;
+    for (i = 0; i < il->numlayers; i++)
+    {
+	l = &il->layers[i];
+	if (!WI_ilConditions (l->conds, l->numconds, entering))
+	    continue;
+	for (j = 0; j < l->numanims; j++)
+	{
+	    a = &l->anims[j];
+	    if (!WI_ilConditions (a->conds, a->numconds, entering))
+		continue;
+	    ilstates[numilstates].anim = a;
+	    ilstates[numilstates].start = true;
+	    numilstates++;
+	}
+    }
+}
+
+static void WI_ilUpdate (void)
+{
+    int		i;
+    int		tics;
+    ilstate_t*	st;
+    ilframe_t*	f;
+
+    for (i = 0, st = ilstates; i < numilstates; i++, st++)
+    {
+	f = &st->anim->frames[st->frame];
+	if (f->type & IF_INFINITE)
+	    continue;
+
+	if (!st->left)
+	{
+	    if (!st->start)
+	    {
+		if (++st->frame == st->anim->numframes)
+		    st->frame = 0;
+		f = &st->anim->frames[st->frame];
+	    }
+
+	    tics = 1;
+	    switch (f->type)
+	    {
+	      case IF_RANDOMSTART:
+		if (st->start)
+		{
+		    tics = f->duration > 0 ? M_Random () % f->duration : 1;
+		    break;
+		}
+		// fall through
+	      case IF_FIXED:
+		tics = f->duration;
+		break;
+	      case IF_RANDOM:
+		tics = f->maxduration > 0 ? M_Random () % f->maxduration : 1;
+		if (tics < f->duration)
+		    tics = f->duration;
+		if (tics > f->maxduration)
+		    tics = f->maxduration;
+		break;
+	    }
+	    st->left = tics > 1 ? tics : 1;
+	}
+	st->left--;
+	st->start = false;
+    }
+}
+
+static void WI_ilDraw (void)
+{
+    int		i;
+    int		lump;
+    ilstate_t*	st;
+
+    for (i = 0, st = ilstates; i < numilstates; i++, st++)
+    {
+	// the image, or nothing: an empty frame is TNT1A0, which WADs
+	// need not have
+	lump = W_CheckNumForName (st->anim->frames[st->frame].image);
+	if (lump >= 0)
+	    V_DrawPatch (st->anim->x, st->anim->y, FB,
+			 W_CacheLumpNum (lump, PU_CACHE));
+    }
+}
+
+// The intermission's music: il's, when it has one to play.
+static boolean WI_ilMusic (interlevel_t* il)
+{
+    return il && il->music[0] && S_ChangeMusicName (il->music, true);
+}
+
+// The next level's screen, even in DOOM II, when it has an enteranim; not
+// in a demo, whose tics would come out of step with the intermission.
+static boolean WI_ilNextLoc (void)
+{
+    return enteranim && !demoplayback && !demorecording;
+}
+
+
+//
 // WI_background
 // Into screens[1]: UMAPINFO's picture, or the episode's map in DOOM's first
 // three episodes, or INTERPIC.
@@ -577,7 +757,8 @@ static void WI_afterStats (void)
     void WI_initNoState(void);
     void WI_initShowNextLoc(void);
 
-    if (gamemode == commercial || G_Ending () != UM_END_NONE)
+    if (G_Ending () != UM_END_NONE
+	|| (gamemode == commercial && !WI_ilNextLoc ()))
 	WI_initNoState();
     else
 	WI_initShowNextLoc();
@@ -665,6 +846,8 @@ void WI_updateAnimatedBack(void)
     int		i;
     anim_t*	a;
 
+    WI_ilUpdate ();
+
     if (gamemode == commercial)
 	return;
 
@@ -716,7 +899,9 @@ void WI_drawAnimatedBack(void)
     int			i;
     anim_t*		a;
 
-    if (commercial)
+    WI_ilDraw ();
+
+    if (gamemode == commercial)
 	return;
 
     if (wbs->epsd > 2 || custombg)
@@ -886,8 +1071,16 @@ void WI_initShowNextLoc(void)
     acceleratestage = 0;
     cnt = SHOWNEXTLOCDELAY * TICRATE;
 
-    if (strcmp (enterpic, exitpic))
+    // the next level's intermission, or, leaving one that had its own,
+    // the pictures UMAPINFO gives, or the game's
+    if (enteranim)
+    {
+	WI_background (enteranim->background);
+	WI_ilMusic (enteranim);
+    }
+    else if (ilshown || strcmp (enterpic, exitpic))
 	WI_background (enterpic);
+    WI_ilShow (enteranim, true);
 
     WI_initAnimatedBack();
 }
@@ -1635,7 +1828,7 @@ void WI_Ticker(void)
     // counter for general background animation
     bcnt++;  
 
-    if (bcnt == 1)
+    if (bcnt == 1 && !WI_ilMusic (exitanim))
     {
 	// intermission music
   	if ( gamemode == commercial )
@@ -1685,8 +1878,31 @@ void WI_loadData(void)
 	    strcpy (enterpic, next->enterpic);
 	else
 	    strcpy (enterpic, exitpic);
+
+	// (freed here too: an intermission left for a loaded game never
+	// reaches WI_End)
+	WI_ilShow (NULL, false);
+	WI_FreeInterlevel (exitanim);
+	WI_FreeInterlevel (enteranim);
+	exitanim = enteranim = NULL;
+	if (last && last->exitanim[0])
+	    exitanim = WI_ParseInterlevel (last->exitanim);
+	if (next && next->enteranim[0])
+	    enteranim = WI_ParseInterlevel (next->enteranim);
+	// without its background, a picture, it is none
+	if (exitanim && W_CheckNumForName (exitanim->background) < 0)
+	{
+	    WI_FreeInterlevel (exitanim);
+	    exitanim = NULL;
+	}
+	if (enteranim && W_CheckNumForName (enteranim->background) < 0)
+	{
+	    WI_FreeInterlevel (enteranim);
+	    enteranim = NULL;
+	}
     }
-    WI_background (exitpic);
+    WI_background (exitanim ? exitanim->background : exitpic);
+    WI_ilShow (exitanim, false);
 
 
     // UNUSED unsigned char *pic = screens[1];
@@ -1828,6 +2044,11 @@ void WI_unloadData(void)
 {
     int		i;
     int		j;
+
+    WI_ilShow (NULL, false);
+    WI_FreeInterlevel (exitanim);
+    WI_FreeInterlevel (enteranim);
+    exitanim = enteranim = NULL;
 
     Z_ChangeTag(wiminus, PU_CACHE);
 

@@ -40,7 +40,23 @@ typedef struct
     int		atkstate;
     int		flashstate;
 
+    // MBF21
+    int		ammopershot;	// what a shot takes, when intflags says so
+    int		intflags;	// WIF_*
+    int		flags;		// WPF_*
+
 } weaponinfo_t;
+
+// MBF21: ammopershot is used by id's code pointers too, once a patch sets it
+#define WIF_ENABLEAPS		1
+
+// MBF21's weapon flags
+#define WPF_NOTHRUST		0x01	// its hits do not push
+#define WPF_SILENT		0x02	// monsters do not hear it
+#define WPF_NOAUTOFIRE		0x04	// not fired on switching to it
+#define WPF_FLEEMELEE		0x08	// monsters flee it as a melee weapon
+#define WPF_AUTOSWITCHFROM	0x10	// switched from when ammo turns up
+#define WPF_NOAUTOSWITCHTO	0x20	// never switched to on picking up ammo
 
 extern  weaponinfo_t    weaponinfo[NUMWEAPONS];
 

@@ -34,6 +34,8 @@ rcsid[] = "$Id: r_segs.c,v 1.3 1997/01/29 20:10:19 b1 Exp $";
 #include <stdint.h>
 
 #include "i_system.h"
+#include "z_zone.h"
+#include "w_wad.h"
 
 #include "doomdef.h"
 #include "doomstat.h"
@@ -125,8 +127,23 @@ R_RenderMaskedSegRange
     frontsector = curline->frontsector;
     backsector = curline->backsector;
     texnum = texturetranslation[curline->sidedef->midtexture];
+
+    // Boom: translucent (260), with the palette's table or a WAD's own
+    if (curline->linedef->tranlump >= 0)
+    {
+	colfunc = detailshift ? R_DrawTLColumnLow : R_DrawTLColumn;
+	tranmap = curline->linedef->tranlump > 0
+	    ? W_CacheLumpNum (curline->linedef->tranlump - 1, PU_CACHE)
+	    : main_tranmap;
+    }
 	
-    lightnum = (frontsector->lightlevel >> LIGHTSEGSHIFT)+extralight;
+    // lit as the view sees the sector: Boom's water may change it
+    {
+	sector_t	tempsec;
+
+	lightnum = (R_FakeFlat (frontsector, &tempsec, NULL, NULL, false)
+		    ->lightlevel >> LIGHTSEGSHIFT)+extralight;
+    }
 
     if (curline->v1->y == curline->v2->y)
 	lightnum--;
@@ -193,7 +210,8 @@ R_RenderMaskedSegRange
 	}
 	spryscale += rw_scalestep;
     }
-	
+
+    colfunc = basecolfunc;
 }
 
 
@@ -610,7 +628,12 @@ R_StoreWallRange
 			
 	if (worldlow != worldbottom 
 	    || backsector->floorpic != frontsector->floorpic
-	    || backsector->lightlevel != frontsector->lightlevel)
+	    || backsector->lightlevel != frontsector->lightlevel
+	    // Boom's: scrolled or lit apart, or water, to be drawn too
+	    || backsector->floor_xoffs != frontsector->floor_xoffs
+	    || backsector->floor_yoffs != frontsector->floor_yoffs
+	    || frontsector->heightsec != -1
+	    || backsector->floorlightsec != frontsector->floorlightsec)
 	{
 	    markfloor = true;
 	}
@@ -623,7 +646,12 @@ R_StoreWallRange
 			
 	if (worldhigh != worldtop 
 	    || backsector->ceilingpic != frontsector->ceilingpic
-	    || backsector->lightlevel != frontsector->lightlevel)
+	    || backsector->lightlevel != frontsector->lightlevel
+	    || backsector->ceiling_xoffs != frontsector->ceiling_xoffs
+	    || backsector->ceiling_yoffs != frontsector->ceiling_yoffs
+	    || frontsector->heightsec != -1
+	    || backsector->ceilinglightsec != frontsector->ceilinglightsec
+	    || backsector->sky != frontsector->sky)
 	{
 	    markceiling = true;
 	}
@@ -725,14 +753,19 @@ R_StoreWallRange
     //  and doesn't need to be marked.
     
   
-    if (frontsector->floorheight >= viewz)
+    if (frontsector->floorheight >= viewz
+	// Boom: unless it is water whose sky ceiling shows
+	&& !(frontsector->heightsec != -1
+	     && R_IsSkyFlat (sectors[frontsector->heightsec].ceilingpic)))
     {
 	// above view plane
 	markfloor = false;
     }
     
     if (frontsector->ceilingheight <= viewz 
-	&& !R_IsSkyFlat (frontsector->ceilingpic))
+	&& !R_IsSkyFlat (frontsector->ceilingpic)
+	&& !(frontsector->heightsec != -1
+	     && R_IsSkyFlat (sectors[frontsector->heightsec].floorpic)))
     {
 	// below view plane
 	markceiling = false;

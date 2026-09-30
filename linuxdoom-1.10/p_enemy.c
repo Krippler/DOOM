@@ -172,24 +172,24 @@ P_NoiseAlert
 //
 // P_CheckMeleeRange
 //
+// Within range of its target, and seeing it; a friend never has another
+// friend in range (MBF).
+static boolean P_CheckRange (mobj_t* actor, fixed_t range)
+{
+    mobj_t*	pl = actor->target;
+
+    return pl && !(actor->flags & pl->flags & MF_FRIEND)
+	&& P_AproxDistance (pl->x-actor->x, pl->y-actor->y) < range
+	&& P_CheckSight (actor, pl);
+}
+
+// id's MELEERANGE, or the thing's own (MBF21's Melee range)
 boolean P_CheckMeleeRange (mobj_t*	actor)
 {
-    mobj_t*	pl;
-    fixed_t	dist;
-	
     if (!actor->target)
 	return false;
-		
-    pl = actor->target;
-    dist = P_AproxDistance (pl->x-actor->x, pl->y-actor->y);
-
-    if (dist >= MELEERANGE-20*FRACUNIT+pl->info->radius)
-	return false;
-	
-    if (! P_CheckSight (actor, actor->target) )
-	return false;
-							
-    return true;		
+    return P_CheckRange (actor, actor->info->meleerange - 20*FRACUNIT
+			 + actor->target->info->radius);
 }
 
 //
@@ -205,10 +205,14 @@ boolean P_CheckMissileRange (mobj_t* actor)
     if ( actor->flags & MF_JUSTHIT )
     {
 	// the target just hit the enemy,
-	// so fight back!
+	// so fight back! (MBF: not a friend at a friend)
 	actor->flags &= ~MF_JUSTHIT;
-	return true;
+	return !(actor->flags & actor->target->flags & MF_FRIEND);
     }
+
+    // MBF: friends do not fire at friends, the player among them
+    if (actor->flags & actor->target->flags & MF_FRIEND)
+	return false;
 	
     if (actor->reactiontime)
 	return false;	// do not attack yet
@@ -222,32 +226,28 @@ boolean P_CheckMissileRange (mobj_t* actor)
 
     dist >>= 16;
 
-    if (actor->type == MT_VILE)
+    // What id's code did for the Arch-vile, the Revenant, the Cyberdemon,
+    // the Spider Mastermind and the Lost Soul by type, MBF21 does by flag;
+    // those are the flags the types have (D_InitInfo).
+    if (actor->flags2 & MF2_SHORTMRANGE)
     {
 	if (dist > 14*64)	
 	    return false;	// too far away
     }
-	
 
-    if (actor->type == MT_UNDEAD)
+    if (actor->flags2 & MF2_LONGMELEE)
     {
 	if (dist < 196)	
 	    return false;	// close for fist attack
-	dist >>= 1;
     }
-	
 
-    if (actor->type == MT_CYBORG
-	|| actor->type == MT_SPIDER
-	|| actor->type == MT_SKULL)
-    {
+    if (actor->flags2 & MF2_RANGEHALF)
 	dist >>= 1;
-    }
     
     if (dist > 200)
 	dist = 200;
 		
-    if (actor->type == MT_CYBORG && dist > 160)
+    if ((actor->flags2 & MF2_HIGHERMPROB) && dist > 160)
 	dist = 160;
 		
     if (P_Random () < dist)
@@ -496,6 +496,52 @@ void P_NewChaseDir (mobj_t*	actor)
 // If allaround is false, only look 180 degrees in front.
 // Returns true if a player is targeted.
 //
+//
+// P_LookForMonsters
+// MBF's friends look for the nearest monster in sight that is not one,
+// in front of them unless allaround. A simpler search than MBF's own,
+// which kept friends and enemies in lists of their own and had friends
+// follow and help the player; it keeps a friend off the player's side.
+//
+static boolean P_LookForMonsters (mobj_t* actor, boolean allaround)
+{
+    thinker_t*	th;
+    mobj_t*	mo;
+    mobj_t*	best = NULL;
+    fixed_t	bestdist = 32*64*FRACUNIT;
+    fixed_t	dist;
+    angle_t	an;
+
+    for (th = thinkercap.next ; th != &thinkercap ; th = th->next)
+    {
+	if (th->function.acp1 != (actionf_p1) P_MobjThinker)
+	    continue;
+	mo = (mobj_t *) th;
+	if (mo == actor || mo->health <= 0 || (mo->flags & MF_FRIEND)
+	    || !(mo->flags & MF_SHOOTABLE)
+	    || !((mo->flags & MF_COUNTKILL) || mo->player))
+	    continue;
+	dist = P_AproxDistance (mo->x - actor->x, mo->y - actor->y);
+	if (dist >= bestdist)
+	    continue;
+	if (!allaround)
+	{
+	    an = R_PointToAngle2 (actor->x, actor->y, mo->x, mo->y)
+		 - actor->angle;
+	    if (an > ANG90 && an < ANG270 && dist > MELEERANGE)
+		continue;	// behind its back
+	}
+	if (!P_CheckSight (actor, mo))
+	    continue;
+	best = mo;
+	bestdist = dist;
+    }
+    if (!best)
+	return false;
+    actor->target = best;
+    return true;
+}
+
 boolean
 P_LookForPlayers
 ( mobj_t*	actor,
@@ -507,6 +553,10 @@ P_LookForPlayers
     sector_t*	sector;
     angle_t	an;
     fixed_t	dist;
+
+    // MBF: a friend looks for the player's enemies instead
+    if (actor->flags & MF_FRIEND)
+	return P_LookForMonsters (actor, allaround);
 		
     sector = actor->subsector->sector;
 	
@@ -609,8 +659,10 @@ void A_Look (mobj_t* actor)
     actor->threshold = 0;	// any shot will wake up
     targ = actor->subsector->sector->soundtarget;
 
+    // (MBF: a friend is not woken against a friend)
     if (targ
-	&& (targ->flags & MF_SHOOTABLE) )
+	&& (targ->flags & MF_SHOOTABLE)
+	&& !(targ->flags & actor->flags & MF_FRIEND) )
     {
 	actor->target = targ;
 
@@ -651,8 +703,7 @@ void A_Look (mobj_t* actor)
 	    break;
 	}
 
-	if (actor->type==MT_SPIDER
-	    || actor->type == MT_CYBORG)
+	if (actor->flags2 & MF2_FULLVOLSOUNDS)
 	{
 	    // full volume
 	    S_StartSound (NULL, sound);
@@ -1127,6 +1178,8 @@ mobj_t*		vileobj;
 fixed_t		viletryx;
 fixed_t		viletryy;
 
+static fixed_t	viletryradius;
+
 boolean PIT_VileCheck (mobj_t*	thing)
 {
     int		maxdist;
@@ -1141,7 +1194,7 @@ boolean PIT_VileCheck (mobj_t*	thing)
     if (thing->info->raisestate == S_NULL)
 	return true;	// monster doesn't have a raise state
     
-    maxdist = thing->info->radius + mobjinfo[MT_VILE].radius;
+    maxdist = thing->info->radius + viletryradius;
 	
     if ( abs(thing->x - viletryx) > maxdist
 	 || abs(thing->y - viletryy) > maxdist )
@@ -1149,9 +1202,28 @@ boolean PIT_VileCheck (mobj_t*	thing)
 		
     corpsehit = thing;
     corpsehit->momx = corpsehit->momy = 0;
-    corpsehit->height <<= 2;
-    check = P_CheckPosition (corpsehit, corpsehit->x, corpsehit->y);
-    corpsehit->height >>= 2;
+    if (comp[comp_vile])
+    {
+	// id's: checked a quarter as tall as it will be (so a crushed
+	// monster, 0 tall, comes back 0 tall, a "ghost")
+	corpsehit->height <<= 2;
+	check = P_CheckPosition (corpsehit, corpsehit->x, corpsehit->y);
+	corpsehit->height >>= 2;
+    }
+    else
+    {
+	// Boom's: as big as it will be
+	fixed_t	height = corpsehit->height;
+	fixed_t	radius = corpsehit->radius;
+
+	corpsehit->height = corpsehit->info->height;
+	corpsehit->radius = corpsehit->info->radius;
+	corpsehit->flags |= MF_SOLID;
+	check = P_CheckPosition (corpsehit, corpsehit->x, corpsehit->y);
+	corpsehit->height = height;
+	corpsehit->radius = radius;
+	corpsehit->flags &= ~MF_SOLID;
+    }
 
     if (!check)
 	return true;		// doesn't fit here
@@ -1162,10 +1234,16 @@ boolean PIT_VileCheck (mobj_t*	thing)
 
 
 //
-// A_VileChase
-// Check for ressurecting a body
+// P_HealCorpse
+// Raise a corpse the actor is about to step on, going to healstate and
+// making healsound: the Arch-vile's, or MBF21's A_HealChase's.
 //
-void A_VileChase (mobj_t* actor)
+static boolean
+P_HealCorpse
+( mobj_t*	actor,
+  fixed_t	radius,
+  int		healstate,
+  int		healsound )
 {
     int			xl;
     int			xh;
@@ -1192,6 +1270,7 @@ void A_VileChase (mobj_t* actor)
 	yh = (viletryy - bmaporgy + MAXRADIUS*2)>>MAPBLOCKSHIFT;
 	
 	vileobj = actor;
+	viletryradius = radius;
 	for (bx=xl ; bx<=xh ; bx++)
 	{
 	    for (by=yl ; by<=yh ; by++)
@@ -1207,24 +1286,46 @@ void A_VileChase (mobj_t* actor)
 		    A_FaceTarget (actor);
 		    actor->target = temp;
 					
-		    P_SetMobjState (actor, S_VILE_HEAL1);
-		    S_StartSound (corpsehit, sfx_slop);
+		    P_SetMobjState (actor, healstate);
+		    S_StartSound (corpsehit, healsound);
 		    info = corpsehit->info;
 		    
 		    P_SetMobjState (corpsehit,info->raisestate);
-		    corpsehit->height <<= 2;
-		    corpsehit->flags = info->flags;
+		    if (comp[comp_vile])
+			corpsehit->height <<= 2;
+		    else
+		    {
+			corpsehit->height = info->height;	// no ghosts
+			corpsehit->radius = info->radius;
+		    }
+		    // MBF: its raiser's side
+		    corpsehit->flags = (info->flags & ~MF_FRIEND)
+				       | (actor->flags & MF_FRIEND);
 		    corpsehit->health = info->spawnhealth;
 		    corpsehit->target = NULL;
+		    if (!demo_compatibility)
+		    {
+			corpsehit->lastenemy = NULL;
+			corpsehit->flags &= ~MF_JUSTHIT;
+		    }
 
-		    return;
+		    return true;
 		}
 	    }
 	}
     }
+    return false;
+}
 
-    // Return to normal attack.
-    A_Chase (actor);
+//
+// A_VileChase
+// Check for ressurecting a body
+//
+void A_VileChase (mobj_t* actor)
+{
+    if (!P_HealCorpse (actor, mobjinfo[MT_VILE].radius, S_VILE_HEAL1,
+		       sfx_slop))
+	A_Chase (actor);	// Return to normal attack.
 }
 
 
@@ -1335,7 +1436,7 @@ void A_VileAttack (mobj_t* actor)
     // move the fire between the vile and the player
     fire->x = actor->target->x - FixedMul (24*FRACUNIT, finecosine[an]);
     fire->y = actor->target->y - FixedMul (24*FRACUNIT, finesine[an]);	
-    P_RadiusAttack (fire, actor, 70 );
+    P_RadiusAttack (fire, actor, 70, 70);
 }
 
 
@@ -1571,8 +1672,7 @@ void A_Scream (mobj_t* actor)
     }
 
     // Check for bosses.
-    if (actor->type==MT_SPIDER
-	|| actor->type == MT_CYBORG)
+    if (actor->flags2 & MF2_FULLVOLSOUNDS)
     {
 	// full volume
 	S_StartSound (NULL, sound);
@@ -1610,7 +1710,7 @@ void A_Fall (mobj_t *actor)
 //
 void A_Explode (mobj_t* thingy)
 {
-    P_RadiusAttack ( thingy, thingy->target, 128 );
+    P_RadiusAttack ( thingy, thingy->target, 128, 128 );
 }
 
 
@@ -1711,8 +1811,7 @@ void A_BossDeath (mobj_t* mo)
 	if (gamemap != 7)
 	    return;
 		
-	if ((mo->type != MT_FATSO)
-	    && (mo->type != MT_BABY))
+	if (!(mo->flags2 & (MF2_MAP07BOSS1 | MF2_MAP07BOSS2)))
 	    return;
     }
     else
@@ -1723,7 +1822,7 @@ void A_BossDeath (mobj_t* mo)
 	    if (gamemap != 8)
 		return;
 
-	    if (mo->type != MT_BRUISER)
+	    if (!(mo->flags2 & MF2_E1M8BOSS))
 		return;
 	    break;
 	    
@@ -1731,7 +1830,7 @@ void A_BossDeath (mobj_t* mo)
 	    if (gamemap != 8)
 		return;
 
-	    if (mo->type != MT_CYBORG)
+	    if (!(mo->flags2 & MF2_E2M8BOSS))
 		return;
 	    break;
 	    
@@ -1739,7 +1838,7 @@ void A_BossDeath (mobj_t* mo)
 	    if (gamemap != 8)
 		return;
 	    
-	    if (mo->type != MT_SPIDER)
+	    if (!(mo->flags2 & MF2_E3M8BOSS))
 		return;
 	    
 	    break;
@@ -1748,12 +1847,12 @@ void A_BossDeath (mobj_t* mo)
 	    switch(gamemap)
 	    {
 	      case 6:
-		if (mo->type != MT_CYBORG)
+		if (!(mo->flags2 & MF2_E4M6BOSS))
 		    return;
 		break;
 		
 	      case 8: 
-		if (mo->type != MT_SPIDER)
+		if (!(mo->flags2 & MF2_E4M8BOSS))
 		    return;
 		break;
 		
@@ -1802,14 +1901,14 @@ void A_BossDeath (mobj_t* mo)
     {
 	if (gamemap == 7)
 	{
-	    if (mo->type == MT_FATSO)
+	    if (mo->flags2 & MF2_MAP07BOSS1)
 	    {
 		junk.tag = 666;
 		EV_DoFloor(&junk,lowerFloorToLowest);
 		return;
 	    }
 	    
-	    if (mo->type == MT_BABY)
+	    if (mo->flags2 & MF2_MAP07BOSS2)
 	    {
 		junk.tag = 667;
 		EV_DoFloor(&junk,raiseToTexture);
@@ -2110,4 +2209,639 @@ void A_PlayerScream (mobj_t* mo)
     }
     
     S_StartSound (mo, sound);
+}
+
+
+
+//
+// MBF's code pointers (killough, 1998; inspired by Len Pitre), by way
+// of Woof. id's engine had none of these, so no DOOM demo reaches one;
+// they work whichever way a level plays.
+//
+
+// kill it
+void A_Die (mobj_t* actor)
+{
+    P_DamageMobj (actor, NULL, NULL, actor->health);
+}
+
+// A_Explode with the thing's own damage
+void A_Detonate (mobj_t* mo)
+{
+    P_RadiusAttack (mo, mo->target, mo->info->damage, mo->info->damage);
+}
+
+// an explosion that throws Mancubus fireballs about (Linguica's idea):
+// misc1 how high they are aimed, misc2 how fast, as fractions
+void A_Mushroom (mobj_t* actor)
+{
+    int		i, j, n = actor->info->damage;
+    fixed_t	misc1 = actor->state->misc1 ? actor->state->misc1 : FRACUNIT*4;
+    fixed_t	misc2 = actor->state->misc2 ? actor->state->misc2 : FRACUNIT/2;
+
+    A_Explode (actor);
+    for (i = -n; i <= n; i += 8)
+	for (j = -n; j <= n; j += 8)
+	{
+	    mobj_t	target = *actor;
+	    mobj_t*	mo;
+
+	    target.x += i << FRACBITS;	// aim in many directions
+	    target.y += j << FRACBITS;
+	    target.z += P_AproxDistance (i, j) * misc1;	// and fairly high
+	    mo = P_SpawnMissile (actor, &target, MT_FATSHOT);
+	    mo->momx = FixedMul (mo->momx, misc2);
+	    mo->momy = FixedMul (mo->momy, misc2);
+	    mo->momz = FixedMul (mo->momz, misc2);
+	    mo->flags &= ~MF_NOGRAVITY;	// the debris falls
+	}
+}
+
+// the beta's lost soul, which bit from where it was
+void A_BetaSkullAttack (mobj_t* actor)
+{
+    int		damage;
+
+    if (!actor->target || actor->target->type == MT_SKULL)
+	return;
+    if (actor->info->attacksound)
+	S_StartSound (actor, actor->info->attacksound);
+    A_FaceTarget (actor);
+    damage = (P_Random () % 8 + 1) * actor->info->damage;
+    P_DamageMobj (actor->target, actor, actor, damage);
+}
+
+void A_Stop (mobj_t* actor)
+{
+    actor->momx = actor->momy = actor->momz = 0;
+}
+
+// spawn thing misc1 (numbered from 1), misc2 units up
+void A_Spawn (mobj_t* mo)
+{
+    mobj_t*	newmobj;
+    int		type = mo->state->misc1 - 1;
+
+    if (type < 0 || type >= nummobjtypes)
+	return;
+    newmobj = P_SpawnMobj (mo->x, mo->y, (mo->state->misc2 << FRACBITS) + mo->z,
+			   type);
+    if (comp[comp_friendlyspawn])
+	newmobj->flags = (newmobj->flags & ~MF_FRIEND) | (mo->flags & MF_FRIEND);
+}
+
+// turn by misc1 degrees
+void A_Turn (mobj_t* mo)
+{
+    mo->angle += (angle_t) (((uint64_t) mo->state->misc1 << 32) / 360);
+}
+
+// face misc1 degrees
+void A_Face (mobj_t* mo)
+{
+    mo->angle = (angle_t) (((uint64_t) mo->state->misc1 << 32) / 360);
+}
+
+// a melee attack of misc1 damage, with sound misc2
+void A_Scratch (mobj_t* mo)
+{
+    if (!mo->target)
+	return;
+    A_FaceTarget (mo);
+    if (!P_CheckMeleeRange (mo))
+	return;
+    if (mo->state->misc2 > 0 && mo->state->misc2 < numsfx)
+	S_StartSound (mo, mo->state->misc2);
+    P_DamageMobj (mo->target, mo, mo, mo->state->misc1);
+}
+
+// sound misc1, everywhere if misc2
+void A_PlaySound (mobj_t* mo)
+{
+    if (mo->state->misc1 > 0 && mo->state->misc1 < numsfx)
+	S_StartSound (mo->state->misc2 ? NULL : mo, mo->state->misc1);
+}
+
+// to frame misc1, with a chance of misc2 in 256
+void A_RandomJump (mobj_t* mo)
+{
+    if (P_Random () < mo->state->misc2
+	&& mo->state->misc1 >= 0 && mo->state->misc1 < numstates)
+	P_SetMobjState (mo, mo->state->misc1);
+}
+
+// line special misc1 with tag misc2, as if a player used it and then
+// crossed it; a once-only one only once for this thing
+void A_LineEffect (mobj_t* mo)
+{
+    static player_t	player;
+    player_t*		oldplayer;
+
+    if ((mo->intflags & MIF_LINEDONE) || !mo->state->misc1 || !numlines)
+	return;
+    oldplayer = mo->player;
+    mo->player = &player;
+    player.health = 100;
+    if (P_LineEffect (mo, (short) mo->state->misc1, (short) mo->state->misc2))
+	mo->intflags |= MIF_LINEDONE;
+    mo->player = oldplayer;
+}
+
+
+//
+// MBF21's code pointers (Xaser and others), by way of Woof. Their
+// arguments are the frame's args, defaulted by D_FinishDehacked; angles
+// and spreads are in degrees, in fixed point.
+//
+
+angle_t P_FixedToAngle (fixed_t a)
+{
+    return (angle_t) (((uint64_t) a * ANG1) >> FRACBITS);
+}
+
+static fixed_t P_AngleToSlope (int a)
+{
+    if (a > (int) ANG90)
+	return finetangent[0];
+    else if (-a > (int) ANG90)
+	return finetangent[FINEANGLES/2 - 1];
+    else
+	return finetangent[(ANG90 - a) >> ANGLETOFINESHIFT];
+}
+
+fixed_t P_DegToSlope (fixed_t a)
+{
+    if (a >= 0)
+	return P_AngleToSlope (P_FixedToAngle (a));
+    return P_AngleToSlope (-(int) P_FixedToAngle (-a));
+}
+
+// a random angle in (-spread, spread)
+int P_RandomHitscanAngle (fixed_t spread)
+{
+    int64_t	bam = P_FixedToAngle (spread < 0 ? -spread : spread);
+    int		t = P_Random ();
+
+    return (int) ((bam * (t - P_Random ())) / 255);
+}
+
+// the same as a slope
+int P_RandomHitscanSlope (fixed_t spread)
+{
+    int		angle = P_RandomHitscanAngle (spread);
+
+    if (angle > (int) ANG90)
+	return finetangent[0];
+    else if (-angle > (int) ANG90)
+	return finetangent[FINEANGLES/2 - 1];
+    return finetangent[(ANG90 - angle) >> ANGLETOFINESHIFT];
+}
+
+// is t2 within fov of where t1 faces?
+static boolean P_CheckFov (mobj_t* t1, mobj_t* t2, angle_t fov)
+{
+    angle_t	angle = R_PointToAngle2 (t1->x, t1->y, t2->x, t2->y);
+    angle_t	minang = t1->angle - fov / 2;
+    angle_t	maxang = t1->angle + fov / 2;
+
+    return minang > maxang ? angle >= minang || angle <= maxang
+			   : angle >= minang && angle <= maxang;
+}
+
+// 1 if source turns clockwise to face target, 0 if the other way; *delta
+// how far
+static int P_FaceMobj (mobj_t* source, mobj_t* target, angle_t* delta)
+{
+    angle_t	angle1 = source->angle;
+    angle_t	angle2 = R_PointToAngle2 (source->x, source->y,
+					  target->x, target->y);
+    angle_t	diff;
+
+    if (angle2 > angle1)
+    {
+	diff = angle2 - angle1;
+	if (diff > ANG180)
+	{
+	    *delta = ANGLE_MAX - diff;
+	    return 0;
+	}
+	*delta = diff;
+	return 1;
+    }
+    diff = angle1 - angle2;
+    if (diff > ANG180)
+    {
+	*delta = ANGLE_MAX - diff;
+	return 1;
+    }
+    *delta = diff;
+    return 0;
+}
+
+// steer a missile at *seektarget, turning at most turnmax, and all the
+// way if within thresh
+static boolean
+P_SeekerMissile
+( mobj_t*	actor,
+  mobj_t**	seektarget,
+  angle_t	thresh,
+  angle_t	turnmax,
+  boolean	seekcenter )
+{
+    int		dir, dist;
+    angle_t	delta, angle;
+    mobj_t*	target = *seektarget;
+
+    if (!target)
+	return false;
+    if (!(target->flags & MF_SHOOTABLE))
+    {
+	*seektarget = NULL;	// target died
+	return false;
+    }
+    dir = P_FaceMobj (actor, target, &delta);
+    if (delta > thresh)
+    {
+	delta >>= 1;
+	if (delta > turnmax)
+	    delta = turnmax;
+    }
+    if (dir)
+	actor->angle += delta;
+    else
+	actor->angle -= delta;
+    angle = actor->angle >> ANGLETOFINESHIFT;
+    actor->momx = FixedMul (actor->info->speed, finecosine[angle]);
+    actor->momy = FixedMul (actor->info->speed, finesine[angle]);
+    if (actor->z + actor->height < target->z
+	|| target->z + target->height < actor->z || seekcenter)
+    {
+	dist = P_AproxDistance (target->x - actor->x, target->y - actor->y);
+	dist = dist / (actor->info->speed ? actor->info->speed : 1);
+	if (dist < 1)
+	    dist = 1;
+	actor->momz = (target->z + (seekcenter ? target->height/2 : 0)
+		       - actor->z) / dist;
+    }
+    return true;
+}
+
+// the first thing in block index that a missile might seek
+static mobj_t* P_RoughBlockCheck (mobj_t* mo, int index, angle_t fov)
+{
+    mobj_t*	link;
+
+    for (link = blocklinks[index]; link; link = link->bnext)
+    {
+	if (!(link->flags & MF_SHOOTABLE))
+	    continue;
+	if (link == mo->target)
+	    continue;	// its owner
+	// not on its owner's side, unless infighting or deathmatching
+	if (mo->target && !((link->flags ^ mo->target->flags) & MF_FRIEND)
+	    && mo->target->target != link
+	    && !(deathmatch && link->player && mo->target->player))
+	    continue;
+	if (fov > 0 && !P_CheckFov (mo, link, fov))
+	    continue;
+	if (!P_CheckSight (mo, link))
+	    continue;
+	return link;
+    }
+    return NULL;
+}
+
+// Hexen's P_RoughMonsterSearch: the nearest block with a target in it,
+// out to distance blocks
+static mobj_t* P_RoughTargetSearch (mobj_t* mo, angle_t fov, int distance)
+{
+    int		startx, starty, count, bx, by;
+    mobj_t*	target;
+
+    startx = (mo->x - bmaporgx) >> MAPBLOCKSHIFT;
+    starty = (mo->y - bmaporgy) >> MAPBLOCKSHIFT;
+
+    if (startx >= 0 && startx < bmapwidth && starty >= 0
+	&& starty < bmapheight
+	&& (target = P_RoughBlockCheck (mo, starty*bmapwidth + startx, fov)))
+	return target;
+
+    for (count = 1; count <= distance; count++)
+    {
+	// the ring of blocks count away
+	for (by = starty - count; by <= starty + count; by++)
+	{
+	    if (by < 0 || by >= bmapheight)
+		continue;
+	    for (bx = startx - count; bx <= startx + count; bx++)
+	    {
+		if (bx < 0 || bx >= bmapwidth)
+		    continue;
+		if (by != starty - count && by != starty + count
+		    && bx != startx - count && bx != startx + count)
+		    continue;
+		if ((target = P_RoughBlockCheck (mo, by*bmapwidth + bx, fov)))
+		    return target;
+	    }
+	}
+    }
+    return NULL;
+}
+
+// a frame a patch named, if there is one
+static boolean P_ValidState (int state)
+{
+    return state >= 0 && state < numstates;
+}
+
+// Spawn args[0] (a thing, from 1) at an angle args[1] from the actor's,
+// offset args[2..4], moving args[5..7]. A missile is fired as if by the
+// actor, or by the actor's own shooter if the actor is a missile.
+void A_SpawnObject (mobj_t* actor)
+{
+    int		type, angle, ofs_x, ofs_y, ofs_z, vel_x, vel_y, vel_z;
+    angle_t	an;
+    int		fan, dx, dy;
+    mobj_t*	mo;
+
+    if (!actor->state->args[0])
+	return;
+    type = actor->state->args[0] - 1;
+    if (type < 0 || type >= nummobjtypes)
+	return;
+    angle = actor->state->args[1];
+    ofs_x = actor->state->args[2];
+    ofs_y = actor->state->args[3];
+    ofs_z = actor->state->args[4];
+    vel_x = actor->state->args[5];
+    vel_y = actor->state->args[6];
+    vel_z = actor->state->args[7];
+
+    an = actor->angle + (angle_t) (((int64_t) angle << 16) / 360);
+    fan = an >> ANGLETOFINESHIFT;
+    dx = FixedMul (ofs_x, finecosine[fan]) - FixedMul (ofs_y, finesine[fan]);
+    dy = FixedMul (ofs_x, finesine[fan]) + FixedMul (ofs_y, finecosine[fan]);
+
+    mo = P_SpawnMobj (actor->x + dx, actor->y + dy, actor->z + ofs_z, type);
+    mo->angle = an;
+    mo->momx = FixedMul (vel_x, finecosine[fan]) - FixedMul (vel_y, finesine[fan]);
+    mo->momy = FixedMul (vel_x, finesine[fan]) + FixedMul (vel_y, finecosine[fan]);
+    mo->momz = vel_z;
+
+    if (mo->info->flags & (MF_MISSILE | MF_BOUNCES))
+    {
+	if (actor->info->flags & (MF_MISSILE | MF_BOUNCES))
+	{
+	    mo->target = actor->target;
+	    mo->tracer = actor->tracer;
+	}
+	else
+	{
+	    mo->target = actor;
+	    mo->tracer = actor->target;
+	}
+    }
+}
+
+// Fire args[0] (a thing, from 1) at the target, args[1] degrees aside and
+// args[2] up, from args[3] to the side and args[4] up. The missile's tracer
+// is the target, so it can seek it.
+void A_MonsterProjectile (mobj_t* actor)
+{
+    int		type, angle, pitch, spawnofs_xy, spawnofs_z, an;
+    mobj_t*	mo;
+
+    if (!actor->target || !actor->state->args[0])
+	return;
+    type = actor->state->args[0] - 1;
+    if (type < 0 || type >= nummobjtypes)
+	return;
+    angle = actor->state->args[1];
+    pitch = actor->state->args[2];
+    spawnofs_xy = actor->state->args[3];
+    spawnofs_z = actor->state->args[4];
+
+    A_FaceTarget (actor);
+    mo = P_SpawnMissile (actor, actor->target, type);
+    if (!mo)
+	return;
+
+    mo->angle += (angle_t) (((int64_t) angle << 16) / 360);
+    an = mo->angle >> ANGLETOFINESHIFT;
+    mo->momx = FixedMul (mo->info->speed, finecosine[an]);
+    mo->momy = FixedMul (mo->info->speed, finesine[an]);
+    mo->momz += FixedMul (mo->info->speed, P_DegToSlope (pitch));
+
+    an = (actor->angle - ANG90) >> ANGLETOFINESHIFT;
+    mo->x += FixedMul (spawnofs_xy, finecosine[an]);
+    mo->y += FixedMul (spawnofs_xy, finesine[an]);
+    mo->z += spawnofs_z;
+
+    mo->tracer = actor->target;
+}
+
+// args[2] bullets, spread args[0] across and args[1] up and down, each
+// doing args[3] times 1 to args[4]
+void A_MonsterBulletAttack (mobj_t* actor)
+{
+    int		hspread, vspread, numbullets, damagebase, damagemod;
+    int		aimslope, i, damage, angle, slope;
+
+    if (!actor->target)
+	return;
+    hspread = actor->state->args[0];
+    vspread = actor->state->args[1];
+    numbullets = actor->state->args[2];
+    damagebase = actor->state->args[3];
+    damagemod = actor->state->args[4];
+    if (damagemod <= 0)
+	damagemod = 1;
+
+    A_FaceTarget (actor);
+    S_StartSound (actor, actor->info->attacksound);
+    aimslope = P_AimLineAttack (actor, actor->angle, MISSILERANGE);
+    for (i = 0; i < numbullets; i++)
+    {
+	damage = (P_Random () % damagemod + 1) * damagebase;
+	angle = (int) actor->angle + P_RandomHitscanAngle (hspread);
+	slope = aimslope + P_RandomHitscanSlope (vspread);
+	P_LineAttack (actor, angle, MISSILERANGE, slope, damage);
+    }
+}
+
+// a bite of args[0] times 1 to args[1], sound args[2] when it lands,
+// reaching args[3] (the thing's melee range if 0)
+void A_MonsterMeleeAttack (mobj_t* actor)
+{
+    int		damagebase, damagemod, hitsound, range, damage;
+
+    if (!actor->target)
+	return;
+    damagebase = actor->state->args[0];
+    damagemod = actor->state->args[1];
+    hitsound = actor->state->args[2];
+    range = actor->state->args[3];
+    if (damagemod <= 0)
+	damagemod = 1;
+    if (range == 0)
+	range = actor->info->meleerange;
+    range += actor->target->info->radius - 20*FRACUNIT;
+
+    A_FaceTarget (actor);
+    if (!P_CheckRange (actor, range))
+	return;
+    if (hitsound > 0 && hitsound < numsfx)
+	S_StartSound (actor, hitsound);
+    damage = (P_Random () % damagemod + 1) * damagebase;
+    P_DamageMobj (actor->target, actor, actor, damage);
+}
+
+// A_Explode, of args[0] damage reaching args[1]
+void A_RadiusDamage (mobj_t* actor)
+{
+    P_RadiusAttack (actor, actor->target, actor->state->args[0],
+		    actor->state->args[1]);
+}
+
+// wake the monsters that could hear the actor, to its target
+void A_NoiseAlert (mobj_t* actor)
+{
+    if (actor->target)
+	P_NoiseAlert (actor->target, actor);
+}
+
+// A_VileChase, going to frame args[0] with sound args[1]
+void A_HealChase (mobj_t* actor)
+{
+    int		state = actor->state->args[0];
+    int		sound = actor->state->args[1];
+
+    if (!P_ValidState (state)
+	|| !P_HealCorpse (actor, actor->info->radius, state, sound))
+	A_Chase (actor);
+}
+
+// home on the tracer: straight at it within args[0] degrees, else
+// turning at most args[1]
+void A_SeekTracer (mobj_t* actor)
+{
+    P_SeekerMissile (actor, &actor->tracer,
+		     P_FixedToAngle (actor->state->args[0]),
+		     P_FixedToAngle (actor->state->args[1]), true);
+}
+
+// find a tracer, within args[0] degrees (all round if 0) and args[1]
+// blocks, unless it has one
+void A_FindTracer (mobj_t* actor)
+{
+    if (actor->tracer)
+	return;
+    actor->tracer = P_RoughTargetSearch (actor,
+					 P_FixedToAngle (actor->state->args[0]),
+					 actor->state->args[1]);
+}
+
+void A_ClearTracer (mobj_t* actor)
+{
+    actor->tracer = NULL;
+}
+
+// to frame args[0] if health is below args[1]
+void A_JumpIfHealthBelow (mobj_t* actor)
+{
+    if (actor->health < actor->state->args[1]
+	&& P_ValidState (actor->state->args[0]))
+	P_SetMobjState (actor, actor->state->args[0]);
+}
+
+// to frame args[0] if who is seen, within args[1] degrees (all round if 0)
+static void P_JumpIfInSight (mobj_t* actor, mobj_t* who)
+{
+    int		state = actor->state->args[0];
+    angle_t	fov = P_FixedToAngle (actor->state->args[1]);
+
+    if (!who)
+	return;
+    if (fov > 0 && !P_CheckFov (actor, who, fov))
+	return;
+    if (P_CheckSight (actor, who) && P_ValidState (state))
+	P_SetMobjState (actor, state);
+}
+
+// to frame args[0] if who is closer than args[1]
+static void P_JumpIfCloser (mobj_t* actor, mobj_t* who)
+{
+    int		state = actor->state->args[0];
+
+    if (who && actor->state->args[1] > P_AproxDistance (actor->x - who->x,
+							actor->y - who->y)
+	&& P_ValidState (state))
+	P_SetMobjState (actor, state);
+}
+
+void A_JumpIfTargetInSight (mobj_t* actor)
+{
+    P_JumpIfInSight (actor, actor->target);
+}
+
+void A_JumpIfTargetCloser (mobj_t* actor)
+{
+    P_JumpIfCloser (actor, actor->target);
+}
+
+void A_JumpIfTracerInSight (mobj_t* actor)
+{
+    P_JumpIfInSight (actor, actor->tracer);
+}
+
+void A_JumpIfTracerCloser (mobj_t* actor)
+{
+    P_JumpIfCloser (actor, actor->tracer);
+}
+
+// to frame args[0] if all of flags args[1] and flags2 args[2] are set
+void A_JumpIfFlagsSet (mobj_t* actor)
+{
+    unsigned	flags = actor->state->args[1];
+    unsigned	flags2 = actor->state->args[2];
+
+    if ((actor->flags & flags) == flags && (actor->flags2 & flags2) == flags2
+	&& P_ValidState (actor->state->args[0]))
+	P_SetMobjState (actor, actor->state->args[0]);
+}
+
+// set or clear flags args[0] and flags2 args[1]; in or out of the
+// blockmap and sector lists as NOBLOCKMAP and NOSECTOR change
+static void P_ChangeFlags (mobj_t* actor, boolean add)
+{
+    unsigned	flags = actor->state->args[0];
+    unsigned	flags2 = actor->state->args[1];
+    unsigned	now = add ? ~actor->flags : actor->flags;
+    boolean	relink = (flags & MF_NOBLOCKMAP & now)
+			 || (flags & MF_NOSECTOR & now);
+
+    if (relink)
+	P_UnsetThingPosition (actor);
+    if (add)
+    {
+	actor->flags |= flags;
+	actor->flags2 |= flags2;
+    }
+    else
+    {
+	actor->flags &= ~flags;
+	actor->flags2 &= ~flags2;
+    }
+    if (relink)
+	P_SetThingPosition (actor);
+}
+
+void A_AddFlags (mobj_t* actor)
+{
+    P_ChangeFlags (actor, true);
+}
+
+void A_RemoveFlags (mobj_t* actor)
+{
+    P_ChangeFlags (actor, false);
 }

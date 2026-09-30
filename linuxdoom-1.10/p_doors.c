@@ -1,28 +1,22 @@
-// Emacs style mode select   -*- C++ -*- 
-//-----------------------------------------------------------------------------
-//
-// $Id:$
 //
 // Copyright (C) 1993-1996 by id Software, Inc.
+// Copyright (C) 1999 by
+//  id Software, Chi Hoang, Lee Killough, Jim Flynn, Rand Phares, Ty Halderman
 //
-// This source is available for distribution and/or modification
-// only under the terms of the DOOM Source Code License as
-// published by id Software. All rights reserved.
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
 //
-// The source is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// FITNESS FOR A PARTICULAR PURPOSE. See the DOOM Source Code License
-// for more details.
-//
-// $Log:$
-//
-// DESCRIPTION: Door animation code (opening/closing)
+// DESCRIPTION:
+//	Door animation code (opening/closing), Boom's locked and generalized
+//	doors included: Boom's code by way of Woof, id's under
+//	demo_compatibility (see p_floor.c). id's sliding doors, never
+//	finished and never compiled, are gone.
 //
 //-----------------------------------------------------------------------------
 
-static const char
-rcsid[] = "$Id: p_doors.c,v 1.4 1997/02/03 16:47:53 b1 Exp $";
-
+#include <stdio.h>
 
 #include "z_zone.h"
 #include "doomdef.h"
@@ -39,726 +33,648 @@ rcsid[] = "$Id: p_doors.c,v 1.4 1997/02/03 16:47:53 b1 Exp $";
 #include "dstrings.h"
 #include "sounds.h"
 
-#if 0
-//
-// Sliding door frame information
-//
-slidename_t	slideFrameNames[MAXSLIDEDOORS] =
-{
-    {"GDOORF1","GDOORF2","GDOORF3","GDOORF4",	// front
-     "GDOORB1","GDOORB2","GDOORB3","GDOORB4"},	// back
-	 
-    {"\0","\0","\0","\0"}
-};
-#endif
 
-
+///////////////////////////////////////////////////////////////
 //
-// VERTICAL DOORS
+// Door action routines, called once per tick
 //
+///////////////////////////////////////////////////////////////
 
 //
 // T_VerticalDoor
 //
-void T_VerticalDoor (vldoor_t* door)
+// Passed a door structure containing all info about the door.
+// See P_SPEC.H for fields.
+// Returns nothing.
+//
+// jff 02/08/98 all cases with labels beginning with gen added to support
+// generalized line type behaviors.
+
+void T_VerticalDoor(vldoor_t *door)
 {
-    result_e	res;
-	
-    switch(door->direction)
+  result_e  res;
+
+  // Is the door waiting, going up, or going down?
+  switch(door->direction)
     {
-      case 0:
-	// WAITING
-	if (!--door->topcountdown)
-	{
-	    switch(door->type)
-	    {
-	      case blazeRaise:
-		door->direction = -1; // time to go back down
-		S_StartSound((mobj_t *)&door->sector->soundorg,
-			     sfx_bdcls);
-		break;
-		
-	      case normal:
-		door->direction = -1; // time to go back down
-		S_StartSound((mobj_t *)&door->sector->soundorg,
-			     sfx_dorcls);
-		break;
-		
-	      case close30ThenOpen:
-		door->direction = 1;
-		S_StartSound((mobj_t *)&door->sector->soundorg,
-			     sfx_doropn);
-		break;
-		
-	      default:
-		break;
-	    }
-	}
-	break;
-	
-      case 2:
-	//  INITIAL WAIT
-	if (!--door->topcountdown)
-	{
-	    switch(door->type)
-	    {
-	      case raiseIn5Mins:
-		door->direction = 1;
-		door->type = normal;
-		S_StartSound((mobj_t *)&door->sector->soundorg,
-			     sfx_doropn);
-		break;
-		
-	      default:
-		break;
-	    }
-	}
-	break;
-	
-      case -1:
-	// DOWN
-	res = T_MovePlane(door->sector,
-			  door->speed,
-			  door->sector->floorheight,
-			  false,1,door->direction);
-	if (res == pastdest)
-	{
-	    switch(door->type)
-	    {
-	      case blazeRaise:
-	      case blazeClose:
-		door->sector->specialdata = NULL;
-		P_RemoveThinker (&door->thinker);  // unlink and free
-		S_StartSound((mobj_t *)&door->sector->soundorg,
-			     sfx_bdcls);
-		break;
-		
-	      case normal:
-	      case close:
-		door->sector->specialdata = NULL;
-		P_RemoveThinker (&door->thinker);  // unlink and free
-		break;
-		
-	      case close30ThenOpen:
-		door->direction = 0;
-		door->topcountdown = 35*30;
-		break;
-		
-	      default:
-		break;
-	    }
-	}
-	else if (res == crushed)
-	{
-	    switch(door->type)
-	    {
-	      case blazeClose:
-	      case close:		// DO NOT GO BACK UP!
-		break;
-		
-	      default:
-		door->direction = 1;
-		S_StartSound((mobj_t *)&door->sector->soundorg,
-			     sfx_doropn);
-		break;
-	    }
-	}
-	break;
-	
-      case 1:
-	// UP
-	res = T_MovePlane(door->sector,
-			  door->speed,
-			  door->topheight,
-			  false,1,door->direction);
-	
-	if (res == pastdest)
-	{
-	    switch(door->type)
-	    {
-	      case blazeRaise:
-	      case normal:
-		door->direction = 0; // wait at top
-		door->topcountdown = door->topwait;
-		break;
-		
-	      case close30ThenOpen:
-	      case blazeOpen:
-	      case open:
-		door->sector->specialdata = NULL;
-		P_RemoveThinker (&door->thinker);  // unlink and free
-		break;
-		
-	      default:
-		break;
-	    }
-	}
-	break;
+    case 0:
+      // Door is waiting
+      if (!--door->topcountdown)  // downcount and check
+        switch(door->type)
+          {
+          case blazeRaise:
+          case genBlazeRaise:
+            door->direction = -1; // time to go back down
+            S_StartSound((mobj_t *)&door->sector->soundorg,sfx_bdcls);
+            break;
+
+          case normal:
+          case genRaise:
+            door->direction = -1; // time to go back down
+            S_StartSound((mobj_t *)&door->sector->soundorg,sfx_dorcls);
+            break;
+
+          case close30ThenOpen:
+          case genCdO:
+            door->direction = 1;  // time to go back up
+            S_StartSound((mobj_t *)&door->sector->soundorg,sfx_doropn);
+            break;
+
+          case genBlazeCdO:
+            door->direction = 1;  // time to go back up
+            S_StartSound((mobj_t *)&door->sector->soundorg,sfx_bdopn);
+            break;
+
+          default:
+            break;
+          }
+      break;
+
+    case 2:
+      // Special case for sector type door that opens in 5 mins
+      if (!--door->topcountdown)  // 5 minutes up?
+        switch(door->type)
+          {
+          case raiseIn5Mins:
+            door->direction = 1;  // time to raise then
+            door->type = normal;  // door acts just like normal 1 DR door now
+            S_StartSound((mobj_t *)&door->sector->soundorg,sfx_doropn);
+            break;
+
+          default:
+            break;
+          }
+      break;
+
+    case -1:
+      // Door is moving down
+      res = T_MovePlane(door->sector, door->speed,
+                        door->sector->floorheight,
+                        false, 1, door->direction);
+
+      // killough 10/98: implement gradual lighting effects
+      if (door->lighttag && door->topheight - door->sector->floorheight)
+        EV_LightTurnOnPartway(door->line,
+                              FixedDiv(door->sector->ceilingheight -
+                                       door->sector->floorheight,
+                                       door->topheight -
+                                       door->sector->floorheight));
+
+      // handle door reaching bottom
+      if (res == pastdest)
+        switch(door->type)
+          {
+            // regular open and close doors are all done, remove them
+          case blazeRaise:
+          case blazeClose:
+          case genBlazeRaise:
+          case genBlazeClose:
+            door->sector->ceilingdata = NULL;  //jff 2/22/98
+            P_RemoveThinker(&door->thinker);  // unlink and free
+            // killough 4/15/98: remove double-closing sound of blazing doors
+            if (comp[comp_blazing])
+              S_StartSound((mobj_t *)&door->sector->soundorg,sfx_bdcls);
+            break;
+
+          case normal:
+          case close:
+          case genRaise:
+          case genClose:
+            door->sector->ceilingdata = NULL; //jff 2/22/98
+            P_RemoveThinker(&door->thinker);  // unlink and free
+            break;
+
+            // close then open doors start waiting
+          case close30ThenOpen:
+            door->direction = 0;
+            door->topcountdown = TICRATE*30;
+            break;
+
+          case genCdO:
+          case genBlazeCdO:
+            door->direction = 0;
+            door->topcountdown = door->topwait; // jff 5/8/98 insert delay
+            break;
+
+          default:
+            break;
+          }
+
+      //jff 1/31/98 turn lighting off in tagged sectors of manual doors
+      // killough 10/98: replaced with gradual lighting code
+
+      else
+        if (res == crushed) // handle door meeting obstruction on way down
+          switch(door->type)
+            {
+            case genClose:
+            case genBlazeClose:
+            case blazeClose:
+            case close:          // Close types do not bounce, merely wait
+              break;
+
+            case blazeRaise:
+            case genBlazeRaise:
+              door->direction = 1;
+              if (!comp[comp_blazing])
+              {
+                S_StartSound((mobj_t *)&door->sector->soundorg,sfx_bdopn);
+                break;
+              }
+              // fallthrough
+
+            default:             // other types bounce off the obstruction
+              door->direction = 1;
+              S_StartSound((mobj_t *)&door->sector->soundorg,sfx_doropn);
+              break;
+            }
+      break;
+
+    case 1:
+      // Door is moving up
+      res = T_MovePlane(door->sector, door->speed,
+                        door->topheight, false, 1,
+                        door->direction);
+
+      // killough 10/98: implement gradual lighting effects
+      if (door->lighttag && door->topheight - door->sector->floorheight)
+        EV_LightTurnOnPartway(door->line,
+                              FixedDiv(door->sector->ceilingheight -
+                                       door->sector->floorheight,
+                                       door->topheight -
+                                       door->sector->floorheight));
+
+      // handle door reaching the top
+      if (res == pastdest)
+        switch(door->type)
+          {
+          case blazeRaise:       // regular open/close doors start waiting
+          case normal:
+          case genRaise:
+          case genBlazeRaise:
+            door->direction = 0; // wait at top with delay
+            door->topcountdown = door->topwait;
+            break;
+
+          case close30ThenOpen:  // close and close/open doors are done
+          case blazeOpen:
+          case open:
+          case genBlazeOpen:
+          case genOpen:
+          case genCdO:
+          case genBlazeCdO:
+            door->sector->ceilingdata = NULL; //jff 2/22/98
+            P_RemoveThinker(&door->thinker); // unlink and free
+            break;
+
+          default:
+            break;
+          }
+
+      //jff 1/31/98 turn lighting on in tagged sectors of manual doors
+      // killough 10/98: replaced with gradual lighting code
+      break;
     }
 }
 
+
+///////////////////////////////////////////////////////////////
+//
+// Door linedef handlers
+//
+///////////////////////////////////////////////////////////////
 
 //
 // EV_DoLockedDoor
-// Move a locked door up/down
 //
-
-int
-EV_DoLockedDoor
-( line_t*	line,
-  vldoor_e	type,
-  mobj_t*	thing )
+// Handle opening a tagged locked door
+//
+// Passed the line activating the door, the type of door,
+// and the thing that activated the line
+// Returns true if a thinker created
+//
+int EV_DoLockedDoor(line_t *line, vldoor_e type, mobj_t *thing)
 {
-    player_t*	p;
-	
-    p = thing->player;
-	
-    if (!p)
-	return 0;
-		
-    switch(line->special)
+  player_t *p = thing->player;
+
+  if (!p)          // only players can open locked doors
+    return 0;
+
+  // check type of linedef, and if key is possessed to open it
+  switch(line->special)
     {
-      case 99:	// Blue Lock
-      case 133:
-	if ( !p )
-	    return 0;
-	if (!p->cards[it_bluecard] && !p->cards[it_blueskull])
-	{
-	    p->message = PD_BLUEO;
-	    S_StartSound(NULL,sfx_oof);
-	    return 0;
-	}
-	break;
-	
-      case 134: // Red Lock
-      case 135:
-	if ( !p )
-	    return 0;
-	if (!p->cards[it_redcard] && !p->cards[it_redskull])
-	{
-	    p->message = PD_REDO;
-	    S_StartSound(NULL,sfx_oof);
-	    return 0;
-	}
-	break;
-	
-      case 136:	// Yellow Lock
-      case 137:
-	if ( !p )
-	    return 0;
-	if (!p->cards[it_yellowcard] &&
-	    !p->cards[it_yellowskull])
-	{
-	    p->message = PD_YELLOWO;
-	    S_StartSound(NULL,sfx_oof);
-	    return 0;
-	}
-	break;	
+    case 99:  // Blue Lock
+    case 133:
+      if (!p->cards[it_bluecard] && !p->cards[it_blueskull])
+        {
+          p->message = PD_BLUEO;
+          S_StartSound(NULL,sfx_oof);                  // killough 3/20/98
+          return 0;
+        }
+      break;
+
+    case 134: // Red Lock
+    case 135:
+      if (!p->cards[it_redcard] && !p->cards[it_redskull])
+        {
+          p->message = PD_REDO;
+          S_StartSound(NULL,sfx_oof);                // killough 3/20/98
+          return 0;
+        }
+      break;
+
+    case 136: // Yellow Lock
+    case 137:
+      if (!p->cards[it_yellowcard] && !p->cards[it_yellowskull])
+        {
+          p->message = PD_YELLOWO;
+          S_StartSound(NULL,sfx_oof);                    // killough 3/20/98
+          return 0;
+        }
+      break;
     }
 
-    return EV_DoDoor(line,type);
+  // got the key, so open the door
+  return EV_DoDoor(line,type);
 }
 
+//
+// EV_DoDoor
+//
+// Handle opening a tagged door
+//
+// Passed the line activating the door and the type of door
+// Returns true if a thinker created
+//
 
-int
-EV_DoDoor
-( line_t*	line,
-  vldoor_e	type )
+int EV_DoDoor(line_t *line, vldoor_e type)
 {
-    int		secnum,rtn;
-    sector_t*	sec;
-    vldoor_t*	door;
-	
-    secnum = -1;
-    rtn = 0;
-    
-    while ((secnum = P_FindSectorFromLineTag(line,secnum)) >= 0)
-    {
-	sec = &sectors[secnum];
-	if (sec->specialdata)
-	    continue;
-		
-	
-	// new door thinker
-	rtn = 1;
-	door = Z_Malloc (sizeof(*door), PU_LEVSPEC, 0);
-	P_AddThinker (&door->thinker);
-	sec->specialdata = door;
+  int secnum = -1, rtn = 0;
+  sector_t *sec;
+  vldoor_t *door;
 
-	door->thinker.function.acp1 = (actionf_p1) T_VerticalDoor;
-	door->sector = sec;
-	door->type = type;
-	door->topwait = VDOORWAIT;
-	door->speed = VDOORSPEED;
-		
-	switch(type)
-	{
-	  case blazeClose:
-	    door->topheight = P_FindLowestCeilingSurrounding(sec);
-	    door->topheight -= 4*FRACUNIT;
-	    door->direction = -1;
-	    door->speed = VDOORSPEED * 4;
-	    S_StartSound((mobj_t *)&door->sector->soundorg,
-			 sfx_bdcls);
-	    break;
-	    
-	  case close:
-	    door->topheight = P_FindLowestCeilingSurrounding(sec);
-	    door->topheight -= 4*FRACUNIT;
-	    door->direction = -1;
-	    S_StartSound((mobj_t *)&door->sector->soundorg,
-			 sfx_dorcls);
-	    break;
-	    
-	  case close30ThenOpen:
-	    door->topheight = sec->ceilingheight;
-	    door->direction = -1;
-	    S_StartSound((mobj_t *)&door->sector->soundorg,
-			 sfx_dorcls);
-	    break;
-	    
-	  case blazeRaise:
-	  case blazeOpen:
-	    door->direction = 1;
-	    door->topheight = P_FindLowestCeilingSurrounding(sec);
-	    door->topheight -= 4*FRACUNIT;
-	    door->speed = VDOORSPEED * 4;
-	    if (door->topheight != sec->ceilingheight)
-		S_StartSound((mobj_t *)&door->sector->soundorg,
-			     sfx_bdopn);
-	    break;
-	    
-	  case normal:
-	  case open:
-	    door->direction = 1;
-	    door->topheight = P_FindLowestCeilingSurrounding(sec);
-	    door->topheight -= 4*FRACUNIT;
-	    if (door->topheight != sec->ceilingheight)
-		S_StartSound((mobj_t *)&door->sector->soundorg,
-			     sfx_doropn);
-	    break;
-	    
-	  default:
-	    break;
-	}
-		
+  // open all doors with the same tag as the activating line
+  while ((secnum = P_FindSectorFromLineTag(line,secnum)) >= 0)
+    {
+      sec = &sectors[secnum];
+      // if the ceiling already moving, don't start the door action
+      if (P_SectorActive(ceiling_special,sec)) //jff 2/22/98
+        continue;
+
+      // new door thinker
+      rtn = 1;
+      door = Z_Malloc(sizeof(vldoor_t), PU_LEVSPEC, 0);
+      P_AddThinker(&door->thinker);
+      sec->ceilingdata = door; //jff 2/22/98
+
+      door->thinker.function.acp1 = (actionf_p1) T_VerticalDoor;
+      door->sector = sec;
+      door->type = type;
+      door->topwait = VDOORWAIT;
+      door->speed = VDOORSPEED;
+      door->line = line;  // jff 1/31/98 remember line that triggered us
+      door->lighttag = 0; // killough 10/98: no light effects with tagged doors
+
+      // setup door parameters according to type of door
+      switch(type)
+        {
+        case blazeClose:
+          door->topheight = P_FindLowestCeilingSurrounding(sec);
+          door->topheight -= 4*FRACUNIT;
+          door->direction = -1;
+          door->speed = VDOORSPEED * 4;
+          S_StartSound((mobj_t *)&door->sector->soundorg,sfx_bdcls);
+          break;
+
+        case close:
+          door->topheight = P_FindLowestCeilingSurrounding(sec);
+          door->topheight -= 4*FRACUNIT;
+          door->direction = -1;
+          S_StartSound((mobj_t *)&door->sector->soundorg,sfx_dorcls);
+          break;
+
+        case close30ThenOpen:
+          door->topheight = sec->ceilingheight;
+          door->direction = -1;
+          S_StartSound((mobj_t *)&door->sector->soundorg,sfx_dorcls);
+          break;
+
+        case blazeRaise:
+        case blazeOpen:
+          door->direction = 1;
+          door->topheight = P_FindLowestCeilingSurrounding(sec);
+          door->topheight -= 4*FRACUNIT;
+          door->speed = VDOORSPEED * 4;
+          if (door->topheight != sec->ceilingheight)
+            S_StartSound((mobj_t *)&door->sector->soundorg,sfx_bdopn);
+          break;
+
+        case normal:
+        case open:
+          door->direction = 1;
+          door->topheight = P_FindLowestCeilingSurrounding(sec);
+          door->topheight -= 4*FRACUNIT;
+          if (door->topheight != sec->ceilingheight)
+            S_StartSound((mobj_t *)&door->sector->soundorg,sfx_doropn);
+          break;
+
+        default:
+          break;
+        }
     }
-    return rtn;
+  return rtn;
 }
 
 
 //
-// EV_VerticalDoor : open a door manually, no tag value
+// EV_VerticalDoor
 //
-void
-EV_VerticalDoor
-( line_t*	line,
-  mobj_t*	thing )
+// Handle opening a door manually, no tag value
+//
+// Passed the line activating the door and the thing activating it
+// Returns true if a thinker created
+//
+// jff 2/12/98 added int return value, fixed all returns
+//
+
+int EV_VerticalDoor(line_t *line, mobj_t *thing)
 {
-    player_t*	player;
-    int		secnum;
-    sector_t*	sec;
-    vldoor_t*	door;
-    int		side;
-	
-    side = 0;	// only front sides can be used
+  player_t* player;
+  sector_t* sec;
+  vldoor_t* door;
 
-    //	Check for locks
-    player = thing->player;
-		
-    switch(line->special)
+  //  Check for locks
+  player = thing->player;
+
+  switch(line->special)
     {
-      case 26: // Blue Lock
-      case 32:
-	if ( !player )
-	    return;
-	
-	if (!player->cards[it_bluecard] && !player->cards[it_blueskull])
-	{
-	    player->message = PD_BLUEK;
-	    S_StartSound(NULL,sfx_oof);
-	    return;
-	}
-	break;
-	
-      case 27: // Yellow Lock
-      case 34:
-	if ( !player )
-	    return;
-	
-	if (!player->cards[it_yellowcard] &&
-	    !player->cards[it_yellowskull])
-	{
-	    player->message = PD_YELLOWK;
-	    S_StartSound(NULL,sfx_oof);
-	    return;
-	}
-	break;
-	
-      case 28: // Red Lock
-      case 33:
-	if ( !player )
-	    return;
-	
-	if (!player->cards[it_redcard] && !player->cards[it_redskull])
-	{
-	    player->message = PD_REDK;
-	    S_StartSound(NULL,sfx_oof);
-	    return;
-	}
-	break;
-    }
-	
-    // if the sector has an active thinker, use it
-    sec = sides[ line->sidenum[side^1]] .sector;
-    secnum = sec-sectors;
+    case 26: // Blue Lock
+    case 32:
+      if (!player)
+        return 0;
+      if (!player->cards[it_bluecard] && !player->cards[it_blueskull])
+        {
+          player->message = PD_BLUEK;
+          S_StartSound(NULL,sfx_oof);             // killough 3/20/98
+          return 0;
+        }
+      break;
 
-    if (sec->specialdata)
+    case 27: // Yellow Lock
+    case 34:
+      if ( !player )
+        return 0;
+      if (!player->cards[it_yellowcard] && !player->cards[it_yellowskull])
+        {
+          player->message = PD_YELLOWK;
+          S_StartSound(NULL,sfx_oof);               // killough 3/20/98
+          return 0;
+        }
+      break;
+
+    case 28: // Red Lock
+    case 33:
+      if ( !player )
+        return 0;
+      if (!player->cards[it_redcard] && !player->cards[it_redskull])
+        {
+          player->message = PD_REDK;
+          S_StartSound(NULL,sfx_oof);           // killough 3/20/98
+          return 0;
+        }
+      break;
+
+    default:
+      break;
+    }
+
+  // if the wrong side of door is pushed, give oof sound
+  if (line->sidenum[1] == -1)                       // killough
     {
-	door = sec->specialdata;
-	switch(line->special)
-	{
-	  case	1: // ONLY FOR "RAISE" DOORS, NOT "OPEN"s
-	  case	26:
-	  case	27:
-	  case	28:
-	  case	117:
-	    if (door->direction == -1)
-		door->direction = 1;	// go back up
-	    else
-	    {
-		if (!thing->player)
-		    return;		// JDC: bad guys never close doors
-		
-		door->direction = -1;	// start going down immediately
-	    }
-	    return;
-	}
+      S_StartSound(NULL,sfx_oof);           // killough 3/20/98
+      return 0;
     }
-	
-    // for proper sound
-    switch(line->special)
-    {
-      case 117:	// BLAZING DOOR RAISE
-      case 118:	// BLAZING DOOR OPEN
-	S_StartSound((mobj_t *)&sec->soundorg,sfx_bdopn);
-	break;
-	
-      case 1:	// NORMAL DOOR SOUND
-      case 31:
-	S_StartSound((mobj_t *)&sec->soundorg,sfx_doropn);
-	break;
-	
-      default:	// LOCKED DOOR SOUND
-	S_StartSound((mobj_t *)&sec->soundorg,sfx_doropn);
-	break;
-    }
-	
-    
-    // new door thinker
-    door = Z_Malloc (sizeof(*door), PU_LEVSPEC, 0);
-    P_AddThinker (&door->thinker);
-    sec->specialdata = door;
-    door->thinker.function.acp1 = (actionf_p1) T_VerticalDoor;
-    door->sector = sec;
-    door->direction = 1;
-    door->speed = VDOORSPEED;
-    door->topwait = VDOORWAIT;
 
-    switch(line->special)
-    {
-      case 1:
-      case 26:
-      case 27:
-      case 28:
-	door->type = normal;
-	break;
-	
-      case 31:
-      case 32:
-      case 33:
-      case 34:
-	door->type = open;
-	line->special = 0;
-	break;
-	
-      case 117:	// blazing door raise
-	door->type = blazeRaise;
-	door->speed = VDOORSPEED*4;
-	break;
-      case 118:	// blazing door open
-	door->type = blazeOpen;
-	line->special = 0;
-	door->speed = VDOORSPEED*4;
-	break;
-    }
-    
-    // find the top and bottom of the movement range
-    door->topheight = P_FindLowestCeilingSurrounding(sec);
-    door->topheight -= 4*FRACUNIT;
-}
+  // get the sector on the second side of activating linedef
+  sec = sides[line->sidenum[1]].sector;
 
+  // if door already has a thinker, use it
+  door = sec->ceilingdata; //jff 2/22/98
 
-//
-// Spawn a door that closes after 30 seconds
-//
-void P_SpawnDoorCloseIn30 (sector_t* sec)
-{
-    vldoor_t*	door;
-	
-    door = Z_Malloc ( sizeof(*door), PU_LEVSPEC, 0);
-
-    P_AddThinker (&door->thinker);
-
-    sec->specialdata = door;
-    sec->special = 0;
-
-    door->thinker.function.acp1 = (actionf_p1)T_VerticalDoor;
-    door->sector = sec;
-    door->direction = 0;
-    door->type = normal;
-    door->speed = VDOORSPEED;
-    door->topcountdown = 30 * 35;
-}
-
-//
-// Spawn a door that opens after 5 minutes
-//
-void
-P_SpawnDoorRaiseIn5Mins
-( sector_t*	sec,
-  int		secnum )
-{
-    vldoor_t*	door;
-	
-    door = Z_Malloc ( sizeof(*door), PU_LEVSPEC, 0);
-    
-    P_AddThinker (&door->thinker);
-
-    sec->specialdata = door;
-    sec->special = 0;
-
-    door->thinker.function.acp1 = (actionf_p1)T_VerticalDoor;
-    door->sector = sec;
-    door->direction = 2;
-    door->type = raiseIn5Mins;
-    door->speed = VDOORSPEED;
-    door->topheight = P_FindLowestCeilingSurrounding(sec);
-    door->topheight -= 4*FRACUNIT;
-    door->topwait = VDOORWAIT;
-    door->topcountdown = 5 * 60 * 35;
-}
-
-
-
-// UNUSED
-// Separate into p_slidoor.c?
-
-#if 0		// ABANDONED TO THE MISTS OF TIME!!!
-//
-// EV_SlidingDoor : slide a door horizontally
-// (animate midtexture, then set noblocking line)
-//
-
-
-slideframe_t slideFrames[MAXSLIDEDOORS];
-
-void P_InitSlidingDoorFrames(void)
-{
-    int		i;
-    int		f1;
-    int		f2;
-    int		f3;
-    int		f4;
-	
-    // DOOM II ONLY...
-    if ( gamemode != commercial)
-	return;
-	
-    for (i = 0;i < MAXSLIDEDOORS; i++)
-    {
-	if (!slideFrameNames[i].frontFrame1[0])
-	    break;
-			
-	f1 = R_TextureNumForName(slideFrameNames[i].frontFrame1);
-	f2 = R_TextureNumForName(slideFrameNames[i].frontFrame2);
-	f3 = R_TextureNumForName(slideFrameNames[i].frontFrame3);
-	f4 = R_TextureNumForName(slideFrameNames[i].frontFrame4);
-
-	slideFrames[i].frontFrames[0] = f1;
-	slideFrames[i].frontFrames[1] = f2;
-	slideFrames[i].frontFrames[2] = f3;
-	slideFrames[i].frontFrames[3] = f4;
-		
-	f1 = R_TextureNumForName(slideFrameNames[i].backFrame1);
-	f2 = R_TextureNumForName(slideFrameNames[i].backFrame2);
-	f3 = R_TextureNumForName(slideFrameNames[i].backFrame3);
-	f4 = R_TextureNumForName(slideFrameNames[i].backFrame4);
-
-	slideFrames[i].backFrames[0] = f1;
-	slideFrames[i].backFrames[1] = f2;
-	slideFrames[i].backFrames[2] = f3;
-	slideFrames[i].backFrames[3] = f4;
-    }
-}
-
-
-//
-// Return index into "slideFrames" array
-// for which door type to use
-//
-int P_FindSlidingDoorType(line_t*	line)
-{
-    int		i;
-    int		val;
-	
-    for (i = 0;i < MAXSLIDEDOORS;i++)
-    {
-	val = sides[line->sidenum[0]].midtexture;
-	if (val == slideFrames[i].frontFrames[0])
-	    return i;
-    }
-	
-    return -1;
-}
-
-void T_SlidingDoor (slidedoor_t*	door)
-{
-    switch(door->status)
-    {
-      case sd_opening:
-	if (!door->timer--)
-	{
-	    if (++door->frame == SNUMFRAMES)
-	    {
-		// IF DOOR IS DONE OPENING...
-		sides[door->line->sidenum[0]].midtexture = 0;
-		sides[door->line->sidenum[1]].midtexture = 0;
-		door->line->flags &= ML_BLOCKING^0xff;
-					
-		if (door->type == sdt_openOnly)
-		{
-		    door->frontsector->specialdata = NULL;
-		    P_RemoveThinker (&door->thinker);
-		    break;
-		}
-					
-		door->timer = SDOORWAIT;
-		door->status = sd_waiting;
-	    }
-	    else
-	    {
-		// IF DOOR NEEDS TO ANIMATE TO NEXT FRAME...
-		door->timer = SWAITTICS;
-					
-		sides[door->line->sidenum[0]].midtexture =
-		    slideFrames[door->whichDoorIndex].
-		    frontFrames[door->frame];
-		sides[door->line->sidenum[1]].midtexture =
-		    slideFrames[door->whichDoorIndex].
-		    backFrames[door->frame];
-	    }
-	}
-	break;
-			
-      case sd_waiting:
-	// IF DOOR IS DONE WAITING...
-	if (!door->timer--)
-	{
-	    // CAN DOOR CLOSE?
-	    if (door->frontsector->thinglist != NULL ||
-		door->backsector->thinglist != NULL)
-	    {
-		door->timer = SDOORWAIT;
-		break;
-	    }
-
-	    //door->frame = SNUMFRAMES-1;
-	    door->status = sd_closing;
-	    door->timer = SWAITTICS;
-	}
-	break;
-			
-      case sd_closing:
-	if (!door->timer--)
-	{
-	    if (--door->frame < 0)
-	    {
-		// IF DOOR IS DONE CLOSING...
-		door->line->flags |= ML_BLOCKING;
-		door->frontsector->specialdata = NULL;
-		P_RemoveThinker (&door->thinker);
-		break;
-	    }
-	    else
-	    {
-		// IF DOOR NEEDS TO ANIMATE TO NEXT FRAME...
-		door->timer = SWAITTICS;
-					
-		sides[door->line->sidenum[0]].midtexture =
-		    slideFrames[door->whichDoorIndex].
-		    frontFrames[door->frame];
-		sides[door->line->sidenum[1]].midtexture =
-		    slideFrames[door->whichDoorIndex].
-		    backFrames[door->frame];
-	    }
-	}
-	break;
-    }
-}
-
-
-
-void
-EV_SlidingDoor
-( line_t*	line,
-  mobj_t*	thing )
-{
-    sector_t*		sec;
-    slidedoor_t*	door;
-	
-    // DOOM II ONLY...
-    if (gamemode != commercial)
-	return;
-    
-    // Make sure door isn't already being animated
-    sec = line->frontsector;
-    door = NULL;
-    if (sec->specialdata)
-    {
-	if (!thing->player)
-	    return;
-			
-	door = sec->specialdata;
-	if (door->type == sdt_openAndClose)
-	{
-	    if (door->status == sd_waiting)
-		door->status = sd_closing;
-	}
-	else
-	    return;
-    }
-    
-    // Init sliding door vars
+  /* cph 2001/04/05 -
+   * Ok, this is a disaster area. We're assuming that sec->ceilingdata
+   *  is a vldoor_t! What if this door is controlled by both DR lines
+   *  and by switches? I don't know how to fix that.
+   * Secondly, original Doom didn't distinguish floor/lighting/ceiling
+   *  actions, so we need to do the same in demo compatibility mode.
+   */
+  if (demo_compatibility)
+  {
     if (!door)
     {
-	door = Z_Malloc (sizeof(*door), PU_LEVSPEC, 0);
-	P_AddThinker (&door->thinker);
-	sec->specialdata = door;
-		
-	door->type = sdt_openAndClose;
-	door->status = sd_opening;
-	door->whichDoorIndex = P_FindSlidingDoorType(line);
-
-	if (door->whichDoorIndex < 0)
-	    I_Error("EV_SlidingDoor: Can't use texture for sliding door!");
-			
-	door->frontsector = sec;
-	door->backsector = line->backsector;
-	door->thinker.function = T_SlidingDoor;
-	door->timer = SWAITTICS;
-	door->frame = 0;
-	door->line = line;
+      door = sec->floordata;
     }
+  }
+  /* If this is a repeatable line, and the door is already moving, then we can
+   * just reverse the current action. Note that in prboom 2.3.0 I erroneously
+   * removed the if-this-is-repeatable check, hence the prboom_4_compatibility
+   * clause below (foolishly assumed that already moving implies repeatable -
+   * but it could be moving due to another switch, e.g. lv19-509) */
+  if (door
+      && ((line->special == 1) || (line->special == 117)
+          || (line->special == 26) || (line->special == 27)
+          || (line->special == 28)))
+  {
+    /* For old demos we have to emulate the old buggy behavior and
+     * mess up non-T_VerticalDoor actions.
+     */
+    if (demo_version < DV_MBF21
+        || door->thinker.function.acp1 == (actionf_p1) T_VerticalDoor)
+    {
+      /* cph - we are writing outval to door->direction iff it is non-zero */
+      signed int outval = 0;
+
+      /* An already moving repeatable door which is being re-pressed, or a
+       * monster is trying to open a closing door - so change direction
+       * DEMOSYNC: we only read door->direction now if it really is a door.
+       */
+      if (door->thinker.function.acp1 == (actionf_p1) T_VerticalDoor
+          && door->direction == -1)
+      {
+        outval = 1; /* go back up */
+      }
+      else if (player)
+      {
+        outval = -1; /* go back down */
+      }
+
+      /* Write this to the thinker. In demo compatibility mode, we might be
+       *  overwriting a field of a non-vldoor_t thinker - we need to add any
+       *  other thinker types here if any demos depend on specific fields
+       *  being corrupted by this.
+       */
+      if (outval)
+      {
+        if (door->thinker.function.acp1 == (actionf_p1) T_VerticalDoor)
+        {
+          door->direction = outval;
+        }
+        else if (door->thinker.function.acp1 == (actionf_p1) T_PlatRaise)
+        {
+          plat_t *p = (plat_t *)door;
+          p->wait = outval;
+        }
+        else
+        {
+          printf("EV_VerticalDoor: unknown thinker.function in "
+                 "thinker corruption emulation\n");
+        }
+
+        return 1;
+      }
+    }
+    /* It's a door but we're a monster and don't want to shut it;
+     * exit with no action.
+     */
+    return 0;
+  }
+
+  // emit proper sound
+  switch(line->special)
+    {
+    case 117: // blazing door raise
+    case 118: // blazing door open
+      S_StartSound((mobj_t *)&sec->soundorg,sfx_bdopn);
+      break;
+
+    case 1:   // normal door sound
+    case 31:
+      S_StartSound((mobj_t *)&sec->soundorg,sfx_doropn);
+      break;
+
+    default:  // locked door sound
+      S_StartSound((mobj_t *)&sec->soundorg,sfx_doropn);
+      break;
+    }
+
+  // new door thinker
+  door = Z_Malloc(sizeof(vldoor_t), PU_LEVSPEC, 0);
+  P_AddThinker (&door->thinker);
+  sec->ceilingdata = door; //jff 2/22/98
+  door->thinker.function.acp1 = (actionf_p1) T_VerticalDoor;
+  door->sector = sec;
+  door->direction = 1;
+  door->speed = VDOORSPEED;
+  door->topwait = VDOORWAIT;
+  door->line = line; // jff 1/31/98 remember line that triggered us
+
+  // killough 10/98: use gradual lighting changes if nonzero tag given
+  door->lighttag = comp[comp_doorlight] ? 0 : line->tag; // killough 10/98
+
+  // set the type of door from the activating linedef type
+  switch(line->special)
+    {
+    case 1:
+    case 26:
+    case 27:
+    case 28:
+      door->type = normal;
+      break;
+
+    case 31:
+    case 32:
+    case 33:
+    case 34:
+      door->type = open;
+      line->special = 0;
+      break;
+
+    case 117: // blazing door raise
+      door->type = blazeRaise;
+      door->speed = VDOORSPEED*4;
+      break;
+
+    case 118: // blazing door open
+      door->type = blazeOpen;
+      line->special = 0;
+      door->speed = VDOORSPEED*4;
+      break;
+
+    default:
+      door->lighttag = 0;   // killough 10/98
+      break;
+    }
+
+  // find the top and bottom of the movement range
+  door->topheight = P_FindLowestCeilingSurrounding(sec);
+  door->topheight -= 4*FRACUNIT;
+  return 1;
 }
-#endif
+
+
+///////////////////////////////////////////////////////////////
+//
+// Sector type door spawners
+//
+///////////////////////////////////////////////////////////////
+
+//
+// P_SpawnDoorCloseIn30()
+//
+// Spawn a door that closes after 30 seconds (called at level init)
+//
+// Passed the sector of the door, whose type specified the door action
+// Returns nothing
+
+void P_SpawnDoorCloseIn30 (sector_t* sec)
+{
+  vldoor_t *door = Z_Malloc(sizeof(vldoor_t), PU_LEVSPEC, 0);
+
+  P_AddThinker (&door->thinker);
+
+  sec->ceilingdata = door; //jff 2/22/98
+  sec->special = 0;
+
+  door->thinker.function.acp1 = (actionf_p1) T_VerticalDoor;
+  door->sector = sec;
+  door->direction = 0;
+  door->type = normal;
+  door->speed = VDOORSPEED;
+  door->topcountdown = 30 * 35;
+  door->line = NULL; // jff 1/31/98 remember line that triggered us
+  door->lighttag = 0;  // killough 10/98: no lighting changes
+}
+
+//
+// P_SpawnDoorRaiseIn5Mins()
+//
+// Spawn a door that opens after 5 minutes (called at level init)
+//
+// Passed the sector of the door, whose type specified the door action
+// Returns nothing
+//
+
+void P_SpawnDoorRaiseIn5Mins(sector_t *sec, int secnum)
+{
+  vldoor_t* door;
+
+  door = Z_Malloc(sizeof(vldoor_t), PU_LEVSPEC, 0);
+
+  P_AddThinker (&door->thinker);
+
+  sec->ceilingdata = door; //jff 2/22/98
+  sec->special = 0;
+
+  door->thinker.function.acp1 = (actionf_p1) T_VerticalDoor;
+  door->sector = sec;
+  door->direction = 2;
+  door->type = raiseIn5Mins;
+  door->speed = VDOORSPEED;
+  door->topheight = P_FindLowestCeilingSurrounding(sec);
+  door->topheight -= 4*FRACUNIT;
+  door->topwait = VDOORWAIT;
+  door->topcountdown = 5 * 60 * 35;
+  door->line = NULL; // jff 1/31/98 remember line that triggered us
+  door->lighttag = 0;  // killough 10/98: no lighting changes
+}
+

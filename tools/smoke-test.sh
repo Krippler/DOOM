@@ -36,8 +36,19 @@
 #             nodes with children past 15 bits, no BLOCKMAP, walls in a
 #             256-tall texture from a TEXTURE1 of its own, a sprite range of
 #             its own; it stays up and the texture is drawn
+#   boom      E1M1 in a PWAD with Boom's light transfers (213 and 261) from
+#             a dark room to every other: it is read as a Boom map, and the
+#             floors and ceilings go dark, the blue pool with them
 #   dehacked  a DEHACKED lump is read, and a mod's own pistol sound (silence)
 #             is the one the mixer plays (needs xdotool)
+#   mbf21     a patch past DOOM's own numbers (DSDHacked) and MBF21's code
+#             pointers: the pistol, made silent, fires through a new frame
+#             that plays sound 700 (A_WeaponSound), a tone of the patch's
+#             own; the tone is heard, so the engine and the mixer both
+#             took a sound numbered past 255 (needs xdotool)
+#   id24      E1M1 ends by itself (special 11, on the easiest skill), and
+#             its tally is an INTERLEVEL lump's: the background, and of its
+#             layer's two squares the one whose condition holds
 #   ogg       a level whose music is an Ogg Vorbis lump, as SIGIL II's are,
 #             is heard at the tone's own pitch (needs oggenc, from
 #             vorbis-tools, and a soundfont; skipped without)
@@ -493,6 +504,87 @@ kill "$game_pid" 2>/dev/null
 wait_game 10
 stop_x
 
+# --------------------------------------------------------------------- boom
+# A Boom map: E1M1 with the darkest room's light put out, and two of its walls
+# made Boom's light transfers, 213 for floors and 261 for ceilings, to every
+# other sector. The map has to come from a PWAD (an IWAD's maps always play
+# as DOOM's), and the shareware IWAD will not take one, so the IWAD here is a
+# copy under a name the engine does not know. The special makes it a Boom
+# map; drawn as one, the start view's floors and ceilings are black, and the
+# blue pool in it (thousands of pixels in DOOM's drawing) is gone.
+say "boom: E1M1 with light transfers (213, 261) from a dark room"
+mkdir -p "$work/boom"
+cp "$wad" "$work/boom/smoke.wad"
+python3 - "$wad" "$work/boom/boom.wad" <<'EOF' || die "could not make the Boom map"
+import struct, sys
+src, out = sys.argv[1], sys.argv[2]
+d = open(src, 'rb').read()
+n, ofs = struct.unpack('<ii', d[4:12])
+lumps = [struct.unpack('<ii8s', d[ofs + 16 * i:ofs + 16 * i + 16]) for i in range(n)]
+lumps = [(nm.rstrip(b'\0').decode(), d[fp:fp + sz]) for fp, sz, nm in lumps]
+i = [nm for nm, _ in lumps].index('E1M1')
+maplumps = lumps[i:i + 11]
+m = dict(maplumps[1:])
+lines = [list(r) for r in struct.iter_unpack('<7H', m['LINEDEFS'])]
+sides = [list(r) for r in struct.iter_unpack('<hh8s8s8sH', m['SIDEDEFS'])]
+secs = [list(r) for r in struct.iter_unpack('<hh8s8shhh', m['SECTORS'])]
+dark = min(range(len(secs)), key=lambda s: secs[s][4])
+secs[dark][4] = 0
+walls = [l for l in lines if l[6] == 0xffff and sides[l[5]][5] == dark]
+walls[0][3:5] = [213, 999]
+walls[1][3:5] = [261, 999]
+for k, s in enumerate(secs):
+    if k != dark:
+        s[6] = 999
+m['LINEDEFS'] = b''.join(struct.pack('<7H', *l) for l in lines)
+m['SECTORS'] = b''.join(struct.pack('<hh8s8shhh', *s) for s in secs)
+body = dirs = b''
+for nm, data in [('E1M1', b'')] + [(k, m[k]) for k, _ in maplumps[1:]]:
+    dirs += struct.pack('<ii8s', 12 + len(body), len(data), nm.encode())
+    body += data
+open(out, 'wb').write(struct.pack('<4sii', b'PWAD', 11, 12 + len(body)) + body + dirs)
+EOF
+start_x 24
+rm -f "$work/.doomrc"
+game_iwad="$work/boom/smoke.wad" start_game boom.log \
+    -file "$work/boom/boom.wad" -warp 1 1 -nojoy
+game_iwad=
+i=0
+until grep -q "I_InitGraphics" "$work/boom.log" 2>/dev/null; do
+    i=$((i + 1))
+    [ "$i" -gt 200 ] && { tail -20 "$work/boom.log" >&2; die "the engine never opened its window; see $work/boom.log"; }
+    sleep 0.1
+done
+sleep 3
+kill -0 "$game_pid" 2>/dev/null \
+    || { tail -20 "$work/boom.log" >&2; die "E1M1 as a Boom map did not stay up; see $work/boom.log"; }
+grep -q "P_SetupLevel: boom.wad's maps play as Boom's" "$work/boom.log" \
+    || die "the map was not read as a Boom map; see $work/boom.log"
+python3 - "$work/fb24/Xvfb_screen0" <<'EOF' \
+    || die "the light transfers were not drawn: the pool is still lit; see $work/boom.log"
+import struct, sys
+d = open(sys.argv[1], 'rb').read()
+hsize, = struct.unpack('>I', d[:4])
+w, h = struct.unpack('>II', d[16:24])
+bpl, = struct.unpack('>I', d[48:52])
+ncolors, = struct.unpack('>I', d[76:80])
+px = d[hsize + ncolors * 12:]
+blue = 0
+for y in range(h):
+    row = px[y * bpl:y * bpl + 4 * w]
+    for x in range(0, 4 * w, 4):
+        b, g, r = row[x], row[x + 1], row[x + 2]
+        if b > 60 and b > 2 * max(r, g):
+            blue += 1
+print('[smoke] %d blue pixels' % blue)
+sys.exit(0 if blue < 100 else 1)
+EOF
+cp "$work/fb24/Xvfb_screen0" "$work/boom.xwd"
+say "a Boom map from a PWAD: read as one, and its light transfers drawn"
+kill "$game_pid" 2>/dev/null
+wait_game 10
+stop_x
+
 # ----------------------------------------------------------------- dehacked
 # A mod's DEHACKED lump is read, and a mod's own sounds reach the mixer. The
 # mixer used to load every effect from an IWAD it found by itself, so a mod's
@@ -542,6 +634,174 @@ if command -v xdotool >/dev/null 2>&1; then
 else
     say "dehacked: skipped, xdotool is not installed"
 fi
+
+# -------------------------------------------------------------------- mbf21
+# A patch's frames, sounds and code pointers past DOOM's own numbers, as
+# MBF21 mods (Legacy of Rust among them) number theirs: the pistol's firing
+# frame goes on to frame 5000, which plays sound 700 with A_WeaponSound
+# (args: the sound). Sound 700 is named SMOKE in [SOUNDS], and DSSMOKE is a
+# tone; the pistol's own sound is silence and A_FirePistol is taken off.
+# Hearing the tone takes the frame, the pointer and its args, a sound
+# numbered past 255, and the mixer's four-digit commands ('L', 'P').
+if command -v xdotool >/dev/null 2>&1; then
+    say "mbf21: the pistol plays sound 700 through a frame of its own"
+    mkdir -p "$work/mbf21"
+    printf '%s\n' 'Patch File for DeHackEd v3.0' 'Doom version = 2021' \
+        'Patch format = 6' '' 'Frame 14' 'Next frame = 5000' '' \
+        'Frame 5000' 'Sprite number = 3' 'Sprite subnumber = 1' \
+        'Duration = 4' 'Next frame = 15' 'Args1 = 700' '' '[CODEPTR]' \
+        'FRAME 14 = NULL' 'FRAME 5000 = WeaponSound' '' '[SOUNDS]' \
+        '700 = SMOKE' >"$work/mbf21/dehacked"
+    python3 -c "import struct, sys; sys.stdout.buffer.write(struct.pack('<HHI', 3, 11025, 4000) + bytes([128]) * 4000)" \
+        >"$work/mbf21/dspistol"
+    python3 -c "import math, struct, sys; n = 11025; sys.stdout.buffer.write(struct.pack('<HHI', 3, 11025, n) + bytes(int(128 + 100 * math.sin(2 * math.pi * 440 * i / 11025)) for i in range(n)))" \
+        >"$work/mbf21/dssmoke"
+    add_lumps "$wad" "$work/mbf21/doom1.wad" \
+        DEHACKED "$work/mbf21/dehacked" DSPISTOL "$work/mbf21/dspistol" \
+        DSSMOKE "$work/mbf21/dssmoke" \
+        || die "could not add the patch and the sounds"
+    start_x 24
+    start_mixer
+    printf 'music_volume 0\nsfx_volume 15\n' >"$work/.doomrc"
+    DOOM_SFX_SOCKET="$work/sfx.sock" DOOM_MUSIC_PIPE="$work/music.pipe" \
+    DOOM_AUDIO_RATE=22050 game_iwad="$work/mbf21/doom1.wad" \
+        start_game mbf21.log -warp 1 1 -nojoy
+    game_iwad=
+    i=0
+    until grep -q "I_InitGraphics" "$work/mbf21.log" 2>/dev/null; do
+        i=$((i + 1))
+        [ "$i" -gt 200 ] && { tail -20 "$work/mbf21.log" >&2; die "the engine never opened its window; see $work/mbf21.log"; }
+        sleep 0.1
+    done
+    grep -q "^DEHACKED: doom1.wad: [0-9]* changes" "$work/mbf21.log" \
+        && ! grep -q "^DEHACKED: .*line" "$work/mbf21.log" \
+        || die "the patch was not read without complaint; see $work/mbf21.log"
+    sleep 2
+    python3 "$client" peak --audio "$audio_port" --secs 3 &
+    listener=$!
+    sleep 0.5
+    DISPLAY="$disp" xdotool keydown Control_L
+    sleep 1
+    DISPLAY="$disp" xdotool keyup Control_L
+    wait "$listener" \
+        || die "sound 700 was not heard: the frame, the pointer or the mixer failed; see $work/mbf21.log and $work/audiostream.log"
+    kill "$game_pid" 2>/dev/null
+    wait_game 10
+    stop_mixer
+    stop_x
+    say "frame 5000's A_WeaponSound played sound 700, the patch's own"
+else
+    say "mbf21: skipped, xdotool is not installed"
+fi
+
+# -------------------------------------------------------------------- id24
+# An ID24 intermission, as Legacy of Rust's are: UMAPINFO gives E1M1 an
+# exitanim, an INTERLEVEL lump of JSON whose background is a patch of solid
+# blue and whose one layer, for the tally, has two squares -- green, shown
+# when E1M1 has been played, and yellow, when E1M5 has. Every sector of E1M1
+# is made special 11, the one that ends E1M8: on the easiest skill, which
+# halves the damage, the player comes down to 10% and the level ends by
+# itself, eight seconds in. The tally has to be blue, with the green square
+# and without the yellow.
+say "id24: E1M1's tally an INTERLEVEL lump's, with a layer of conditions"
+mkdir -p "$work/id24"
+python3 - "$wad" "$work/id24" <<'EOF' || die "could not make the intermission's lumps"
+import json, struct, sys
+src, out = sys.argv[1], sys.argv[2]
+d = open(src, 'rb').read()
+n, ofs = struct.unpack('<ii', d[4:12])
+lumps = [struct.unpack('<ii8s', d[ofs + 16 * i:ofs + 16 * i + 16]) for i in range(n)]
+lumps = [(nm.rstrip(b'\0').decode(), d[fp:fp + sz]) for fp, sz, nm in lumps]
+i = [nm for nm, _ in lumps].index('E1M1')
+for nm, data in lumps[i:i + 11]:
+    if nm == 'SECTORS':
+        secs = [list(r) for r in struct.iter_unpack('<hh8s8shhh', data)]
+        for s in secs:
+            s[5] = 11
+        data = b''.join(struct.pack('<hh8s8shhh', *s) for s in secs)
+    open('%s/%s' % (out, nm.lower() or 'e1m1'), 'wb').write(data)
+def patch(w, h, colour):
+    cols = b''.join(bytes([0, h, 0]) + bytes([colour]) * h + bytes([0, 255])
+                    for x in range(w))
+    head = struct.pack('<hhhh', w, h, 0, 0)
+    size = h + 5
+    return head + b''.join(struct.pack('<i', 8 + 4 * w + x * size)
+                           for x in range(w)) + cols
+open(out + '/smokebg', 'wb').write(patch(320, 200, 200))    # blue
+open(out + '/smokegrn', 'wb').write(patch(30, 20, 112))     # green
+open(out + '/smokeyel', 'wb').write(patch(30, 20, 231))    # yellow
+def square(x, image, visited):
+    return {'x': x, 'y': 130,
+            'frames': [{'image': image, 'type': 1, 'duration': 0,
+                        'maxduration': 0}],
+            'conditions': [{'condition': 3, 'param': visited}]}
+json.dump({'type': 'interlevel', 'version': '1.0.0', 'metadata': {},
+           'data': {'music': 'D_INTER', 'backgroundimage': 'SMOKEBG',
+                    'layers': [{'anims': [square(130, 'SMOKEGRN', 1),
+                                          square(180, 'SMOKEYEL', 5)],
+                                'conditions': [{'condition': 6,
+                                                'param': 0}]}]}},
+          open(out + '/smokeil', 'w'))
+open(out + '/umapinfo', 'w').write('map E1M1\n{\n    exitanim = "SMOKEIL"\n}\n')
+EOF
+m="$work/id24"
+add_lumps "$wad" "$m/doom1.wad" E1M1 "$m/e1m1" THINGS "$m/things" \
+    LINEDEFS "$m/linedefs" SIDEDEFS "$m/sidedefs" VERTEXES "$m/vertexes" \
+    SEGS "$m/segs" SSECTORS "$m/ssectors" NODES "$m/nodes" \
+    SECTORS "$m/sectors" REJECT "$m/reject" BLOCKMAP "$m/blockmap" \
+    UMAPINFO "$m/umapinfo" SMOKEIL "$m/smokeil" SMOKEBG "$m/smokebg" \
+    SMOKEGRN "$m/smokegrn" SMOKEYEL "$m/smokeyel" \
+    || die "could not add the map and the lumps"
+start_x 24
+rm -f "$work/.doomrc"
+game_iwad="$work/id24/doom1.wad" start_game id24.log -warp 1 1 -skill 1 -nojoy
+game_iwad=
+python3 - "$work/fb24/Xvfb_screen0" <<'EOF' \
+    || { tail -20 "$work/id24.log" >&2; die "the INTERLEVEL tally was not drawn as it should be; see $work/id24.log"; }
+import struct, sys, time
+def colours():
+    d = open(sys.argv[1], 'rb').read()
+    hsize, = struct.unpack('>I', d[:4])
+    w, h = struct.unpack('>II', d[16:24])
+    bpl, = struct.unpack('>I', d[48:52])
+    ncolors, = struct.unpack('>I', d[76:80])
+    px = d[hsize + ncolors * 12:]
+    def at(x, y):
+        o = y * bpl + 4 * x
+        return px[o + 2], px[o + 1], px[o]
+    blue = sum(1 for y in range(0, h, 4) for x in range(0, w, 4)
+               if at(x, y)[2] > 200 and max(at(x, y)[:2]) < 60)
+    def square(x0):
+        # the square, at 320x200's (x0, 130), 30 by 20, on the doubled screen
+        green = yellow = 0
+        for y in range(2 * 130, 2 * 150):
+            for x in range(2 * x0, 2 * (x0 + 30)):
+                r, g, b = at(x, y)
+                green += g > 200 and r < 160 and b < 160
+                yellow += r > 200 and g > 200 and b < 60
+        return green, yellow
+    return blue * 16, w * h, square(130)[0], square(180)[1]
+for i in range(300):
+    time.sleep(0.1)
+    try:
+        blue, total, green, yellow = colours()
+    except (OSError, struct.error):
+        continue
+    if blue > total // 2:
+        break
+time.sleep(1)
+blue, total, green, yellow = colours()
+print('[smoke] tally: %d of %d pixels blue, green square %d, yellow %d'
+      % (blue, total, green, yellow))
+sys.exit(0 if blue > total // 2 and green > 1500 and yellow < 100 else 1)
+EOF
+cp "$work/fb24/Xvfb_screen0" "$work/id24.xwd"
+kill -0 "$game_pid" 2>/dev/null \
+    || die "the engine did not stay up through the intermission; see $work/id24.log"
+say "E1M1 ended by itself, and its tally was the INTERLEVEL's, conditions kept"
+kill "$game_pid" 2>/dev/null
+wait_game 10
+stop_x
 
 # ---------------------------------------------------------------------- ogg
 if [ -z "$soundfont" ] || ! command -v oggenc >/dev/null 2>&1; then

@@ -259,6 +259,133 @@ void R_ClearClipSegs (void)
 }
 
 //
+// Boom's sector effects, as drawn (killough 3/7/98, 4/4/98), by way of Woof.
+//
+static sector_t	fronttempsec;	// frontsector, when it is a made-up one
+static sector_t	backtempsec;	// and backsector
+
+static int R_FloorLight (sector_t* s)
+{
+    return s->floorlightsec == -1 ? s->lightlevel
+	: sectors[s->floorlightsec].lightlevel;
+}
+
+static int R_CeilingLight (sector_t* s)
+{
+    return s->ceilinglightsec == -1 ? s->lightlevel
+	: sectors[s->ceilinglightsec].lightlevel;
+}
+
+// The flat a plane shows: F_SKY1 in a sector MBF's 271 or 272 tagged is
+// the sky that line gives (PL_SKYFLAT, r_plane.c).
+int R_PlanePic (sector_t* sec, int pic)
+{
+    if (pic == skyflatnum && sec->sky)
+	return PL_SKYFLAT | (sec->sky - 1);
+    return pic;
+}
+
+//
+// R_FakeFlat
+// A sector as the view sees it. One a line 242 tags is drawn with the
+// heights of the line's own sector, its "water": seen from under that
+// water, the sector's floor is its own and its ceiling the water's
+// surface; from above the water's ceiling, the other way about; from
+// between, the water's heights, the real floor and ceiling hidden. The
+// light of the floor and ceiling can come from other sectors (213, 261).
+//
+sector_t*
+R_FakeFlat
+( sector_t*	sec,
+  sector_t*	tempsec,
+  int*		floorlightlevel,
+  int*		ceilinglightlevel,
+  boolean	back )
+{
+    if (floorlightlevel)
+	*floorlightlevel = R_FloorLight (sec);
+    if (ceilinglightlevel)
+	*ceilinglightlevel = R_CeilingLight (sec);
+
+    if (sec->heightsec != -1)
+    {
+	sector_t*	s = &sectors[sec->heightsec];
+	int		heightsec = viewplayer->mo->subsector->sector->heightsec;
+	boolean		underwater = heightsec != -1
+	    && viewz <= sectors[heightsec].floorheight;
+
+	// a copy to change
+	*tempsec = *sec;
+	tempsec->floorheight = s->floorheight;
+	tempsec->ceilingheight = s->ceilingheight;
+
+	// killough 11/98: no sudden light changes from non-water sectors
+	if (underwater)
+	{
+	    tempsec->floorheight = sec->floorheight;
+	    tempsec->ceilingheight = s->floorheight - 1;
+	}
+
+	if (underwater && !back)
+	{
+	    // head below the water's floor
+	    tempsec->floorpic = s->floorpic;
+	    tempsec->floor_xoffs = s->floor_xoffs;
+	    tempsec->floor_yoffs = s->floor_yoffs;
+
+	    if (R_IsSkyFlat (s->ceilingpic))
+	    {
+		tempsec->floorheight = tempsec->ceilingheight + 1;
+		tempsec->ceilingpic = tempsec->floorpic;
+		tempsec->ceiling_xoffs = tempsec->floor_xoffs;
+		tempsec->ceiling_yoffs = tempsec->floor_yoffs;
+	    }
+	    else
+	    {
+		tempsec->ceilingpic = s->ceilingpic;
+		tempsec->ceiling_xoffs = s->ceiling_xoffs;
+		tempsec->ceiling_yoffs = s->ceiling_yoffs;
+	    }
+
+	    tempsec->lightlevel = s->lightlevel;
+	    if (floorlightlevel)
+		*floorlightlevel = R_FloorLight (s);
+	    if (ceilinglightlevel)
+		*ceilinglightlevel = R_CeilingLight (s);
+	}
+	else if (!underwater && heightsec != -1
+		 && viewz >= sectors[heightsec].ceilingheight
+		 && sec->ceilingheight > s->ceilingheight)
+	{
+	    // above the water's ceiling
+	    tempsec->ceilingheight = s->ceilingheight;
+	    tempsec->floorheight = s->ceilingheight + 1;
+
+	    tempsec->floorpic = tempsec->ceilingpic = s->ceilingpic;
+	    tempsec->floor_xoffs = tempsec->ceiling_xoffs = s->ceiling_xoffs;
+	    tempsec->floor_yoffs = tempsec->ceiling_yoffs = s->ceiling_yoffs;
+
+	    if (!R_IsSkyFlat (s->floorpic))
+	    {
+		tempsec->ceilingheight = sec->ceilingheight;
+		tempsec->floorpic = s->floorpic;
+		tempsec->floor_xoffs = s->floor_xoffs;
+		tempsec->floor_yoffs = s->floor_yoffs;
+	    }
+
+	    tempsec->lightlevel = s->lightlevel;
+	    if (floorlightlevel)
+		*floorlightlevel = R_FloorLight (s);
+	    if (ceilinglightlevel)
+		*ceilinglightlevel = R_CeilingLight (s);
+	}
+	sec = tempsec;
+    }
+    return sec;
+}
+
+
+//
 // R_AddLine
 // Clips the given segment
 // and adds any visible pieces to the line list.
@@ -330,6 +457,9 @@ void R_AddLine (seg_t*	line)
     if (!backsector)
 	goto clipsolid;		
 
+    // Boom: its heights as the view sees them (R_FakeFlat)
+    backsector = R_FakeFlat (backsector, &backtempsec, NULL, NULL, true);
+
     // Closed door.
     if (backsector->ceilingheight <= frontsector->floorheight
 	|| backsector->floorheight >= frontsector->ceilingheight)
@@ -348,7 +478,15 @@ void R_AddLine (seg_t*	line)
     if (backsector->ceilingpic == frontsector->ceilingpic
 	&& backsector->floorpic == frontsector->floorpic
 	&& backsector->lightlevel == frontsector->lightlevel
-	&& curline->sidedef->midtexture == 0)
+	&& curline->sidedef->midtexture == 0
+	// Boom's: nor scrolled or lit differently, nor a different sky
+	&& backsector->floor_xoffs == frontsector->floor_xoffs
+	&& backsector->floor_yoffs == frontsector->floor_yoffs
+	&& backsector->ceiling_xoffs == frontsector->ceiling_xoffs
+	&& backsector->ceiling_yoffs == frontsector->ceiling_yoffs
+	&& backsector->floorlightsec == frontsector->floorlightsec
+	&& backsector->ceilinglightsec == frontsector->ceilinglightsec
+	&& backsector->sky == frontsector->sky)
     {
 	return;
     }
@@ -506,6 +644,8 @@ void R_Subsector (int num)
     int			count;
     seg_t*		line;
     subsector_t*	sub;
+    int			floorlightlevel;
+    int			ceilinglightlevel;
 	
 #ifdef RANGECHECK
     if (num>=numsubsectors)
@@ -520,26 +660,42 @@ void R_Subsector (int num)
     count = sub->numlines;
     line = &segs[sub->firstline];
 
-    if (frontsector->floorheight < viewz)
+    // Boom: another sector's heights, for water and false floors (242),
+    // and the floor and ceiling lit from others (213, 261)
+    frontsector = R_FakeFlat (frontsector, &fronttempsec, &floorlightlevel,
+			      &ceilinglightlevel, false);
+
+    if (frontsector->floorheight < viewz
+	|| (frontsector->heightsec != -1
+	    && R_IsSkyFlat (sectors[frontsector->heightsec].ceilingpic)))
     {
 	floorplane = R_FindPlane (frontsector->floorheight,
-				  frontsector->floorpic,
-				  frontsector->lightlevel);
+				  R_PlanePic (frontsector,
+					      frontsector->floorpic),
+				  floorlightlevel,
+				  frontsector->floor_xoffs,
+				  frontsector->floor_yoffs);
     }
     else
 	floorplane = NULL;
     
     if (frontsector->ceilingheight > viewz 
-	|| R_IsSkyFlat (frontsector->ceilingpic))
+	|| R_IsSkyFlat (frontsector->ceilingpic)
+	|| (frontsector->heightsec != -1
+	    && R_IsSkyFlat (sectors[frontsector->heightsec].floorpic)))
     {
 	ceilingplane = R_FindPlane (frontsector->ceilingheight,
-				    frontsector->ceilingpic,
-				    frontsector->lightlevel);
+				    R_PlanePic (frontsector,
+						frontsector->ceilingpic),
+				    ceilinglightlevel,
+				    frontsector->ceiling_xoffs,
+				    frontsector->ceiling_yoffs);
     }
     else
 	ceilingplane = NULL;
 		
-    R_AddSprites (frontsector);	
+    // the real sector's things, lit as its floor and ceiling are
+    R_AddSprites (sub->sector, (floorlightlevel + ceilinglightlevel) / 2);
 
     while (count--)
     {

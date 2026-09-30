@@ -159,11 +159,20 @@ void P_MovePlayer (player_t* player)
     //  if not onground.
     onground = (player->mo->z <= player->mo->floorz);
 	
-    if (cmd->forwardmove && onground)
-	P_Thrust (player, player->mo->angle, cmd->forwardmove*2048);
+    {
+	// Boom: a push counts for less on mud (P_GetMoveFactor); 2048, as
+	// DOOM's, everywhere else
+	int	movefactor = demo_compatibility ? ORIG_FRICTION_FACTOR
+	    : P_GetMoveFactor (player->mo, NULL);
+
+	if (cmd->forwardmove && onground)
+	    P_Thrust (player, player->mo->angle,
+		      cmd->forwardmove*movefactor);
     
-    if (cmd->sidemove && onground)
-	P_Thrust (player, player->mo->angle-ANG90, cmd->sidemove*2048);
+	if (cmd->sidemove && onground)
+	    P_Thrust (player, player->mo->angle-ANG90,
+		      cmd->sidemove*movefactor);
+    }
 
     if ( (cmd->forwardmove || cmd->sidemove) 
 	 && player->mo->state == &states[S_PLAY] )

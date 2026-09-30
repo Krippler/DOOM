@@ -186,12 +186,13 @@ void R_InitSpriteDefs (char** namelist)
     int		start;
     int		end;
 		
-    // count the number of sprite names
+    // count the number of sprite names: a patch's sprite can have none
+    // yet, and is left without frames
     check = namelist;
     while (*check != NULL)
 	check++;
 
-    numsprites = check-namelist;
+    numsprites = namelist == sprnames ? numspritenames : check-namelist;
 	
     if (!numsprites)
 	return;
@@ -208,6 +209,11 @@ void R_InitSpriteDefs (char** namelist)
     for (i=0 ; i<numsprites ; i++)
     {
 	spritename = namelist[i];
+	if (!spritename)
+	{
+	    sprites[i].numframes = 0;
+	    continue;
+	}
 	memset (sprtemp,-1, sizeof(sprtemp));
 		
 	maxframe = -1;
@@ -440,6 +446,12 @@ R_DrawVisSprite
 	dc_translation = translationtables - 256 +
 	    ( (vis->mobjflags & MF_TRANSLATION) >> (MF_TRANSSHIFT-8) );
     }
+    else if (vis->mobjflags & MF_TRANSLUCENT)
+    {
+	// MBF's translucent things, through Boom's table
+	colfunc = detailshift ? R_DrawTLColumnLow : R_DrawTLColumn;
+	tranmap = main_tranmap;
+    }
 	
     dc_iscale = abs(vis->xiscale)>>detailshift;
     dc_texturemid = vis->texturemid;
@@ -463,6 +475,31 @@ R_DrawVisSprite
 }
 
 
+
+//
+// R_SpriteFrameExists
+// Whether a sprite's frame has pictures. id's engine stopped on one that
+// did not; MBF21 mods show nothing with TNT1 (Boom's sprite with no
+// pictures, which ports ship an empty one for), and a patch can name a
+// sprite or frame that no WAD has. Said once in the log.
+//
+static boolean R_SpriteFrameExists (int sprite, int frame)
+{
+    static boolean	said;
+
+    if ((unsigned) sprite < (unsigned) numsprites
+	&& (frame & FF_FRAMEMASK) < sprites[sprite].numframes)
+	return true;
+    if (sprite != SPR_TNT1 && !said)
+    {
+	printf ("R_ProjectSprite: no sprite %s frame %c; not drawn\n",
+		(unsigned) sprite < (unsigned) numspritenames
+		&& sprnames[sprite] ? sprnames[sprite] : "?",
+		'A' + (frame & FF_FRAMEMASK));
+	said = true;
+    }
+    return false;
+}
 
 //
 // R_ProjectSprite
@@ -527,19 +564,18 @@ void R_ProjectSprite (mobj_t* thing)
     // too far off the side?
     if (abs(tx)>(tz<<2))
 	return;
+
+    // Boom's invisible things (MT_PUSH, MT_PULL): nothing to draw, and no
+    // TNT1 lumps in DOOM's WADs to draw it with
+    if (thing->sprite == SPR_TNT1)
+	return;
     
-    // decide which patch to use for sprite relative to player
-#ifdef RANGECHECK
-    if ((unsigned)thing->sprite >= numsprites)
-	I_Error ("R_ProjectSprite: invalid sprite number %i ",
-		 thing->sprite);
-#endif
+    // decide which patch to use for sprite relative to player; a frame
+    // with no pictures (TNT1, or a patch's sprite with none in the WADs)
+    // is not drawn
+    if (!R_SpriteFrameExists (thing->sprite, thing->frame))
+	return;
     sprdef = &sprites[thing->sprite];
-#ifdef RANGECHECK
-    if ( (thing->frame&FF_FRAMEMASK) >= sprdef->numframes )
-	I_Error ("R_ProjectSprite: invalid sprite frame %i : %i ",
-		 thing->sprite, thing->frame);
-#endif
     sprframe = &sprdef->spriteframes[ thing->frame & FF_FRAMEMASK];
 
     if (sprframe->rotate)
@@ -575,6 +611,7 @@ void R_ProjectSprite (mobj_t* thing)
     // store information in a vissprite
     vis = R_NewVisSprite ();
     vis->mobjflags = thing->flags;
+    vis->heightsec = thing->subsector->sector->heightsec;
     vis->scale = xscale<<detailshift;
     vis->gx = thingx;
     vis->gy = thingy;
@@ -614,7 +651,7 @@ void R_ProjectSprite (mobj_t* thing)
     else if (thing->frame & FF_FULLBRIGHT)
     {
 	// full bright
-	vis->colormap = colormaps;
+	vis->colormap = fullcolormap;
     }
     
     else
@@ -636,7 +673,7 @@ void R_ProjectSprite (mobj_t* thing)
 // R_AddSprites
 // During BSP traversal, this adds sprites by sector.
 //
-void R_AddSprites (sector_t* sec)
+void R_AddSprites (sector_t* sec, int lightlevel)
 {
     mobj_t*		thing;
     int			lightnum;
@@ -651,7 +688,9 @@ void R_AddSprites (sector_t* sec)
     // Well, now it will be done.
     sec->validcount = validcount;
 	
-    lightnum = (sec->lightlevel >> LIGHTSEGSHIFT)+extralight;
+    // lit as the floor and ceiling around them are (R_Subsector): the
+    // sector's light, but for Boom's light transfers and water
+    lightnum = (lightlevel >> LIGHTSEGSHIFT)+extralight;
 
     if (lightnum < 0)		
 	spritelights = scalelight[0];
@@ -683,18 +722,10 @@ void R_DrawPSprite (pspdef_t* psp)
     fixed_t		sx = R_LerpPspX (viewplayer, psp);
     fixed_t		sy = R_LerpPspY (viewplayer, psp);
 
-    // decide which patch to use
-#ifdef RANGECHECK
-    if ( (unsigned)psp->state->sprite >= numsprites)
-	I_Error ("R_ProjectSprite: invalid sprite number %i ",
-		 psp->state->sprite);
-#endif
+    // decide which patch to use; none, for a frame with no pictures
+    if (!R_SpriteFrameExists (psp->state->sprite, psp->state->frame))
+	return;
     sprdef = &sprites[psp->state->sprite];
-#ifdef RANGECHECK
-    if ( (psp->state->frame & FF_FRAMEMASK)  >= sprdef->numframes)
-	I_Error ("R_ProjectSprite: invalid sprite frame %i : %i ",
-		 psp->state->sprite, psp->state->frame);
-#endif
     sprframe = &sprdef->spriteframes[ psp->state->frame & FF_FRAMEMASK ];
 
     lump = sprframe->lump[0];
@@ -720,6 +751,7 @@ void R_DrawPSprite (pspdef_t* psp)
     // store information in a vissprite
     vis = &avis;
     vis->mobjflags = 0;
+    vis->heightsec = -1;
     vis->texturemid = (BASEYCENTER<<FRACBITS)+FRACUNIT/2-(sy-spritetopoffset[lump]);
     vis->x1 = x1 < 0 ? 0 : x1;
     vis->x2 = x2 >= viewwidth ? viewwidth-1 : x2;	
@@ -755,7 +787,7 @@ void R_DrawPSprite (pspdef_t* psp)
     else if (psp->state->frame & FF_FULLBRIGHT)
     {
 	// full bright
-	vis->colormap = colormaps;
+	vis->colormap = fullcolormap;
     }
     else
     {
@@ -960,6 +992,55 @@ void R_DrawSprite (vissprite_t* spr)
 		
     }
     
+    // Boom (killough 3/27/98, 11/98): clip the thing at the surface of
+    // its sector's water and false ceiling (242), from the side of it the
+    // view is on
+    if (spr->heightsec != -1)
+    {
+	fixed_t	h, mh;
+	int	phs = viewplayer->mo->subsector->sector->heightsec;
+
+	if ((mh = sectors[spr->heightsec].floorheight) > spr->gz
+	    && (h = centeryfrac - FixedMul (mh -= viewz, spr->scale)) >= 0
+	    && (h >>= FRACBITS) < viewheight)
+	{
+	    if (mh <= 0 || (phs != -1 && viewz > sectors[phs].floorheight))
+	    {
+		// clip bottom
+		for (x = spr->x1 ; x <= spr->x2 ; x++)
+		    if (clipbot[x] == -2 || h < clipbot[x])
+			clipbot[x] = h;
+	    }
+	    else if (phs != -1 && viewz <= sectors[phs].floorheight)
+	    {
+		// clip top
+		for (x = spr->x1 ; x <= spr->x2 ; x++)
+		    if (cliptop[x] == -2 || h > cliptop[x])
+			cliptop[x] = h;
+	    }
+	}
+
+	if ((mh = sectors[spr->heightsec].ceilingheight) < spr->gzt
+	    && (h = centeryfrac - FixedMul (mh - viewz, spr->scale)) >= 0
+	    && (h >>= FRACBITS) < viewheight)
+	{
+	    if (phs != -1 && viewz >= sectors[phs].ceilingheight)
+	    {
+		// clip bottom
+		for (x = spr->x1 ; x <= spr->x2 ; x++)
+		    if (clipbot[x] == -2 || h < clipbot[x])
+			clipbot[x] = h;
+	    }
+	    else
+	    {
+		// clip top
+		for (x = spr->x1 ; x <= spr->x2 ; x++)
+		    if (cliptop[x] == -2 || h > cliptop[x])
+			cliptop[x] = h;
+	    }
+	}
+    }
+
     // all clipping has been performed, so draw the sprite
 
     // check for unclipped columns

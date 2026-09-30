@@ -889,6 +889,294 @@ tables were raised eightfold: `MAXVISPLANES`, `MAXOPENINGS`, `MAXDRAWSEGS`,
 Only memory depends on them. The scrolling-wall list, which the original
 filled with no check at all, stops at its end now.
 
+## Boom maps
+
+Boom (1998) is what most maps made since expect of an engine: its line
+types, sector flags and a few renderer tricks, frozen by PrBoom+ as
+"complevel 9" and carried on by MBF21. This engine now plays them, as the
+first stage toward Legacy of Rust (ID24 is built on MBF21, which is built on
+Boom).
+
+**Two ways to play.** A level plays either as DOOM's -- every behaviour
+id's, bugs included, so the demos stay in sync -- or as Boom's, with the
+fixes MBF21 makes by default. `P_SetCompatibility`, run by `P_SetupLevel`
+once the linedefs are in, decides per WAD. An IWAD's maps are always
+DOOM's. A mod with a `COMPLVL` lump (DSDA-Doom's) plays as Boom's unless it
+says `vanilla`. Otherwise a mod plays as Boom's if any of its maps has a
+line special from 142 to 0x7fff (Boom's and the generalized ones; 0xffff,
+in The Ultimate DOOM's E2M7, does nothing) or a sector special of 32 or
+more (Boom's flag bits). It prints which, with the file's name
+(`P_LumpFile`). The mode is `demo_compatibility`, `demo_version` and
+`comp[]`, the names the ported code tests: DOOM's is `comp[]` all 1; Boom's
+is MBF21's defaults, all 0 but `comp_zombie`, `comp_pursuit`,
+`comp_ledgeblock`, `comp_friendlyspawn` and `comp_reservedlineflag`.
+
+**Where the code came from.** Woof! (GPL, like this), which has all of it
+in C against the same structures: `p_floor.c`, `p_ceilng.c`, `p_plats.c`,
+`p_doors.c` and `p_lights.c` are its, `p_genlin.c` is new, and the line
+dispatch in `p_spec.c` (crossing, shooting, `P_UseSpecialLine` in
+`p_switch.c`), the silent teleports in `p_telept.c`, and the scrollers,
+friction and pushers are too. It was converted rather than rewritten: its
+arena allocations are `Z_Malloc (..., PU_LEVSPEC)`, its line `args[0]` is
+`tag`, `P_CheckSector` is `P_ChangeSector`, and its ID24 cases are left
+out for now. What stays this engine's: the growable ceiling and plat
+lists, the anims and switch tables, `P_UpdateSpecials` (line 48 stays in
+`linespeciallist`), and the message and sound calls.
+
+Sectors grow Boom's fields: `floordata`, `ceilingdata` and `lightingdata`
+in place of `specialdata` (in DOOM's mode `P_SectorActive` counts all
+three, as the one field was); flat offsets; `heightsec` and its colormaps;
+light and sky transfers; tag lists (`firsttag`, `nexttag`) for finding
+tagged sectors and lines; friction; and the list of things touching each
+sector (`msecnode_t`, `P_CreateSecNodeList`), which Boom's movers use to
+decide what they crush and pushers what they push. That list is only kept
+in Boom's mode, and so is friction's effect on movement.
+
+**The renderer.** `R_FakeFlat` makes the sector a viewer sees through a
+242 (deep water, fake floors and ceilings): its floor, ceiling and light
+depend on which side of the control sector's planes the eye is, and the
+view takes that sector's colormap (`C_START`/`C_END` lumps, loaded by
+`R_InitColormaps`; `scalelight` and `zlight` now point into one set of
+tables per colormap). Sprites under the fake floor are clipped to it.
+Planes take their offsets (scrollers) and light (213, 261) separately; a
+sky can be a wall's texture (271, 272, drawn from `sectors[].sky`); and a
+260 wall's middle texture is drawn translucent through `tranmap`, the
+`TRANMAP` lump or one made at start-up.
+
+**Saves.** Boom's movers are longer than id's (a door remembers its line,
+a ceiling what it changes to), and scrollers, pushers, elevators and fire
+flickers have no class in id's format. A save that needs them ends its WAD
+list in `WAD2` rather than `WADS`, and has 16 bytes of flat offsets per
+sector after the world and every special at its full length. id's classes
+in a `WADS` save are read at id's length (`OLD_SAVESIZE`, which rounds up
+to the padding the old structure had) with Boom's fields left 0. What a
+save needs is decided when it is written (`P_SaveVersion`): Boom's format
+for a Boom map, or for any level with a fire flicker (sector type 17, in
+DOOM's code since 1993 but never saved: it went out on load); id's, as
+before, for everything else, so those saves still load on 1.17.3, which
+refuses the others as not fitting their map.
+
+**A blockmap fix.** `P_CreateBlockMap`, which makes a blockmap for maps
+without one, left out lines lying exactly on a block's edge. Boom's test
+maps found it: a generalized line on a 128-unit grid line was never
+crossed. The line's box is now widened by a unit each way before the
+blocks it touches are counted. Demos on maps with the lump removed still
+do not match those with id's own blockmap, as before, since id's builder
+made its own choices; one more of the seven now does.
+
+Checked: all 21 demos end as on 1.17.1, and every format conversion as
+before; vanilla start views are identical; saves from 1.17.3 load, and
+saves round-trip on every map of DOOM, DOOM II and SIGIL II tried. Maps
+made for the purpose test each feature, most by a demo and the state at
+its end: generalized floors, doors (locked ones refused without the key,
+opened with it), stairs, lifts and crushers; 142; the elevator; the silent
+line teleport; damage and secret bits; ice (the player slides 433 units
+where the same map without it stops at 270); the conveyor; wind (and none
+without the sector's push flag); the point pusher. Others by picture: deep
+water with a blue colormap, light transfers, translucency, a wall sky, a
+floor scroll. A save on a map with every new thinker running loads with
+the same thinkers, the pusher still tied to its thing, and the flat
+offsets. The smoke test's `boom` phase plays E1M1 from a PWAD with 213 and
+261 lines putting every floor and ceiling in a dark room's light.
+
+MBF's and MBF21's additions came next: see MBF and MBF21.
+
+## MBF and MBF21
+
+MBF (1998) added code pointers, flags and a helper dog to Boom; MBF21
+(2021) is what a mod means by "MBF21": MBF's, plus a set of
+parameterized code pointers, more thing, frame and weapon fields, and
+DEHACKED numbering past DOOM's tables. Legacy of Rust, the expansion in
+the 2024 re-release, is ID24, which is MBF21 and more: its monsters and
+both new weapons are MBF21 patch work, frames 1100 to 1566, things to
+209, sprites to 284 and sounds 700 to 736. This is the MBF21 half.
+
+**Tables that grow.** `states`, `mobjinfo`, `sprnames` and `S_sfx` were
+arrays of DOOM's size. They are now copies of the originals
+(`original_states` and so on, with MBF's entries after id's and Boom's,
+in Woof's order, so numbers mean what they mean there), made by
+`D_InitInfo` and `S_InitSfxInfo` before any patch, and `D_GrowStates`,
+`D_GrowThings`, `D_GrowSprites` and `D_GrowSounds` make entry n exist
+when a patch names it -- as a section (`Frame 5000`), as a field that
+points at one (`Next frame = 5000`), or in `[SPRITES]` and `[SOUNDS]` by
+number. Woof translates such numbers to the next free slot, through hash
+tables; here the tables grow to the number itself, so a number means the
+same in the patch, the code pointers' arguments, UMAPINFO's
+`Deh_Actor_156` and a savegame, and nothing needs translating
+(`DSDH_MAX`, 200000, bounds what a patch can ask for). A new frame is
+TNT1 for ever, a new thing spawns nothing and has no editor number, and
+a new sprite or sound has no name until a patch gives it one; DEHEXTRA's
+sounds 500 to 699 are FRE000 to FRE199 until then.
+
+Growing moves a table, so nothing may hold a pointer into one across a
+growth. The first version did, in `D_Frame`: it took `&states[n]`, then
+`Next frame = 5000` grew the table and the next frame was written to the
+freed copy. The durations stuck and the links did not -- which showed as
+a pistol whose new firing frames never ran, and would have broken every
+animation of Legacy of Rust's. Fields that can grow a table are resolved
+first now, and the entry found after. The tables grow only while patches
+are read, before anything else points into them.
+
+**The patch reader** (`d_deh.c`) takes MBF21's fields: Thing's MBF21
+Bits (by number or name), Infighting, Projectile and Splash group (a
+patch's groups numbered after the built-in ones, as Woof does), Fast
+speed, Melee range, Rip sound and DEHEXTRA's Dropped item; Frame's Args1
+to Args8 and MBF21 Bits (SKILL5FAST); Weapon's Ammo per shot and MBF21
+Bits; MBF's flag names in Bits (TOUCHY, BOUNCES, FRIEND, TRANSLUCENT);
+and MBF's and MBF21's code pointer names, each with how many args it
+takes and their defaults. `D_FinishDehacked`, after the last patch, gives
+each frame's unset args its pointer's defaults, and grows the tables to
+whatever frame, thing or sound an arg names.
+
+**The code pointers** are Woof's, converted: MBF's (A_Die, A_Detonate,
+A_Mushroom, A_Spawn, A_Turn, A_Face, A_Scratch, A_PlaySound,
+A_RandomJump, A_LineEffect, A_FireOldBFG, A_BetaSkullAttack, A_Stop) and
+MBF21's eighteen for things and ten for weapons, with the helpers they
+need: `P_HealCorpse` (the Arch-vile's raising, parameterized, which
+A_VileChase now calls), `P_SeekerMissile`, `P_RoughTargetSearch`,
+`P_CheckFov`, the random spreads, and `P_RadiusAttack` with a distance
+apart from its damage. Woof has MBF's and MBF21's pointers do nothing
+unless the level plays at their complevel; here they work in any mode,
+since only a patch can put one on a frame and no DOOM demo has one --
+which lets a DEHACKED-only MBF21 mod work on the games' own maps.
+
+**What id's code did by type, MBF21 does by flag**, and the flags each
+type has by default are what its code did, so the games play as they
+did: the Arch-vile's short missile range and indifference to threshold
+and its targets' anger (SHORTMRANGE, NOTHRESHOLD, DMGIGNORED), the
+Revenant's long melee, the half distances of the Revenant, Lost Soul,
+Spider Mastermind and Cyberdemon (RANGEHALF), the Cyberdemon's eagerness
+(HIGHERMPROB), the two bosses' immunity to blasts (NORADIUSDMG) and
+full-volume sounds, the boss deaths on E1M8, E2M8, E3M8, E4M6, E4M8 and
+MAP07, the Baron and Hell Knight sparing each other's fireballs
+(PG_BARON), the dropped clip, shotgun and chaingun, the chainsaw's lack
+of thrust (NOTHRUST), the rocket launcher and BFG not firing on
+selection (NOAUTOFIRE), and fast monsters: the Demon's frames (SKILL5FAST)
+and the three fireballs' speeds (altspeed), with id's -fast quirk of
+halving the Demon's frames again on each new game kept. Ammo per shot
+changes id's weapons only when a patch sets it. The 21 demos end as on
+1.17.1 at each step.
+
+**MBF's things**: bouncing things come off floors, ceilings and walls
+(`blockline`, now kept by `PIT_CheckLine`); touchy things go off when
+anything solid touches them, when crushed, and when they land once
+armed; translucent ones are drawn through Boom's `tranmap`. Friends are
+simpler than MBF's: a friendly monster (MBF's map thing flag 128, on a
+Boom map) looks for the nearest monster in sight rather than the player,
+and friends never attack friends, the player among them (players are
+friends on Boom maps, as in MBF); MBF's following, helping and backing
+away are not here. MBF21's line flags that block players or walking
+monsters, its reserved-bit rule for bad editors, and its sectors that
+kill the monsters standing in them work on Boom maps.
+
+**Saves** in Boom's format (`WAD2`) carry each thing's flags2, intflags
+and lastenemy after id's fields; a save needs Boom's format too when a
+code pointer has changed a thing's flags2 from its type's. **Sounds past
+255** reach the mixer by new commands, `P` and `L` with four hex digits
+for the number (`p` and `l` still carry id's), and `soundsrv.c` keeps
+the samples of sounds past its own table by number.
+
+A frame with no pictures -- TNT1, which other ports ship an empty
+picture for, or a patch's sprite no WAD has -- is not drawn, where id's
+code stopped the game; and a map thing of a type the engine does not
+know is left out with a line in the log, as Boom does.
+
+**The build.** The Makefile had no header dependencies: changing a
+structure in a header rebuilt only the files that changed, and the rest
+read the old layout. That is how the first Legacy of Rust start crashed
+in `R_InitSpriteDefs`, handed the address of `sprnames` by a `p_setup.o`
+built when it was an array. Objects now record the headers they read
+(`-MMD -MP`).
+
+Checked: all 21 demos end as on 1.17.1, and every map format conversion
+as on 1.17.3; the Boom test maps as before; a test patch whose pistol
+fires a rocket (A_WeaponProjectile) and takes five bullets
+(A_ConsumeAmmo), a thing numbered 300 with sprite 250 that spawns a
+barrel (A_SpawnObject), and one that gives itself SHADOW and LOGRAV
+(A_AddFlags); Legacy of Rust's 16 maps start and run, the Incinerator
+and Calamity Blade fire, and a save on its MAP03 with its monsters awake
+loads with every thing as it was; saves on DOOM's maps still load on
+1.17.3 and 1.17.3's here. The smoke test's `mbf21` phase has the pistol
+play sound 700 through a frame of its own, and hears it.
+
+## ID24
+
+ID24 is what the 2024 re-release adds for mods on top of MBF21, and Legacy
+of Rust is written in it. Most of the expansion is MBF21 (above); what is
+ID24's own, and what of it is here:
+
+**Intermissions** (`wi_interlvl.c`, `wi_stuff.c`). A UMAPINFO map's
+`exitanim` and `enteranim` name `INTERLEVEL` lumps, JSON: a background,
+music, and layers of animations, each layer and each animation shown only
+when its conditions hold: on the tally or on the next level's screen,
+the level's number above a given one or equal to it, a given level
+played, the level not a secret one, a secret one played. Frames last
+forever, a fixed time or a random one. Legacy of Rust's put a splat on each level of the episode played so far and a flashing "You
+are here" on the next, as DOOM's episode maps do, over pictures of its
+own. It is read as Woof! reads it: the tally uses the level left's
+`exitanim`, the next level's screen the next's `enteranim`, and that screen
+is shown in DOOM II too when there is one, except in a demo, whose tics
+would fall out of step with an intermission a screen longer. The random
+frames take `M_Random`, never the game's.
+
+"Levels played" is new state: `visitedmaps[]` in `g_game.c`, cleared by
+`G_InitNew` and marked by `G_DoCompleted`. A save keeps it after the
+consistency marker -- `VIST`, a count and the levels' numbers -- where
+1.17.3 and every version before it, which stop reading at the marker,
+never look; a save without it loads with none played.
+
+JSON is new to the engine too. `m_json.c` reads it whole into a tree
+(objects, arrays, strings with their escapes, numbers, `true`, `false`,
+`null`) that is asked for its parts by key and index; `JS_ParseLump` also
+checks the lump's `"type"`. The SKYDEFS reader in `r_sky.c`, written
+before it, still picks its fields out by hand.
+
+**GAMECONF** (`m_menu.c`). A mod's JSON lump naming it and the game it is
+for. The WAD list shows its `title` first ("Legacy of Rust", where the
+file is `id1.wad`), and `M_IwadFor` puts the mod on the IWAD its `iwad`
+names when that file is running or in the WAD folder, before guessing from
+the maps. Its other fields (`executable`, `mode`, `options`, further
+`pwadfiles` and `dehfiles`) are not read.
+
+**Line specials** (`p_spec.c`). 1024-1026 and 2084-2086 scroll the walls
+of the tagged lines by this line's offsets over 8 -- as 255 scrolls its
+own -- plain, by the control sector's heights, or accelerating; 2084 on
+also scroll their back sides, the other way. 2082 and 2083 scroll both
+sides of the line itself, as 48 and 85 scroll the front. 2048-2050 offset
+the tagged sectors' floor, ceiling or both by the line's length along x
+and y; 2051-2056 also rotate them by the line's angle, which a renderer
+drawing flats along the axes cannot, so they only offset. Legacy of Rust
+uses 1024, 2048 and 2083 of these; its other two, 1023 and 1080, Woof!
+leaves alone too, and so does this. The music changers, colormap tints and
+exits that reset the inventory are not here: Legacy of Rust has none.
+
+**New Game** offered a mod with one run of maps its first map straight
+away, skipping the episode menu; Legacy of Rust's UMAPINFO makes two
+episodes of MAP01-MAP16, so a mod with more than one UMAPINFO episode now
+gets the menu.
+
+**Not here**: `SBARDEF`, the status bar as JSON -- DOOM II's is drawn,
+with Legacy of Rust's own pictures in it, fuel counted where cells were;
+the weapon carousel and its icons; the DEHACKED fields for pickup
+messages (Legacy of Rust's own `[STRINGS]` already give the fuel and its
+weapons the right messages) and for how soon a monster respawns on
+Nightmare. The log names each field it leaves out.
+
+**And a fix of id's** found on the way: `WI_drawAnimatedBack` began
+`if (commercial) return;` -- the enumeration's value, 2, not the game
+mode -- so on Linux DOOM's episode maps never showed their animations
+between levels. It reads `gamemode == commercial` now, and they do.
+
+Checked: the 21 demos end as they did on the MBF21 build, the Boom test
+maps and the MBF21 test patch as before; Legacy of Rust's 16 maps start
+and run; MAP03 and MAP10, ended from the debugger with levels marked played, show each
+episode's picture with a splat on each and "You are here" at the next;
+episode 1 on DOOM shows its animations where 1.17.3 showed none; a save
+with levels played loads on 1.17.3 and here with them. The smoke test's
+`id24` phase ends E1M1 by itself (every sector special 11, on the easiest
+skill) into an `INTERLEVEL` tally of its own, and checks its background
+and that of two squares only the one whose condition holds is drawn.
+
 ## A savegame from another game or mod
 
 id's savegame is the level by number: the players, then each sector's
@@ -1008,8 +1296,8 @@ the tables), then a `.deh`/`.bex` of the same name beside each mod file, then
   already read from lumps and now reads from files too.
 
 Not supported, and said once in the log: Cheat (the cheats are id's and
-their aliases), [HELPER], INCLUDE, MBF's and MBF21's code pointers and
-fields, and numbers past DOOM's own frames, things and sounds (DEHEXTRA).
+their aliases), [HELPER], INCLUDE. (MBF's and MBF21's code pointers and
+fields, and numbers past DOOM's own, came later: see MBF and MBF21.)
 
 **The mixer's sounds.** `audiostream`, and the desktop build's sound server,
 loaded every effect from one IWAD they found in `DOOMWADDIR` -- DOOM II's
@@ -1168,7 +1456,8 @@ uses nothing but DOOM's own line types and things, and is bigger or busier
 than the 1993 engine's fixed tables allow. UZDoom is one such engine, among
 much else. This one now is too, for maps in DOOM's own format; UZDoom's
 Boom line types, UDMF and Hexen maps, ACS, DECORATE and ZScript are not
-here and are not the same kind of work.
+here and are not the same kind of work. (Boom's came later: see Boom
+maps.)
 
 The rule throughout: nothing the original games do may change. Every table
 that grows starts at id's size and doubles, and keeps id's order, so the same

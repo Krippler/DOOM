@@ -36,6 +36,7 @@ rcsid[] = "$Id: p_maputl.c,v 1.5 1997/02/03 22:45:11 b1 Exp $";
 
 #include "doomdef.h"
 #include "p_local.h"
+#include "doomstat.h"
 
 
 // State.
@@ -361,6 +362,12 @@ void P_UnsetThingPosition (mobj_t* thing)
 	    thing->sprev->snext = thing->snext;
 	else
 	    thing->subsector->sector->thinglist = thing->snext;
+
+	// Boom: the sectors it touches, kept for P_SetThingPosition to
+	// reuse what it can of, or for the caller to free if the thing is
+	// going (P_RemoveMobj)
+	sector_list = thing->touching_sectorlist;
+	thing->touching_sectorlist = NULL;
     }
 	
     if ( ! (thing->flags & MF_NOBLOCKMAP) )
@@ -419,6 +426,15 @@ P_SetThingPosition (mobj_t* thing)
 	    sec->thinglist->sprev = thing;
 
 	sec->thinglist = thing;
+
+	// Boom: which sectors it touches, on a map that needs it -- not on
+	// DOOM's own, where the search's globals must stay as id left them
+	if (!demo_compatibility)
+	{
+	    P_CreateSecNodeList (thing, thing->x, thing->y);
+	    thing->touching_sectorlist = sector_list;
+	}
+	sector_list = NULL;
     }
 
     

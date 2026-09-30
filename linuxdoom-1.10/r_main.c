@@ -33,6 +33,7 @@ static const char rcsid[] = "$Id: r_main.c,v 1.5 1997/02/03 22:45:12 b1 Exp $";
 
 
 #include "doomdef.h"
+#include "i_system.h"
 #include "r_lerp.h"
 #include "d_net.h"
 
@@ -115,9 +116,14 @@ angle_t			xtoviewangle[SCREENWIDTH+1];
 fixed_t*		finecosine = &finesine[FINEANGLES/4];
 
 
-lighttable_t*		scalelight[LIGHTLEVELS][MAXLIGHTSCALE];
+lighttable_t*		(*scalelight)[MAXLIGHTSCALE];
 lighttable_t*		scalelightfixed[MAXLIGHTSCALE];
-lighttable_t*		zlight[LIGHTLEVELS][MAXLIGHTZ];
+lighttable_t*		(*zlight)[MAXLIGHTZ];
+lighttable_t*		fullcolormap;
+
+// one set for each colormap (R_NumColormaps)
+static lighttable_t*	(*c_scalelight)[LIGHTLEVELS][MAXLIGHTSCALE];
+static lighttable_t*	(*c_zlight)[LIGHTLEVELS][MAXLIGHTZ];
 
 // bumped light from gun blasts
 int			extralight;			
@@ -612,9 +618,16 @@ void R_InitLightTables (void)
     int		level;
     int		startmap; 	
     int		scale;
+    int		cm, ncm = R_NumColormaps ();
+
+    c_zlight = malloc (ncm * sizeof(*c_zlight));
+    c_scalelight = malloc (ncm * sizeof(*c_scalelight));
+    if (!c_zlight || !c_scalelight)
+	I_Error ("R_InitLightTables: no memory for %d colormaps", ncm);
     
     // Calculate the light levels to use
     //  for each level / distance combination.
+    for (cm = 0; cm < ncm; cm++)
     for (i=0 ; i< LIGHTLEVELS ; i++)
     {
 	startmap = ((LIGHTLEVELS-1-i)*2)*NUMCOLORMAPS/LIGHTLEVELS;
@@ -630,9 +643,12 @@ void R_InitLightTables (void)
 	    if (level >= NUMCOLORMAPS)
 		level = NUMCOLORMAPS-1;
 
-	    zlight[i][j] = colormaps + level*256;
+	    c_zlight[cm][i][j] = R_Colormap (cm) + level*256;
 	}
     }
+    zlight = c_zlight[0];
+    scalelight = c_scalelight[0];
+    fullcolormap = colormaps;
 }
 
 
@@ -694,6 +710,7 @@ void R_ExecuteSetViewSize (void)
     int		i;
     int		j;
     int		level;
+    int		cm;
     int		startmap; 	
 
     setsizeneeded = false;
@@ -764,6 +781,7 @@ void R_ExecuteSetViewSize (void)
     
     // Calculate the light levels to use
     //  for each level / scale combination.
+    for (cm = 0; cm < R_NumColormaps (); cm++)
     for (i=0 ; i< LIGHTLEVELS ; i++)
     {
 	startmap = ((LIGHTLEVELS-1-i)*2)*NUMCOLORMAPS/LIGHTLEVELS;
@@ -777,7 +795,7 @@ void R_ExecuteSetViewSize (void)
 	    if (level >= NUMCOLORMAPS)
 		level = NUMCOLORMAPS-1;
 
-	    scalelight[i][j] = colormaps + level*256;
+	    c_scalelight[cm][i][j] = R_Colormap (cm) + level*256;
 	}
     }
 }
@@ -866,11 +884,30 @@ void R_SetupFrame (player_t* player)
     viewcos = finecosine[viewangle>>ANGLETOFINESHIFT];
 	
     sscount = 0;
+
+    // Boom: in a line 242's water, or over it, that line's colormaps
+    {
+	int	cm = 0;
+	int	hs = player->mo->subsector->sector->heightsec;
+
+	if (hs != -1)
+	{
+	    sector_t*	s = &sectors[hs];
+
+	    cm = viewz < s->floorheight ? s->bottommap
+		: viewz > s->ceilingheight ? s->topmap : s->midmap;
+	    if (cm < 0 || cm >= R_NumColormaps ())
+		cm = 0;
+	}
+	zlight = c_zlight[cm];
+	scalelight = c_scalelight[cm];
+	fullcolormap = R_Colormap (cm);
+    }
 	
     if (player->fixedcolormap)
     {
 	fixedcolormap =
-	    colormaps
+	    fullcolormap
 	    + player->fixedcolormap*256*sizeof(lighttable_t);
 	
 	walllights = scalelightfixed;

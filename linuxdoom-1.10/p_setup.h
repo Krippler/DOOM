@@ -29,6 +29,9 @@
 #endif
 
 
+// Whether the level plays as DOOM's or a Boom map (doomstat.h).
+void P_SetCompatibility (int lumpnum);
+
 // NOT called by W_Ticker. Fixme.
 void
 P_SetupLevel

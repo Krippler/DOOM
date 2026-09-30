@@ -75,9 +75,19 @@ changes to monsters, weapons, frames, sounds and texts that classic mods make �
 whether the patch is a `DEHACKED` lump inside the WAD or a `.deh` (or `.bex`)
 file of the same name beside it in the WAD folder; `-deh file.deh` after the
 image name loads any other. A mod's own sound effects are played, and its
-`SWITCHES` and `ANIMATED` lumps read. Mods that need Boom or more (Boom's line
-types, UDMF maps, ACS, DECORATE, ZScript — "Boom-compatible", "MBF21",
-"GZDoom only") do not work.
+`SWITCHES` and `ANIMATED` lumps read. **Boom-compatible** mods play too
+("Boom", "PrBoom+", "complevel 9"): generalized and extended line types,
+scrollers, conveyors, ice, wind and pushers, deep water and colormaps,
+translucent walls and wall-texture skies. The log names how each mod's
+maps play (`P_SetupLevel: foo.wad's maps play as Boom's (MBF21)`); the
+games themselves always play as DOOM's. **MBF** and **MBF21** mods play too:
+their DEHACKED patches' new monsters, weapons and code pointers, with
+frames, things, sprites and sounds numbered as far past DOOM's as they
+like. **Legacy of Rust** (`id1.wad`, from the 2024 re-release, with
+`doom2.wad`) plays: its maps, monsters and weapons, its two episodes, and
+its own intermissions (ID24's `INTERLEVEL`); the WAD list calls it by name
+and puts it on DOOM II. Its status bar is DOOM II's, with its pictures. Mods that need more — UDMF maps, ACS, DECORATE, ZScript,
+"GZDoom only" — do not work.
 
 ## The browser client
 

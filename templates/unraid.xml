@@ -39,6 +39,18 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.18.0
+- Boom mods play: generalized doors, lifts and stairs, scrollers,
+  conveyors, ice, wind, deep water, translucent walls. The games
+  themselves play exactly as before.
+- MBF and MBF21 mods play: their new monsters, weapons and code
+  pointers, numbered as far past DOOM's as they like.
+- Legacy of Rust (id1.wad from the 2024 re-release, with doom2.wad)
+  plays: its maps, monsters, weapons, both episodes and its own
+  intermissions. The WAD list calls it by name.
+- DOOM's episode maps animate between levels again.
+- Saves keep Boom's moving floors and scrollers, and fire flickers.
+
 ### 1.17.3
 - Saves from before 1.17.2 find their own game or mod in the WAD folder,
   and loading one restarts on it.

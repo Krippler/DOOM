@@ -27,7 +27,13 @@ static const char
 rcsid[] = "$Id: sounds.c,v 1.3 1997/01/29 22:40:44 b1 Exp $";
 
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "doomtype.h"
+#include "i_system.h"
+#include "info.h"
 #include "sounds.h"
 
 //
@@ -111,7 +117,7 @@ musicinfo_t S_music[] =
 // Information about all the sfx
 //
 
-sfxinfo_t S_sfx[] =
+sfxinfo_t original_S_sfx[NUMSFX] =
 {
   // S_sfx[0] needs to be a dummy for odd reasons.
   { "none", false,  0, 0, -1, -1, 0 },
@@ -201,7 +207,7 @@ sfxinfo_t S_sfx[] =
   { "punch", false, 64, 0, -1, -1, 0 },
   { "hoof", false, 70, 0, -1, -1, 0 },
   { "metal", false, 70, 0, -1, -1, 0 },
-  { "chgun", false, 64, &S_sfx[sfx_pistol], 150, 0, 0 },
+  { "chgun", false, 64, &original_S_sfx[sfx_pistol], 150, 0, 0 },
   { "tink", false, 60, 0, -1, -1, 0 },
   { "bdopn", false, 100, 0, -1, -1, 0 },
   { "bdcls", false, 100, 0, -1, -1, 0 },
@@ -223,6 +229,70 @@ sfxinfo_t S_sfx[] =
   { "skeact", false, 70, 0, -1, -1, 0 },
   { "skesit", false, 70, 0, -1, -1, 0 },
   { "skeatk", false, 70, 0, -1, -1, 0 },
-  { "radio", false, 60, 0, -1, -1, 0 } 
+  { "radio", false, 60, 0, -1, -1, 0 },
+  // MBF's
+  { "dgsit", false, 98, 0, -1, -1, 0 },
+  { "dgatk", false, 70, 0, -1, -1, 0 },
+  { "dgact", false, 120, 0, -1, -1, 0 },
+  { "dgdth", false, 70, 0, -1, -1, 0 },
+  { "dgpain", false, 96, 0, -1, -1, 0 }
 };
+
+sfxinfo_t*	S_sfx;
+int		numsfx;
+
+// A table's links are pointers into it: point them into a new one
+static void S_Relink (sfxinfo_t* to, const sfxinfo_t* from, int n)
+{
+    int		i;
+
+    for (i = 0; i < n; i++)
+	if (to[i].link)
+	    to[i].link = to + (from[i].link - from);
+}
+
+void S_InitSfxInfo (void)
+{
+    numsfx = NUMSFX;
+    S_sfx = malloc (sizeof(original_S_sfx));
+    if (!S_sfx)
+	I_Error ("S_InitSfxInfo: no memory");
+    memcpy (S_sfx, original_S_sfx, sizeof(original_S_sfx));
+    S_Relink (S_sfx, original_S_sfx, numsfx);
+}
+
+// A patch's sound n. DEHEXTRA's 500 to 699 are called FRE000 to FRE199
+// until a patch names them otherwise; the rest have no name.
+boolean D_GrowSounds (int n)
+{
+    sfxinfo_t*	t;
+    int		i;
+    char	name[8];
+
+    if (n < 0 || n >= DSDH_MAX)
+	return false;
+    if (n < numsfx)
+	return true;
+    t = malloc ((size_t) (n + 1) * sizeof(*t));
+    if (!t)
+	I_Error ("D_GrowSounds: no memory for %d sounds", n + 1);
+    memcpy (t, S_sfx, numsfx * sizeof(*t));
+    S_Relink (t, S_sfx, numsfx);
+    for (i = numsfx; i <= n; i++)
+    {
+	memset (&t[i], 0, sizeof(t[i]));
+	t[i].priority = 127;
+	t[i].pitch = t[i].volume = -1;
+	t[i].lumpnum = -1;
+	if (i >= 500 && i < 700)
+	{
+	    snprintf (name, sizeof(name), "fre%03d", i - 500);
+	    t[i].name = strdup (name);
+	}
+    }
+    free (S_sfx);
+    S_sfx = t;
+    numsfx = n + 1;
+    return true;
+}
 

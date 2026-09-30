@@ -125,8 +125,13 @@ typedef	struct
     // list of mobjs in sector
     mobj_t*	thinglist;
 
-    // thinker_t for reversable actions
-    void*	specialdata;
+    // Thinkers moving it: id's had one, specialdata, for all three, so that
+    // a floor could not move while a door in the same sector did. Boom
+    // keeps them apart; P_SectorActive says whether one is busy, and in a
+    // map of DOOM's own still counts all three as one.
+    void*	floordata;
+    void*	ceilingdata;
+    void*	lightingdata;
 
     int			linecount;
     struct line_s**	lines;	// [linecount] size
@@ -138,7 +143,59 @@ typedef	struct
     fixed_t	savefloorheight;
     fixed_t	saveceilingheight;
 
+    // Boom (p_spec.c). The special before a generalized one's damage and
+    // secret bits were taken off it, to give back when a mover changes it.
+    int		oldspecial;
+    // Friction (line 223): how slippery, and how much a push counts.
+    int		friction;
+    int		movefactor;
+    // Floor and ceiling texture offsets, scrolled by 250-255.
+    fixed_t	floor_xoffs;
+    fixed_t	floor_yoffs;
+    fixed_t	ceiling_xoffs;
+    fixed_t	ceiling_yoffs;
+    // Another sector whose heights are drawn as this one's water or false
+    // floor and ceiling (242), -1 for none; and the colormaps below, in and
+    // above it, 0 for the normal one.
+    int		heightsec;
+    int		bottommap;
+    int		midmap;
+    int		topmap;
+    // Sectors whose light the floor and ceiling take (213, 261), -1 none.
+    int		floorlightsec;
+    int		ceilinglightsec;
+    // The sky drawn in place of F_SKY1 (MBF 271, 272): the number of the
+    // line that says which, plus one; 0 for the level's.
+    int		sky;
+    // The sectors with a tag, chained (P_FindSectorFromLineTag).
+    int		firsttag;
+    int		nexttag;
+    // Stair building's bookkeeping (EV_BuildStairs, EV_DoGenStairs).
+    int		stairlock;
+    int		prevsec;
+    int		nextsec;
+    // Boom: every thing touching the sector, not only those whose centre
+    // is in it (msecnode_t, p_map.c); kept on Boom's maps only.
+    struct msecnode_s*	touching_thinglist;
+
 } sector_t;
+
+
+//
+// Boom's (phares 3/14/98): which things touch which sectors. Each node is on
+// two lists: its thing's (mobj_t touching_sectorlist, through m_tnext) and
+// its sector's (sector_t touching_thinglist, through m_snext).
+//
+typedef struct msecnode_s
+{
+    sector_t*		m_sector;
+    struct mobj_s*	m_thing;
+    struct msecnode_s*	m_tprev;
+    struct msecnode_s*	m_tnext;
+    struct msecnode_s*	m_sprev;
+    struct msecnode_s*	m_snext;
+    boolean		visited;
+} msecnode_t;
 
 
 
@@ -163,6 +220,10 @@ typedef struct
 
     // Sector the SideDef is facing.
     sector_t*	sector;
+
+    // Its line's special when the map was read: Boom's 242 and 260 name
+    // colormaps and translucency tables where textures would go.
+    short	special;
     
 } side_t;
 
@@ -220,6 +281,12 @@ typedef struct line_s
 
     // thinker_t for reversable actions
     void*	specialdata;		
+
+    // Boom translucency (260): -1 opaque, 0 the TRANMAP, else the lump.
+    int		tranlump;
+    // The lines with a tag, chained (P_FindLineFromLineTag).
+    int		firsttag;
+    int		nexttag;
 } line_t;
 
 
@@ -413,6 +480,10 @@ typedef struct vissprite_s
     lighttable_t*	colormap;
    
     int			mobjflags;
+
+    // Boom: the water (242) of the thing's sector, -1 for none, to clip
+    // it at the surface (R_DrawSprite)
+    int			heightsec;
     
 } vissprite_t;
 
@@ -470,6 +541,8 @@ typedef struct visplane_s
   fixed_t		height;
   int			picnum;
   int			lightlevel;
+  fixed_t		xoffs;		// Boom's scrolled floors and ceilings
+  fixed_t		yoffs;
   int			minx;
   int			maxx;
   

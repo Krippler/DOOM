@@ -27,6 +27,10 @@ static const char
 rcsid[] = "$Id: info.c,v 1.3 1997/01/26 07:45:00 b1 Exp $";
 
 // Data.
+#include <stdlib.h>
+#include <string.h>
+
+#include "i_system.h"
 #include "sounds.h"
 #include "m_fixed.h"
 
@@ -36,6 +40,7 @@ rcsid[] = "$Id: info.c,v 1.3 1997/01/26 07:45:00 b1 Exp $";
 #include "info.h"
 
 #include "p_mobj.h"
+#include "p_local.h"
 
 // One longer than NUMSPRITES, and the extra entry is the NULL that
 // R_InitSpriteDefs walks this list looking for. Without it that walk ran off
@@ -45,7 +50,7 @@ rcsid[] = "$Id: info.c,v 1.3 1997/01/26 07:45:00 b1 Exp $";
 // after that depended on what the linker happened to put next: usually
 // nothing, sometimes a sprite count too high and a corrupted sprite table to
 // crash on later.
-char *sprnames[NUMSPRITES + 1] = {
+static char *original_sprnames[NUMSPRITES + 1] = {
     "TROO","SHTG","PUNG","PISG","PISF","SHTF","SHT2","CHGG","CHGF","MISG",
     "MISF","SAWG","PLSG","PLSF","BFGG","BFGF","BLUD","PUFF","BAL1","BAL2",
     "PLSS","PLSE","MISL","BFS1","BFE1","BFE2","TFOG","IFOG","PLAY","POSS",
@@ -60,6 +65,20 @@ char *sprnames[NUMSPRITES + 1] = {
     "COL3","COL4","CAND","CBRA","COL6","TRE1","TRE2","ELEC","CEYE","FSKU",
     "COL5","TBLU","TGRN","TRED","SMBT","SMGT","SMRT","HDB1","HDB2","HDB3",
     "HDB4","HDB5","HDB6","POB1","POB2","BRS1","TLMP","TLP2",
+    "TNT1",
+    // MBF's
+    "DOGS","PLS1","PLS2","BON3","BON4","BLD2",
+    // DEHEXTRA's
+    "SP00", "SP01", "SP02", "SP03", "SP04", "SP05", "SP06", "SP07", "SP08", "SP09",
+    "SP10", "SP11", "SP12", "SP13", "SP14", "SP15", "SP16", "SP17", "SP18", "SP19",
+    "SP20", "SP21", "SP22", "SP23", "SP24", "SP25", "SP26", "SP27", "SP28", "SP29",
+    "SP30", "SP31", "SP32", "SP33", "SP34", "SP35", "SP36", "SP37", "SP38", "SP39",
+    "SP40", "SP41", "SP42", "SP43", "SP44", "SP45", "SP46", "SP47", "SP48", "SP49",
+    "SP50", "SP51", "SP52", "SP53", "SP54", "SP55", "SP56", "SP57", "SP58", "SP59",
+    "SP60", "SP61", "SP62", "SP63", "SP64", "SP65", "SP66", "SP67", "SP68", "SP69",
+    "SP70", "SP71", "SP72", "SP73", "SP74", "SP75", "SP76", "SP77", "SP78", "SP79",
+    "SP80", "SP81", "SP82", "SP83", "SP84", "SP85", "SP86", "SP87", "SP88", "SP89",
+    "SP90", "SP91", "SP92", "SP93", "SP94", "SP95", "SP96", "SP97", "SP98", "SP99",
     NULL
 };
 
@@ -137,11 +156,18 @@ void A_BrainDie();
 void A_BrainAwake();
 void A_BrainSpit();
 void A_SpawnSound();
+// MBF's
+void A_Die();
+void A_Detonate();
+void A_FireOldBFG();
+void A_BetaSkullAttack();
+void A_Stop();
+void A_Mushroom();
 void A_SpawnFly();
 void A_BrainExplode();
 
 
-state_t	states[NUMSTATES] = {
+state_t	original_states[NUMSTATES] = {
     {SPR_TROO,0,-1,{NULL},S_NULL,0,0},	// S_NULL
     {SPR_SHTG,4,0,{A_Light0},S_NULL,0,0},	// S_LIGHTDONE
     {SPR_PUNG,0,1,{A_WeaponReady},S_PUNCH,0,0},	// S_PUNCH
@@ -1108,11 +1134,123 @@ state_t	states[NUMSTATES] = {
     {SPR_TLP2,32768,4,{NULL},S_TECH2LAMP2,0,0},	// S_TECH2LAMP
     {SPR_TLP2,32769,4,{NULL},S_TECH2LAMP3,0,0},	// S_TECH2LAMP2
     {SPR_TLP2,32770,4,{NULL},S_TECH2LAMP4,0,0},	// S_TECH2LAMP3
-    {SPR_TLP2,32771,4,{NULL},S_TECH2LAMP,0,0}	// S_TECH2LAMP4
+    {SPR_TLP2,32771,4,{NULL},S_TECH2LAMP,0,0},	// S_TECH2LAMP4
+    {SPR_TNT1,0,-1,{NULL},S_TNT1,0,0},		// S_TNT1
+
+    // MBF's, from Woof's table
+    {SPR_MISL,32768,1000,{A_Die},S_GRENADE,0,0},	// S_GRENADE
+    {SPR_MISL,32769,4,{A_Scream},S_DETONATE2,0,0},	// S_DETONATE
+    {SPR_MISL,32770,6,{A_Detonate},S_DETONATE3,0,0},	// S_DETONATE2
+    {SPR_MISL,32771,10,{NULL},S_NULL,0,0},	// S_DETONATE3
+    {SPR_DOGS,0,10,{A_Look},S_DOGS_STND2,0,0},	// S_DOGS_STND
+    {SPR_DOGS,1,10,{A_Look},S_DOGS_STND,0,0},	// S_DOGS_STND2
+    {SPR_DOGS,0,2,{A_Chase},S_DOGS_RUN2,0,0},	// S_DOGS_RUN1
+    {SPR_DOGS,0,2,{A_Chase},S_DOGS_RUN3,0,0},	// S_DOGS_RUN2
+    {SPR_DOGS,1,2,{A_Chase},S_DOGS_RUN4,0,0},	// S_DOGS_RUN3
+    {SPR_DOGS,1,2,{A_Chase},S_DOGS_RUN5,0,0},	// S_DOGS_RUN4
+    {SPR_DOGS,2,2,{A_Chase},S_DOGS_RUN6,0,0},	// S_DOGS_RUN5
+    {SPR_DOGS,2,2,{A_Chase},S_DOGS_RUN7,0,0},	// S_DOGS_RUN6
+    {SPR_DOGS,3,2,{A_Chase},S_DOGS_RUN8,0,0},	// S_DOGS_RUN7
+    {SPR_DOGS,3,2,{A_Chase},S_DOGS_RUN1,0,0},	// S_DOGS_RUN8
+    {SPR_DOGS,4,8,{A_FaceTarget},S_DOGS_ATK2,0,0},	// S_DOGS_ATK1
+    {SPR_DOGS,5,8,{A_FaceTarget},S_DOGS_ATK3,0,0},	// S_DOGS_ATK2
+    {SPR_DOGS,6,8,{A_SargAttack},S_DOGS_RUN1,0,0},	// S_DOGS_ATK3
+    {SPR_DOGS,7,2,{NULL},S_DOGS_PAIN2,0,0},	// S_DOGS_PAIN
+    {SPR_DOGS,7,2,{A_Pain},S_DOGS_RUN1,0,0},	// S_DOGS_PAIN2
+    {SPR_DOGS,8,8,{NULL},S_DOGS_DIE2,0,0},	// S_DOGS_DIE1
+    {SPR_DOGS,9,8,{A_Scream},S_DOGS_DIE3,0,0},	// S_DOGS_DIE2
+    {SPR_DOGS,10,4,{NULL},S_DOGS_DIE4,0,0},	// S_DOGS_DIE3
+    {SPR_DOGS,11,4,{A_Fall},S_DOGS_DIE5,0,0},	// S_DOGS_DIE4
+    {SPR_DOGS,12,4,{NULL},S_DOGS_DIE6,0,0},	// S_DOGS_DIE5
+    {SPR_DOGS,13,-1,{NULL},S_NULL,0,0},	// S_DOGS_DIE6
+    {SPR_DOGS,13,5,{NULL},S_DOGS_RAISE2,0,0},	// S_DOGS_RAISE1
+    {SPR_DOGS,12,5,{NULL},S_DOGS_RAISE3,0,0},	// S_DOGS_RAISE2
+    {SPR_DOGS,11,5,{NULL},S_DOGS_RAISE4,0,0},	// S_DOGS_RAISE3
+    {SPR_DOGS,10,5,{NULL},S_DOGS_RAISE5,0,0},	// S_DOGS_RAISE4
+    {SPR_DOGS,9,5,{NULL},S_DOGS_RAISE6,0,0},	// S_DOGS_RAISE5
+    {SPR_DOGS,8,5,{NULL},S_DOGS_RUN1,0,0},	// S_DOGS_RAISE6
+    // the beta BFG: its sound, 41 frames of firing, then done
+    {SPR_BFGG,0,10,{A_BFGsound},S_OLDBFG1+1,0,0},	// S_OLDBFG1
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+2,0,0},	// S_OLDBFG2
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+3,0,0},	// S_OLDBFG3
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+4,0,0},	// S_OLDBFG4
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+5,0,0},	// S_OLDBFG5
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+6,0,0},	// S_OLDBFG6
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+7,0,0},	// S_OLDBFG7
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+8,0,0},	// S_OLDBFG8
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+9,0,0},	// S_OLDBFG9
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+10,0,0},	// S_OLDBFG10
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+11,0,0},	// S_OLDBFG11
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+12,0,0},	// S_OLDBFG12
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+13,0,0},	// S_OLDBFG13
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+14,0,0},	// S_OLDBFG14
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+15,0,0},	// S_OLDBFG15
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+16,0,0},	// S_OLDBFG16
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+17,0,0},	// S_OLDBFG17
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+18,0,0},	// S_OLDBFG18
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+19,0,0},	// S_OLDBFG19
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+20,0,0},	// S_OLDBFG20
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+21,0,0},	// S_OLDBFG21
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+22,0,0},	// S_OLDBFG22
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+23,0,0},	// S_OLDBFG23
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+24,0,0},	// S_OLDBFG24
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+25,0,0},	// S_OLDBFG25
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+26,0,0},	// S_OLDBFG26
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+27,0,0},	// S_OLDBFG27
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+28,0,0},	// S_OLDBFG28
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+29,0,0},	// S_OLDBFG29
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+30,0,0},	// S_OLDBFG30
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+31,0,0},	// S_OLDBFG31
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+32,0,0},	// S_OLDBFG32
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+33,0,0},	// S_OLDBFG33
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+34,0,0},	// S_OLDBFG34
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+35,0,0},	// S_OLDBFG35
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+36,0,0},	// S_OLDBFG36
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+37,0,0},	// S_OLDBFG37
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+38,0,0},	// S_OLDBFG38
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+39,0,0},	// S_OLDBFG39
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+40,0,0},	// S_OLDBFG40
+    {SPR_BFGG,1,1,{A_FireOldBFG},S_OLDBFG1+41,0,0},	// S_OLDBFG41
+    {SPR_BFGG,1,0,{A_Light0},S_OLDBFG43,0,0},	// S_OLDBFG42
+    {SPR_BFGG,1,20,{A_ReFire},S_BFG,0,0},	// S_OLDBFG43
+    {SPR_PLS1,32768,6,{NULL},S_PLS1BALL2,0,0},	// S_PLS1BALL
+    {SPR_PLS1,32769,6,{NULL},S_PLS1BALL,0,0},	// S_PLS1BALL2
+    {SPR_PLS1,32770,4,{NULL},S_PLS1EXP2,0,0},	// S_PLS1EXP
+    {SPR_PLS1,32771,4,{NULL},S_PLS1EXP3,0,0},	// S_PLS1EXP2
+    {SPR_PLS1,32772,4,{NULL},S_PLS1EXP4,0,0},	// S_PLS1EXP3
+    {SPR_PLS1,32773,4,{NULL},S_PLS1EXP5,0,0},	// S_PLS1EXP4
+    {SPR_PLS1,32774,4,{NULL},S_NULL,0,0},	// S_PLS1EXP5
+    {SPR_PLS2,32768,4,{NULL},S_PLS2BALL2,0,0},	// S_PLS2BALL
+    {SPR_PLS2,32769,4,{NULL},S_PLS2BALL,0,0},	// S_PLS2BALL2
+    {SPR_PLS2,32770,6,{NULL},S_PLS2BALLX2,0,0},	// S_PLS2BALLX1
+    {SPR_PLS2,32771,6,{NULL},S_PLS2BALLX3,0,0},	// S_PLS2BALLX2
+    {SPR_PLS2,32772,6,{NULL},S_NULL,0,0},	// S_PLS2BALLX3
+    {SPR_BON3,0,6,{NULL},S_BON3,0,0},	// S_BON3
+    {SPR_BON4,0,6,{NULL},S_BON4,0,0},	// S_BON4
+    {SPR_SKUL,0,10,{A_Look},S_BSKUL_STND,0,0},	// S_BSKUL_STND
+    {SPR_SKUL,1,5,{A_Chase},S_BSKUL_RUN2,0,0},	// S_BSKUL_RUN1
+    {SPR_SKUL,2,5,{A_Chase},S_BSKUL_RUN3,0,0},	// S_BSKUL_RUN2
+    {SPR_SKUL,3,5,{A_Chase},S_BSKUL_RUN4,0,0},	// S_BSKUL_RUN3
+    {SPR_SKUL,0,5,{A_Chase},S_BSKUL_RUN1,0,0},	// S_BSKUL_RUN4
+    {SPR_SKUL,4,4,{A_FaceTarget},S_BSKUL_ATK2,0,0},	// S_BSKUL_ATK1
+    {SPR_SKUL,5,5,{A_BetaSkullAttack},S_BSKUL_ATK3,0,0},	// S_BSKUL_ATK2
+    {SPR_SKUL,5,4,{NULL},S_BSKUL_RUN1,0,0},	// S_BSKUL_ATK3
+    {SPR_SKUL,6,4,{NULL},S_BSKUL_PAIN2,0,0},	// S_BSKUL_PAIN1
+    {SPR_SKUL,7,2,{A_Pain},S_BSKUL_RUN1,0,0},	// S_BSKUL_PAIN2
+    {SPR_SKUL,8,4,{NULL},S_BSKUL_RUN1,0,0},	// S_BSKUL_PAIN3
+    {SPR_SKUL,9,5,{NULL},S_BSKUL_DIE2,0,0},	// S_BSKUL_DIE1
+    {SPR_SKUL,10,5,{NULL},S_BSKUL_DIE3,0,0},	// S_BSKUL_DIE2
+    {SPR_SKUL,11,5,{NULL},S_BSKUL_DIE4,0,0},	// S_BSKUL_DIE3
+    {SPR_SKUL,12,5,{NULL},S_BSKUL_DIE5,0,0},	// S_BSKUL_DIE4
+    {SPR_SKUL,13,5,{A_Scream},S_BSKUL_DIE6,0,0},	// S_BSKUL_DIE5
+    {SPR_SKUL,14,5,{NULL},S_BSKUL_DIE7,0,0},	// S_BSKUL_DIE6
+    {SPR_SKUL,15,5,{A_Fall},S_BSKUL_DIE8,0,0},	// S_BSKUL_DIE7
+    {SPR_SKUL,16,5,{A_Stop},S_BSKUL_DIE8,0,0},	// S_BSKUL_DIE8
+    {SPR_MISL,32769,8,{A_Mushroom},S_EXPLODE2,0,0}	// S_MUSHROOM
 };
 
 
-mobjinfo_t mobjinfo[NUMMOBJTYPES] = {
+mobjinfo_t original_mobjinfo[NUMMOBJTYPES] = {
 
     {		// MT_PLAYER
 	-1,		// doomednum
@@ -4674,6 +4812,352 @@ mobjinfo_t mobjinfo[NUMMOBJTYPES] = {
 	sfx_None,		// activesound
 	MF_NOBLOCKMAP,		// flags
 	S_NULL		// raisestate
+    },
+
+    // Boom's point pushers: where a line 226's force comes from
+    {		// MT_PUSH
+	5001,		// doomednum
+	S_TNT1,		// spawnstate
+	1000,		// spawnhealth
+	S_NULL,		// seestate
+	sfx_None,		// seesound
+	8,		// reactiontime
+	sfx_None,		// attacksound
+	S_NULL,		// painstate
+	0,		// painchance
+	sfx_None,		// painsound
+	S_NULL,		// meleestate
+	S_NULL,		// missilestate
+	S_NULL,		// deathstate
+	S_NULL,		// xdeathstate
+	sfx_None,		// deathsound
+	0,		// speed
+	8,		// radius
+	8,		// height
+	10,		// mass
+	0,		// damage
+	sfx_None,		// activesound
+	MF_NOBLOCKMAP,		// flags
+	S_NULL		// raisestate
+    },
+
+    {		// MT_PULL
+	5002,		// doomednum
+	S_TNT1,		// spawnstate
+	1000,		// spawnhealth
+	S_NULL,		// seestate
+	sfx_None,		// seesound
+	8,		// reactiontime
+	sfx_None,		// attacksound
+	S_NULL,		// painstate
+	0,		// painchance
+	sfx_None,		// painsound
+	S_NULL,		// meleestate
+	S_NULL,		// missilestate
+	S_NULL,		// deathstate
+	S_NULL,		// xdeathstate
+	sfx_None,		// deathsound
+	0,		// speed
+	8,		// radius
+	8,		// height
+	10,		// mass
+	0,		// damage
+	sfx_None,		// activesound
+	MF_NOBLOCKMAP,		// flags
+	S_NULL		// raisestate
+    },
+    {		// MT_DOGS
+	888,		// doomednum
+	S_DOGS_STND,		// spawnstate
+	500,		// spawnhealth
+	S_DOGS_RUN1,		// seestate
+	sfx_dgsit,		// seesound
+	8,		// reactiontime
+	sfx_dgatk,		// attacksound
+	S_DOGS_PAIN,		// painstate
+	180,		// painchance
+	sfx_dgpain,		// painsound
+	S_DOGS_ATK1,		// meleestate
+	0,		// missilestate
+	S_DOGS_DIE1,		// deathstate
+	S_NULL,		// xdeathstate
+	sfx_dgdth,		// deathsound
+	10,		// speed
+	12*FRACUNIT,		// radius
+	28*FRACUNIT,		// height
+	100,		// mass
+	0,		// damage
+	sfx_dgact,		// activesound
+	MF_SOLID|MF_SHOOTABLE|MF_COUNTKILL,		// flags
+	S_DOGS_RAISE1		// raisestate
+    },
+    {		// MT_PLASMA1
+	-1,		// doomednum
+	S_PLS1BALL,		// spawnstate
+	1000,		// spawnhealth
+	S_NULL,		// seestate
+	sfx_plasma,		// seesound
+	8,		// reactiontime
+	sfx_None,		// attacksound
+	S_NULL,		// painstate
+	0,		// painchance
+	sfx_None,		// painsound
+	S_NULL,		// meleestate
+	S_NULL,		// missilestate
+	S_PLS1EXP,		// deathstate
+	S_NULL,		// xdeathstate
+	sfx_firxpl,		// deathsound
+	25*FRACUNIT,		// speed
+	13*FRACUNIT,		// radius
+	8*FRACUNIT,		// height
+	100,		// mass
+	4,		// damage
+	sfx_None,		// activesound
+	MF_NOBLOCKMAP|MF_MISSILE|MF_DROPOFF|MF_NOGRAVITY|MF_BOUNCES|MF_TRANSLUCENT,		// flags
+	S_NULL		// raisestate
+    },
+    {		// MT_PLASMA2
+	-1,		// doomednum
+	S_PLS2BALL,		// spawnstate
+	1000,		// spawnhealth
+	S_NULL,		// seestate
+	sfx_plasma,		// seesound
+	8,		// reactiontime
+	sfx_None,		// attacksound
+	S_NULL,		// painstate
+	0,		// painchance
+	sfx_None,		// painsound
+	S_NULL,		// meleestate
+	S_NULL,		// missilestate
+	S_PLS2BALLX1,		// deathstate
+	S_NULL,		// xdeathstate
+	sfx_firxpl,		// deathsound
+	25*FRACUNIT,		// speed
+	6*FRACUNIT,		// radius
+	8*FRACUNIT,		// height
+	100,		// mass
+	4,		// damage
+	sfx_None,		// activesound
+	MF_NOBLOCKMAP|MF_MISSILE|MF_DROPOFF|MF_NOGRAVITY|MF_BOUNCES|MF_TRANSLUCENT,		// flags
+	S_NULL		// raisestate
+    },
+    {		// MT_SCEPTRE
+	2016,		// doomednum
+	S_BON3,		// spawnstate
+	1000,		// spawnhealth
+	S_NULL,		// seestate
+	sfx_None,		// seesound
+	8,		// reactiontime
+	sfx_None,		// attacksound
+	S_NULL,		// painstate
+	0,		// painchance
+	sfx_None,		// painsound
+	S_NULL,		// meleestate
+	S_NULL,		// missilestate
+	S_NULL,		// deathstate
+	S_NULL,		// xdeathstate
+	sfx_None,		// deathsound
+	0,		// speed
+	10*FRACUNIT,		// radius
+	16*FRACUNIT,		// height
+	100,		// mass
+	0,		// damage
+	sfx_None,		// activesound
+	MF_SPECIAL|MF_COUNTITEM,		// flags
+	S_NULL		// raisestate
+    },
+    {		// MT_BIBLE
+	2017,		// doomednum
+	S_BON4,		// spawnstate
+	1000,		// spawnhealth
+	S_NULL,		// seestate
+	sfx_None,		// seesound
+	8,		// reactiontime
+	sfx_None,		// attacksound
+	S_NULL,		// painstate
+	0,		// painchance
+	sfx_None,		// painsound
+	S_NULL,		// meleestate
+	S_NULL,		// missilestate
+	S_NULL,		// deathstate
+	S_NULL,		// xdeathstate
+	sfx_None,		// deathsound
+	0,		// speed
+	20*FRACUNIT,		// radius
+	10*FRACUNIT,		// height
+	100,		// mass
+	0,		// damage
+	sfx_None,		// activesound
+	MF_SPECIAL|MF_COUNTITEM,		// flags
+	S_NULL		// raisestate
+    },
+    {		// MT_MUSICSOURCE
+	-1,		// doomednum
+	S_TNT1,		// spawnstate
+	1000,		// spawnhealth
+	S_NULL,		// seestate
+	sfx_None,		// seesound
+	8,		// reactiontime
+	sfx_None,		// attacksound
+	S_NULL,		// painstate
+	0,		// painchance
+	sfx_None,		// painsound
+	S_NULL,		// meleestate
+	S_NULL,		// missilestate
+	S_NULL,		// deathstate
+	S_NULL,		// xdeathstate
+	sfx_None,		// deathsound
+	0,		// speed
+	16,		// radius
+	16,		// height
+	100,		// mass
+	0,		// damage
+	sfx_None,		// activesound
+	MF_NOBLOCKMAP,		// flags
+	S_NULL		// raisestate
     }
 };
 
+
+
+
+//
+// The tables as the game plays them: id's (and Boom's and MBF's, after
+// them), then whatever a DEHACKED patch changes, and as long as the
+// highest number it names. They only grow while patches are read, at
+// start-up, before anything points into them.
+//
+state_t*	states;
+int		numstates;
+mobjinfo_t*	mobjinfo;
+int		nummobjtypes;
+char**		sprnames;
+int		numspritenames;
+
+void D_InitInfo (void)
+{
+    int		i;
+
+    numstates = NUMSTATES;
+    states = malloc (numstates * sizeof(*states));
+    nummobjtypes = NUMMOBJTYPES;
+    mobjinfo = malloc (nummobjtypes * sizeof(*mobjinfo));
+    numspritenames = NUMSPRITES;
+    sprnames = malloc ((numspritenames + 1) * sizeof(*sprnames));
+    if (!states || !mobjinfo || !sprnames)
+	I_Error ("D_InitInfo: no memory");
+    memcpy (states, original_states, sizeof(original_states));
+    memcpy (mobjinfo, original_mobjinfo, sizeof(original_mobjinfo));
+    memcpy (sprnames, original_sprnames, sizeof(original_sprnames));
+
+    // what id's code did by the thing's type, and MBF21 made fields
+    for (i = 0; i < nummobjtypes; i++)
+    {
+	mobjinfo[i].droppeditem = MT_NULL;
+	mobjinfo[i].flags2 = 0;
+	mobjinfo[i].infighting_group = IG_DEFAULT;
+	mobjinfo[i].projectile_group = PG_DEFAULT;
+	mobjinfo[i].splash_group = SG_DEFAULT;
+	mobjinfo[i].ripsound = sfx_None;
+	mobjinfo[i].altspeed = NO_ALTSPEED;
+	mobjinfo[i].meleerange = MELEERANGE;
+    }
+    mobjinfo[MT_WOLFSS].droppeditem = MT_CLIP;
+    mobjinfo[MT_POSSESSED].droppeditem = MT_CLIP;
+    mobjinfo[MT_SHOTGUY].droppeditem = MT_SHOTGUN;
+    mobjinfo[MT_CHAINGUY].droppeditem = MT_CHAINGUN;
+
+    mobjinfo[MT_VILE].flags2 = MF2_SHORTMRANGE | MF2_DMGIGNORED
+			       | MF2_NOTHRESHOLD;
+    mobjinfo[MT_UNDEAD].flags2 = MF2_LONGMELEE | MF2_RANGEHALF;
+    mobjinfo[MT_FATSO].flags2 = MF2_MAP07BOSS1;
+    mobjinfo[MT_BRUISER].flags2 = MF2_E1M8BOSS;
+    mobjinfo[MT_SKULL].flags2 = MF2_RANGEHALF;
+    mobjinfo[MT_SPIDER].flags2 = MF2_NORADIUSDMG | MF2_RANGEHALF
+				 | MF2_FULLVOLSOUNDS | MF2_E3M8BOSS
+				 | MF2_E4M8BOSS;
+    mobjinfo[MT_BABY].flags2 = MF2_MAP07BOSS2;
+    mobjinfo[MT_CYBORG].flags2 = MF2_NORADIUSDMG | MF2_HIGHERMPROB
+				 | MF2_RANGEHALF | MF2_FULLVOLSOUNDS
+				 | MF2_E2M8BOSS | MF2_E4M6BOSS;
+
+    mobjinfo[MT_BRUISER].projectile_group = PG_BARON;
+    mobjinfo[MT_KNIGHT].projectile_group = PG_BARON;
+
+    mobjinfo[MT_BRUISERSHOT].altspeed = 20*FRACUNIT;
+    mobjinfo[MT_TROOPSHOT].altspeed = 20*FRACUNIT;
+    mobjinfo[MT_HEADSHOT].altspeed = 20*FRACUNIT;
+
+    for (i = S_SARG_RUN1; i <= S_SARG_PAIN2; i++)
+	states[i].flags |= STATEF_SKILL5FAST;
+}
+
+// Room for entry n in a table of *num entries of size bytes, the new ones
+// made by fill.
+static boolean D_Grow (void** table, int* num, int n, size_t size,
+		       int extra, void (*fill) (void* entry, int i))
+{
+    void*	t;
+    int		i;
+
+    if (n < 0 || n >= DSDH_MAX)
+	return false;
+    if (n < *num)
+	return true;
+    t = realloc (*table, (size_t) (n + 1 + extra) * size);
+    if (!t)
+	I_Error ("D_Grow: no memory for %d entries", n + 1);
+    *table = t;
+    for (i = *num; i <= n; i++)
+	fill ((char *) t + (size_t) i * size, i);
+    *num = n + 1;
+    return true;
+}
+
+static void D_NewState (void* e, int i)
+{
+    state_t*	st = e;
+
+    memset (st, 0, sizeof(*st));
+    st->sprite = SPR_TNT1;
+    st->tics = -1;
+    st->nextstate = i;
+}
+
+static void D_NewThing (void* e, int i)
+{
+    mobjinfo_t*	mi = e;
+
+    memset (mi, 0, sizeof(*mi));
+    mi->doomednum = -1;
+    mi->droppeditem = MT_NULL;
+    mi->altspeed = NO_ALTSPEED;
+    mi->meleerange = MELEERANGE;
+}
+
+static void D_NewSprite (void* e, int i)
+{
+    *(char **) e = NULL;
+}
+
+boolean D_GrowStates (int n)
+{
+    return D_Grow ((void **) &states, &numstates, n, sizeof(*states), 0,
+		   D_NewState);
+}
+
+boolean D_GrowThings (int n)
+{
+    return D_Grow ((void **) &mobjinfo, &nummobjtypes, n, sizeof(*mobjinfo),
+		   0, D_NewThing);
+}
+
+boolean D_GrowSprites (int n)
+{
+    // and the NULL after the last
+    if (!D_Grow ((void **) &sprnames, &numspritenames, n, sizeof(*sprnames),
+		 1, D_NewSprite))
+	return false;
+    sprnames[numspritenames] = NULL;
+    return true;
+}

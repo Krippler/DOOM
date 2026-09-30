@@ -33,6 +33,7 @@
 // These are the load / save game routines.
 void P_ArchivePlayers (void);
 void P_UnArchivePlayers (void);
+int  P_SaveVersion (void);
 void P_ArchiveWorld (void);
 void P_UnArchiveWorld (void);
 void P_ArchiveThinkers (void);
@@ -46,6 +47,10 @@ int P_ArchiveSize (void);
 // Whether the save being loaded holds things' targets and tracers as
 // numbers (saves that list their WADs); others' are pointers, cleared.
 extern boolean	savegamerefs;
+
+// Which archive the save being loaded has: 0 id's, 1 with its WADs listed
+// and things' references as numbers, 2 Boom's as well (g_game.c).
+extern int	savegameversion;
 
 // Whether a savegame's archive fits the map it names, before loading it.
 boolean P_SaveGameFits (byte* p, byte* end, int maplump, boolean* ingame);

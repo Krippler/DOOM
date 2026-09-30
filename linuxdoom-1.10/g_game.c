@@ -1223,6 +1223,53 @@ void G_ExitLevel (void)
     gameaction = ga_completed; 
 } 
 
+//
+// The levels played this game, by number: an ID24 intermission can show
+// which. A save keeps them after the consistency marker, where 1.17.3 and
+// before, which read only up to it, never look: VISITEDMAGIC, how many,
+// and their numbers, a byte each.
+//
+#define MAXVISITED	100
+#define VISITEDMAGIC	"VIST"
+
+boolean		visitedmaps[MAXVISITED];
+
+static void G_WriteVisited (void)
+{
+    byte*	count;
+    int		i;
+
+    for (i = 1; i < MAXVISITED && !visitedmaps[i]; i++)
+	;
+    if (i == MAXVISITED)
+	return;
+    memcpy (save_p, VISITEDMAGIC, 4);
+    save_p += 4;
+    count = save_p++;
+    *count = 0;
+    for (i = 1; i < MAXVISITED; i++)
+	if (visitedmaps[i])
+	{
+	    *save_p++ = i;
+	    (*count)++;
+	}
+}
+
+// From p, just after the marker, up to end, where the list of WADs starts.
+static void G_ReadVisited (byte* p, byte* end)
+{
+    int		n;
+
+    memset (visitedmaps, 0, sizeof(visitedmaps));
+    if (end - p < 5 || memcmp (p, VISITEDMAGIC, 4))
+	return;
+    p += 4;
+    n = *p++;
+    for (; n > 0 && p < end; n--, p++)
+	if (*p < MAXVISITED)
+	    visitedmaps[*p] = true;
+}
+
 // Here's for the german edition.
 void G_SecretExitLevel (void) 
 { 
@@ -1378,6 +1425,10 @@ void G_DoCompleted (void)
     viewactive = false; 
     automapactive = false; 
  
+    if (gamemap > 0 && gamemap < MAXVISITED)
+	visitedmaps[gamemap] = true;
+    wminfo.visited = visitedmaps;
+
     if (statcopy)
 	memcpy (statcopy, &wminfo, sizeof(wminfo));
 	
@@ -1442,7 +1493,14 @@ void G_LoadGame (char* name)
 // length of that list and "WADS", four bytes each, to find it by from the
 // end of the file.
 //
-#define SAVEWADSMAGIC	"WADS"
+// "WAD2" in place of "WADS" says the archive is Boom's too: its movers as
+// long as Boom made them, its scrollers, pushers, elevators and
+// flickering lights, and its sectors' texture offsets (p_saveg.c). This
+// engine reads either, and writes WADS when the level has none of those
+// (P_SaveVersion), so that a save on a DOOM map still loads on 1.17.3.
+//
+#define SAVEWADSMAGIC	"WAD2"
+#define SAVEWADSMAGIC1	"WADS"
 
 // Loading a save the engine restarted on its WADs for, from d_main.c: one
 // restart only, whatever happens.
@@ -1484,7 +1542,7 @@ static void G_WriteSaveWads (void)
     *save_p++ = n >> 8;
     *save_p++ = n >> 16;
     *save_p++ = n >> 24;
-    memcpy (save_p, SAVEWADSMAGIC, 4);
+    memcpy (save_p, savegameversion >= 2 ? SAVEWADSMAGIC : SAVEWADSMAGIC1, 4);
     save_p += 4;
 }
 
@@ -1503,8 +1561,10 @@ G_ReadSaveWads
     int		size, n = 0;
 
     *end = buf + length;
+    savegameversion = 0;
     if (length < SAVESTRINGSIZE + VERSIONSIZE + 8
-	|| memcmp (buf + length - 4, SAVEWADSMAGIC, 4))
+	|| (memcmp (buf + length - 4, SAVEWADSMAGIC, 4)
+	    && memcmp (buf + length - 4, SAVEWADSMAGIC1, 4)))
 	return 0;
     p = buf + length - 8;
     size = p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24);
@@ -1515,6 +1575,7 @@ G_ReadSaveWads
     for (p -= size; p < buf + length - 8 && n < max; p += strlen ((char*)p) + 1)
 	files[n++] = (char*) p;
     *end = buf + length - 8 - size;
+    savegameversion = memcmp (buf + length - 4, SAVEWADSMAGIC1, 4) ? 2 : 1;
     return n;
 }
 
@@ -1648,8 +1709,11 @@ void G_DoLoadGame (void)
 	Z_Free (savebuffer);
 	return;				// bad version 
     }
-    // the list of WADs came in with targets saved as numbers
+    // the list of WADs came in with targets saved as numbers (and WAD2
+    // with Boom's; savegameversion, from G_ReadSaveWads)
     savegamerefs = how == SAVE_LISTED;
+    if (how != SAVE_LISTED)
+	savegameversion = 0;
 
     // Made on other WADs than these: restart on them to load it, once.
     if ((how == SAVE_LISTED || how == SAVE_FOUND)
@@ -1713,6 +1777,7 @@ void G_DoLoadGame (void)
  
     if (*save_p != 0x1d) 
 	I_Error ("Bad savegame");
+    G_ReadVisited (save_p + 1, end);
     printf ("G_DoLoadGame: %s, %s\n", savename, mapname);
     
     // done 
@@ -1761,7 +1826,7 @@ void G_DoSaveGame (void)
 	static byte*	buffer;
 	static int	buffersize;
 	int		needed = SAVEGAMEHEAD + P_ArchiveSize ()
-				     + G_SaveWadsSize ();
+				     + 5 + MAXVISITED + G_SaveWadsSize ();
 
 	if (needed > buffersize)
 	{
@@ -1790,12 +1855,14 @@ void G_DoSaveGame (void)
     *save_p++ = leveltime>>8; 
     *save_p++ = leveltime; 
  
+    savegameversion = P_SaveVersion ();
     P_ArchivePlayers (); 
     P_ArchiveWorld (); 
     P_ArchiveThinkers (); 
     P_ArchiveSpecials (); 
 	 
     *save_p++ = 0x1d;		// consistancy marker 
+    G_WriteVisited ();
     G_WriteSaveWads ();
 	 
     length = save_p - savebuffer; 
@@ -1815,6 +1882,28 @@ void G_DoSaveGame (void)
     R_FillBackScreen ();	
 } 
  
+
+//
+// G_NormalSpeeds
+// Keep the things' speeds from before fast monsters (saved), or put them
+// back (NULL).
+//
+static void G_NormalSpeeds (int* saved)
+{
+    static int*	speeds;
+    int		i;
+
+    if (saved)
+    {
+	speeds = saved;
+	return;
+    }
+    if (!speeds)
+	return;
+    for (i=0 ; i<nummobjtypes ; i++)
+	if (mobjinfo[i].altspeed != NO_ALTSPEED)
+	    mobjinfo[i].speed = speeds[i];
+}
 
 //
 // G_InitNew
@@ -1916,21 +2005,36 @@ G_InitNew
     else
 	respawnmonsters = false;
 		
+    // Fast monsters: id's by type (the Demon's frames, three missiles),
+    // MBF21's by the frames' SKILL5FAST and the things' Fast speed, which
+    // are those by default. As id's, done again on each new game with
+    // -fast; undone to the speeds as they were before.
     if (fastparm || (skill == sk_nightmare && gameskill != sk_nightmare) )
     { 
-	for (i=S_SARG_RUN1 ; i<=S_SARG_PAIN2 ; i++) 
-	    states[i].tics >>= 1; 
-	mobjinfo[MT_BRUISERSHOT].speed = 20*FRACUNIT; 
-	mobjinfo[MT_HEADSHOT].speed = 20*FRACUNIT; 
-	mobjinfo[MT_TROOPSHOT].speed = 20*FRACUNIT; 
+	static int*	normalspeed;
+
+	for (i=0 ; i<numstates ; i++) 
+	    if (states[i].flags & STATEF_SKILL5FAST)
+		states[i].tics >>= 1; 
+	if (!normalspeed)
+	{
+	    normalspeed = malloc (nummobjtypes * sizeof(*normalspeed));
+	    if (!normalspeed)
+		I_Error ("G_InitNew: no memory");
+	    for (i=0 ; i<nummobjtypes ; i++)
+		normalspeed[i] = mobjinfo[i].speed;
+	    G_NormalSpeeds (normalspeed);
+	}
+	for (i=0 ; i<nummobjtypes ; i++)
+	    if (mobjinfo[i].altspeed != NO_ALTSPEED)
+		mobjinfo[i].speed = mobjinfo[i].altspeed; 
     } 
     else if (skill != sk_nightmare && gameskill == sk_nightmare) 
     { 
-	for (i=S_SARG_RUN1 ; i<=S_SARG_PAIN2 ; i++) 
-	    states[i].tics <<= 1; 
-	mobjinfo[MT_BRUISERSHOT].speed = 15*FRACUNIT; 
-	mobjinfo[MT_HEADSHOT].speed = 10*FRACUNIT; 
-	mobjinfo[MT_TROOPSHOT].speed = 10*FRACUNIT; 
+	for (i=0 ; i<numstates ; i++) 
+	    if (states[i].flags & STATEF_SKILL5FAST)
+		states[i].tics <<= 1; 
+	G_NormalSpeeds (NULL);
     } 
 	 
 			 
@@ -1946,6 +2050,7 @@ G_InitNew
     gameepisode = episode; 
     gamemap = map; 
     gameskill = skill; 
+    memset (visitedmaps, 0, sizeof(visitedmaps));
  
     viewactive = true;
     

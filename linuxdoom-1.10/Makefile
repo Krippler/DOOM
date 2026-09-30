@@ -71,6 +71,7 @@ OBJS=				\
 		$(O)/p_doors.o		\
 		$(O)/p_enemy.o		\
 		$(O)/p_floor.o		\
+		$(O)/p_genlin.o		\
 		$(O)/p_inter.o		\
 		$(O)/p_lights.o		\
 		$(O)/p_map.o			\
@@ -98,6 +99,8 @@ OBJS=				\
 		$(O)/r_things.o		\
 		$(O)/w_wad.o			\
 		$(O)/wi_stuff.o		\
+		$(O)/wi_interlvl.o	\
+		$(O)/m_json.o		\
 		$(O)/v_video.o		\
 		$(O)/st_lib.o			\
 		$(O)/st_stuff.o		\
@@ -122,8 +125,13 @@ $(O)/linuxxdoom:	$(O) $(OBJS) $(O)/i_main.o
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) $(O)/i_main.o \
 	-o $(O)/linuxxdoom $(LIBS) $(MUSIC_LIBS)
 
+# Each object also writes which headers it read (-MMD), so that changing a
+# header rebuilds what includes it: without that, a structure that grew in a
+# header left the objects built before it reading the old layout.
 $(O)/%.o:	%.c | $(O)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
+
+-include $(wildcard $(O)/*.d)
 
 # stb_vorbis, for Ogg Vorbis music, as it comes from github.com/nothings/stb:
 # its warnings are its own.

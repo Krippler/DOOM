@@ -50,8 +50,10 @@
 // The rate the mixer works at, fixed in its own header as SPEED.
 #define SFX_RATE	11025
 
-// A play command is 'p' and eight hex digits, then a newline.
+// A play command is 'p' and eight hex digits, then a newline; 'P' and ten,
+// for a sound numbered past 255 (a DEHACKED patch's).
 #define CMD_PLAY_LEN	10
+#define CMD_PLAY4_LEN	12
 
 // How many listeners to serve at once. More than one is only ever a second
 // browser tab, which is not worth much, but refusing it outright would leave
@@ -434,7 +436,28 @@ ReadCommands (void)
 		addsfx (id, vol, steptable[pitch], sep);
 		used += CMD_PLAY_LEN;
 	    }
-	    else if (*c == 'l')
+	    else if (*c == 'P')
+	    {
+		int	id, pitch, vol, sep, i, v[10];
+
+		if (cmd_have - used < CMD_PLAY4_LEN)
+		    break;
+
+		for (i = 0; i < 10; i++)
+		{
+		    unsigned char d = c[1+i];
+		    v[i] = d >= 'a' ? d - 'a' + 10 : d - '0';
+		}
+
+		id    = (v[0] << 12) + (v[1] << 8) + (v[2] << 4) + v[3];
+		pitch = (v[4] << 4) + v[5];
+		vol   = (v[6] << 4) + v[7];
+		sep   = (v[8] << 4) + v[9];
+
+		addsfx (id, vol, steptable[pitch], sep);
+		used += CMD_PLAY4_LEN;
+	    }
+	    else if (*c == 'l' || *c == 'L')
 	    {
 		// where the engine's sound is: one line (loadsfx)
 		unsigned char*	nl = memchr (c, '\n', cmd_have - used);
@@ -447,7 +470,8 @@ ReadCommands (void)
 		    break;
 		}
 		*nl = 0;
-		if (loadsfx ((char *) c + 1) < 0 && verbose)
+		if ((*c == 'L' ? loadsfx4 ((char *) c + 1)
+			       : loadsfx ((char *) c + 1)) < 0 && verbose)
 		    fprintf (stderr, "audiostream: could not load %s\n",
 			     (char *) c + 1);
 		used += nl - c + 1;

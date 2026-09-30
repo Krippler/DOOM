@@ -235,6 +235,124 @@ void R_DrawColumn (void)
 
 
 
+//
+// R_DrawTLColumn
+// Boom's translucent column: each pixel the translucency table's blend of
+// what is there and the texture's (tranmap, r_data.c). The rest as
+// R_DrawColumn.
+//
+void R_DrawTLColumn (void)
+{
+    int			count;
+    byte*		dest;
+    fixed_t		frac;
+    fixed_t		fracstep;
+
+    count = dc_yh - dc_yl;
+    if (count < 0)
+	return;
+
+#ifdef RANGECHECK
+    if ((unsigned)dc_x >= SCREENWIDTH
+	|| dc_yl < 0
+	|| dc_yh >= SCREENHEIGHT)
+    {
+	R_ReportOutOfRange ("R_DrawTLColumn", dc_yl, dc_yh, dc_x);
+	return;
+    }
+#endif
+
+    dest = ylookup[dc_yl] + columnofs[dc_x];
+    fracstep = dc_iscale;
+    frac = dc_texturemid + (dc_yl-centery)*fracstep;
+
+    if (dc_texheight <= 0)
+    {
+	do
+	{
+	    int		y = frac>>FRACBITS;
+
+	    *dest = tranmap[*dest<<8 | dc_colormap[dc_source[y < 0 ? 0 : y]]];
+	    dest += SCREENWIDTH;
+	    frac += fracstep;
+	} while (count--);
+    }
+    else
+    {
+	fixed_t	heightmask = dc_texheight << FRACBITS;
+
+	frac %= heightmask;
+	if (frac < 0)
+	    frac += heightmask;
+	do
+	{
+	    *dest = tranmap[*dest<<8 | dc_colormap[dc_source[frac>>FRACBITS]]];
+	    dest += SCREENWIDTH;
+	    if ((frac += fracstep) >= heightmask)
+		frac -= heightmask;
+	} while (count--);
+    }
+}
+
+// Low detail: each pixel twice across.
+void R_DrawTLColumnLow (void)
+{
+    int			count;
+    byte*		dest;
+    byte*		dest2;
+    fixed_t		frac;
+    fixed_t		fracstep;
+    int			texheight = dc_texheight;
+
+    count = dc_yh - dc_yl;
+    if (count < 0)
+	return;
+
+    dc_x <<= 1;
+#ifdef RANGECHECK
+    if ((unsigned)dc_x + 1 >= SCREENWIDTH
+	|| dc_yl < 0
+	|| dc_yh >= SCREENHEIGHT)
+    {
+	R_ReportOutOfRange ("R_DrawTLColumnLow", dc_yl, dc_yh, dc_x);
+	dc_x >>= 1;
+	return;
+    }
+#endif
+    dest = ylookup[dc_yl] + columnofs[dc_x];
+    dest2 = ylookup[dc_yl] + columnofs[dc_x+1];
+    dc_x >>= 1;
+    fracstep = dc_iscale;
+    frac = dc_texturemid + (dc_yl-centery)*fracstep;
+
+    if (texheight <= 0)
+	texheight = 0x7fff;
+    {
+	fixed_t	heightmask = texheight << FRACBITS;
+
+	if (dc_texheight > 0)
+	{
+	    frac %= heightmask;
+	    if (frac < 0)
+		frac += heightmask;
+	}
+	do
+	{
+	    int		y = frac>>FRACBITS;
+	    byte	c = dc_colormap[dc_source[y < 0 ? 0 : y]];
+
+	    *dest = tranmap[*dest<<8 | c];
+	    *dest2 = tranmap[*dest2<<8 | c];
+	    dest += SCREENWIDTH;
+	    dest2 += SCREENWIDTH;
+	    frac += fracstep;
+	    if (dc_texheight > 0 && frac >= heightmask)
+		frac -= heightmask;
+	} while (count--);
+    }
+}
+
+
 // UNUSED.
 // Loop unrolled.
 #if 0
@@ -457,7 +575,7 @@ void R_DrawFuzzColumn (void)
 	//  a pixel that is either one column
 	//  left or right of the current one.
 	// Add index from colormap to index.
-	*dest = colormaps[6*256+dest[fuzzoffset[fuzzpos]]]; 
+	*dest = fullcolormap[6*256+dest[fuzzoffset[fuzzpos]]]; 
 
 	// Clamp table lookup index.
 	if (++fuzzpos == FUZZTABLE) 

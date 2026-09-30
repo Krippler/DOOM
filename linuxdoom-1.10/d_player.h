@@ -210,6 +210,10 @@ typedef struct
     // index of this player in game
     int		pnum;	
 
+    // visited[m]: whether level m (1 to 99) has been played this game,
+    // this one included; for ID24 intermissions' conditions
+    boolean*	visited;
+
     wbplayerstruct_t	plyr[MAXPLAYERS];
 
 } wbstartstruct_t;

@@ -72,6 +72,7 @@ rcsid[] = "$Id: m_menu.c,v 1.7 1997/02/03 22:45:10 b1 Exp $";
 #include "r_lerp.h"
 #include "d_deh.h"
 #include "p_saveg.h"
+#include "m_json.h"
 
 
 
@@ -2089,6 +2090,47 @@ static boolean M_IsDoom2Name (char* path)
     return !strncasecmp (base ? base + 1 : path, "doom2", 5);
 }
 
+static char* M_WadLump (FILE* f, unsigned char* dir, int numlumps,
+			const char* name, int* len);
+
+//
+// A string from the WAD's GAMECONF lump, ID24's: what the game is called
+// ("title") and the game it is for ("iwad"). False without one.
+//
+static boolean M_GameConf (char* path, const char* key, char* out, int outlen)
+{
+    FILE*		f = fopen (path, "rb");
+    unsigned char	head[12];
+    unsigned char*	dir = NULL;
+    int			numlumps = 0, ofs, len;
+    char*		text = NULL;
+    json_t*		js = NULL;
+    const char*		v = NULL;
+
+    if (f && fread (head, 1, 12, f) == 12
+	&& (!memcmp (head, "IWAD", 4) || !memcmp (head, "PWAD", 4)))
+    {
+	numlumps = head[4] | head[5] << 8 | head[6] << 16 | head[7] << 24;
+	ofs = head[8] | head[9] << 8 | head[10] << 16 | head[11] << 24;
+	if (numlumps > 0 && numlumps < (1 << 20)
+	    && !fseek (f, ofs, SEEK_SET)
+	    && (dir = malloc (numlumps * 16))
+	    && fread (dir, 16, numlumps, f) == (size_t) numlumps
+	    && (text = M_WadLump (f, dir, numlumps, "GAMECONF", &len))
+	    && (js = JS_Parse (text, len))
+	    && !strcasecmp (JS_String (JS_Get (js, "type"), ""), "gameconf"))
+	    v = JS_String (JS_Get (JS_Get (js, "data"), key), NULL);
+    }
+    if (v && *v)
+	snprintf (out, outlen, "%s", v);
+    JS_Free (js);
+    free (text);
+    free (dir);
+    if (f)
+	fclose (f);
+    return v && *v;
+}
+
 static char* M_IwadFor (char* pwad)
 {
     static char	best[256];
@@ -2102,6 +2144,35 @@ static char* M_IwadFor (char* pwad)
     struct dirent* e;
 
     want = M_WadMaps (pwad, &pwadeps);
+
+    // The game its GAMECONF names, when that is here: running, or among
+    // the WADs. Legacy of Rust's is doom2.wad.
+    if (M_GameConf (pwad, "iwad", cand, sizeof(cand)))
+    {
+	char*	base = strrchr (wadfiles[0], '/');
+
+	if (!strcasecmp (base ? base + 1 : wadfiles[0], cand))
+	    return wadfiles[0];
+	dirs[0] = M_WadDir ();
+	dirs[1] = getenv ("DOOMWADDIR");
+	for (d = 0; d < 2; d++)
+	{
+	    if (!dirs[d] || !*dirs[d] || !(dp = opendir (dirs[d])))
+		continue;
+	    while ((e = readdir (dp)))
+		if (!strcasecmp (e->d_name, cand))
+		{
+		    if (snprintf (best, sizeof(best), "%s/%s", dirs[d],
+				  e->d_name) < (int) sizeof(best)
+			&& M_IsIwad (best))
+		    {
+			closedir (dp);
+			return best;
+		    }
+		}
+	    closedir (dp);
+	}
+    }
 
     // The game running now, if it will do.
     if ((!want || want == (WADMAPS_DOOM | WADMAPS_DOOM2))
@@ -2167,6 +2238,7 @@ static char* M_IwadFor (char* pwad)
 // The name a WAD goes by, for the list: the game's or the mod's, rather
 // than its file's. From the first of:
 //
+//   - its GAMECONF lump's title (ID24's; Legacy of Rust has one)
 //   - its GAMEINFO lump's STARTUPTITLE (ZDoom's; SIGIL and SIGIL II have one)
 //   - its UMAPINFO episodes' name, when they all have the one: how the 2024
 //     re-release's add-ons, TNT and Plutonia name themselves
@@ -2261,8 +2333,11 @@ static void M_WadTitle (char* path, char* file, char* out, int outlen)
 
     if (dir && numlumps)
     {
+	// GAMECONF, ID24's
+	M_GameConf (path, "title", out, outlen);
+
 	// GAMEINFO
-	if ((text = M_WadLump (f, dir, numlumps, "GAMEINFO", &len)))
+	if (!out[0] && (text = M_WadLump (f, dir, numlumps, "GAMEINFO", &len)))
 	{
 	    M_QuotedAfter (text, "STARTUPTITLE", out, outlen);
 	    free (text);
@@ -2769,7 +2844,9 @@ static void M_NewGameFor (menu_t* back)
 {
     int		e, m;
 
-    if (M_ModMaps (&e, &m) == 1)
+    // a mod of one episode starts at its first map -- unless its UMAPINFO
+    // makes episodes of its own, as Legacy of Rust makes two of MAP01-16
+    if (M_ModMaps (&e, &m) == 1 && um_numepisodes <= 1)
     {
 	epi = -1;
 	modepisode = e;
