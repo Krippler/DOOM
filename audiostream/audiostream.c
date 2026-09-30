@@ -318,7 +318,7 @@ Upsample
 //
 static int	cmd_lfd = -1;
 static int	cmd_fd = -1;
-static unsigned char cmd_buf[256];
+static unsigned char cmd_buf[4096];	// a sound's path fits a line
 static size_t	cmd_have = 0;
 
 
@@ -433,6 +433,24 @@ ReadCommands (void)
 
 		addsfx (id, vol, steptable[pitch], sep);
 		used += CMD_PLAY_LEN;
+	    }
+	    else if (*c == 'l')
+	    {
+		// where the engine's sound is: one line (loadsfx)
+		unsigned char*	nl = memchr (c, '\n', cmd_have - used);
+
+		if (!nl)
+		{
+		    // a line longer than the buffer is no line of ours
+		    if (used == 0 && cmd_have == sizeof(cmd_buf))
+			used = cmd_have;
+		    break;
+		}
+		*nl = 0;
+		if (loadsfx ((char *) c + 1) < 0 && verbose)
+		    fprintf (stderr, "audiostream: could not load %s\n",
+			     (char *) c + 1);
+		used += nl - c + 1;
 	    }
 	    else if (*c == 'q')
 	    {

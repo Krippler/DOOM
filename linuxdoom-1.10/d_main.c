@@ -62,6 +62,7 @@ static const char rcsid[] = "$Id: d_main.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 #include "m_argv.h"
 #include "m_misc.h"
 #include "m_menu.h"
+#include "d_deh.h"
 
 #include "i_system.h"
 #include "i_sound.h"
@@ -1412,6 +1413,9 @@ void D_DoomMain (void)
 
     printf ("W_Init: Init WADfiles.\n");
     W_InitMultipleFiles (wadfiles);
+
+    // Mods' DEHACKED patches, before anything reads the tables they change
+    D_LoadDehacked ();
 
 
     // Check for -file in shareware

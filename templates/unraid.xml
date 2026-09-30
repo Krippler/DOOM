@@ -39,6 +39,14 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.17.0
+- DEHACKED patches are applied, the way classic mods change monsters,
+  weapons, frames, sounds and texts: from a mod's DEHACKED lump, a .deh
+  file of the same name beside it, or -deh. SIGIL II's Spider Mastermind
+  now has the 9000 health its patch gives it.
+- A mod's own sound effects are heard. Before, every sound came from an
+  IWAD the mixer found by itself.
+
 ### 1.16.0
 - Switches light up when used in The Ultimate DOOM and mods played on it,
   SIGIL II included: the lion, gargoyle, skin, wood and other switches of

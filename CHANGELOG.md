@@ -12,6 +12,35 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [1.17.0] — 2026-09-30
+
+### Added
+- **DEHACKED patches**, the way classic mods change the game: monsters'
+  health, speed and behaviour, weapons, ammunition, animation frames and
+  what they do, sounds, sprite and music names, the game's texts, and the
+  numbers id compiled in (starting health and bullets, armor classes, the
+  soulsphere, the cheats' gifts, BFG cells per shot, whether monsters of a
+  kind fight each other) — with Boom's additions: texts, code pointers and
+  names by name, and par times. A patch is read from a mod's `DEHACKED`
+  lump, from a `.deh` or `.bex` file of the same name as a mod beside it,
+  and from `-deh` on the command line. SIGIL II's own patch gives its
+  Spider Mastermind 9000 health, three times DOOM's; until now it had
+  3000. What cannot be applied — new cheat codes, MBF's helper dog and its
+  code pointers, frame and thing numbers past DOOM's own — is said in the
+  log, once, and left out.
+
+### Fixed
+- **A mod's own sound effects were never heard.** The mixer loaded every
+  effect by itself from whichever IWAD it found in the folder, DOOM II's
+  first, and never saw the mods; the game sounded like that IWAD whatever
+  was loaded. The engine now tells the mixer where each effect is — the
+  mod's, the IWAD's, or a DEHACKED patch's renaming — and the mixer plays
+  that one. Sounds recorded at another rate than DOOM's 11025 Hz, as mods'
+  often are, are converted rather than played at the wrong speed.
+
+The original games play exactly as before: every demo ends in the same
+state as on 1.16.0.
+
 ## [1.16.0] — 2026-09-29
 
 ### Fixed

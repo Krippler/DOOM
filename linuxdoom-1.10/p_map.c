@@ -41,6 +41,7 @@ rcsid[] = "$Id: p_map.c,v 1.5 1997/02/03 22:45:11 b1 Exp $";
 #include "r_state.h"
 // Data.
 #include "sounds.h"
+#include "d_deh.h"
 
 
 fixed_t		tmbbox[4];
@@ -315,7 +316,8 @@ boolean PIT_CheckThing (mobj_t* thing)
 	    if (thing == tmthing->target)
 		return true;
 
-	    if (thing->type != MT_PLAYER)
+	    // unless a patch's Misc says monsters of a kind fight
+	    if (thing->type != MT_PLAYER && !deh_species_infighting)
 	    {
 		// Explode, but do no damage.
 		// Let players missile other players.

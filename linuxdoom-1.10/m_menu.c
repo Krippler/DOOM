@@ -70,6 +70,7 @@ rcsid[] = "$Id: m_menu.c,v 1.7 1997/02/03 22:45:10 b1 Exp $";
 #include "u_mapinfo.h"
 #include "st_stuff.h"
 #include "r_lerp.h"
+#include "d_deh.h"
 
 
 
@@ -210,6 +211,28 @@ menu_t*	currentMenu;
 
 //
 // PROTOTYPES
+
+//
+// A patch's replacement for a text used as a format with one %s in it, if
+// it has exactly that one and nothing else a format would read; otherwise
+// id's, rather than print from wherever a stray %d pointed.
+//
+static char* M_OneStringFormat (char* fmt)
+{
+    const char*	r = D_Text (fmt);
+    const char*	p;
+    int		n = 0;
+
+    for (p = r; (p = strchr (p, '%')); p += 2)
+    {
+	if (p[1] == '%')
+	    continue;
+	if (p[1] != 's' || ++n > 1)
+	    return fmt;
+    }
+    return n == 1 ? (char*) r : fmt;
+}
+
 //
 void M_NewGame(int choice);
 void M_Episode(int choice);
@@ -768,7 +791,7 @@ void M_QuickSave(void)
 	quickSaveSlot = -2;	// means to pick a slot now
 	return;
     }
-    sprintf(tempstring,QSPROMPT,savegamestrings[quickSaveSlot]);
+    sprintf(tempstring,M_OneStringFormat (QSPROMPT),savegamestrings[quickSaveSlot]);
     M_StartMessage(tempstring,M_QuickSaveResponse,true);
 }
 
@@ -800,7 +823,7 @@ void M_QuickLoad(void)
 	M_StartMessage(QSAVESPOT,NULL,false);
 	return;
     }
-    sprintf(tempstring,QLPROMPT,savegamestrings[quickSaveSlot]);
+    sprintf(tempstring,M_OneStringFormat (QLPROMPT),savegamestrings[quickSaveSlot]);
     M_StartMessage(tempstring,M_QuickLoadResponse,true);
 }
 
@@ -2667,9 +2690,10 @@ void M_QuitDOOM(int choice)
   // We pick index 0 which is language sensitive,
   //  or one at random, between 1 and maximum number.
   if (language != english )
-    sprintf(endstring,"%s\n\n"DOSY, endmsg[0] );
+    sprintf(endstring,"%s\n\n"DOSY, D_Text (endmsg[0]) );
   else
-    sprintf(endstring,"%s\n\n"DOSY, endmsg[ (gametic%(NUM_QUITMESSAGES-2))+1 ]);
+    sprintf(endstring,"%s\n\n"DOSY,
+	    D_Text (endmsg[ (gametic%(NUM_QUITMESSAGES-2))+1 ]));
   
   M_StartMessage(endstring,M_QuitResponse,true);
 }
@@ -2816,7 +2840,7 @@ M_StartMessage
 {
     messageLastMenuActive = menuactive;
     messageToPrint = 1;
-    messageString = string;
+    messageString = (char*) D_Text (string);	// or a patch's
     messageRoutine = routine;
     messageNeedsInput = input;
     messageEnterUp = !enterHeld;

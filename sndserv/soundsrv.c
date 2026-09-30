@@ -424,6 +424,89 @@ grabdata
     return 0;
 }
 
+//
+// loadsfx
+// "l" from the engine: sound id's data is so many bytes at an offset in a
+// file -- the lump the engine itself would play, whichever WAD it is in and
+// whatever a DEHACKED patch named it. The rest of the line after the "l":
+//
+//	<id, 2 hex><offset, 8 hex><length, 8 hex><path>
+//
+// The lump is in DOOM's format: a word 3, the rate, the sample count, then
+// 8-bit samples. The mixer plays everything at 11025 Hz, so a sound at
+// another rate -- mods often have 22050 -- is resampled to it, where id's
+// code played it at the wrong speed. Returns 0 if it was loaded.
+//
+int loadsfx (const char* spec)
+{
+    char		hex[9];
+    unsigned int	id, offset, size;
+    const char*		path;
+    FILE*		f;
+    unsigned char*	lump;
+    unsigned char*	sfx;
+    int			rate, samples, n, padded, i;
+
+    if (strlen (spec) < 19)
+	return -1;
+    memcpy (hex, spec, 2); hex[2] = 0; id = strtoul (hex, NULL, 16);
+    memcpy (hex, spec + 2, 8); hex[8] = 0; offset = strtoul (hex, NULL, 16);
+    memcpy (hex, spec + 10, 8); hex[8] = 0; size = strtoul (hex, NULL, 16);
+    path = spec + 18;
+
+    if (id < 1 || id >= NUMSFX || size < 8 || size > (64 << 20))
+	return -1;
+    if (!(f = fopen (path, "rb")))
+	return -1;
+    lump = malloc (size);
+    if (!lump || fseek (f, offset, SEEK_SET) || fread (lump, 1, size, f) != size)
+    {
+	fclose (f);
+	free (lump);
+	return -1;
+    }
+    fclose (f);
+
+    rate = lump[2] | lump[3] << 8;
+    samples = size - 8;
+    if (lump[0] != 3 || lump[1] != 0)
+    {
+	free (lump);
+	return -1;		// not a DOOM sound; keep what there was
+    }
+
+    n = rate > 0 && rate != 11025 ? (int) ((long long) samples * 11025 / rate)
+				   : samples;
+    if (n < 1)
+	n = 1;
+    padded = ((n + (SAMPLECOUNT-1)) / SAMPLECOUNT) * SAMPLECOUNT;
+    sfx = malloc (padded + 8);
+    if (!sfx)
+    {
+	free (lump);
+	return -1;
+    }
+    for (i = 0; i < padded + 8; i++)
+	sfx[i] = 128;
+    for (i = 0; i < n; i++)
+	sfx[8 + i] = lump[8 + (n == samples ? i
+			       : (int) ((long long) i * samples / n))];
+    free (lump);
+
+    // what played it before goes on playing from the old copy, which is
+    // left where it is
+    S_sfx[id].data = sfx + 8;
+    lengths[id] = padded;
+    for (i = 1; i < NUMSFX; i++)
+	if (S_sfx[i].link == &S_sfx[id])
+	{
+	    S_sfx[i].data = S_sfx[id].data;
+	    lengths[i] = lengths[id];
+	}
+    return 0;
+}
+
+
 static struct timeval		last={0,0};
 //static struct timeval		now;
 
@@ -720,6 +803,21 @@ main
 			    //	outputushort(handle);
 			    break;
 			    
+			  case 'l':
+			  {
+			      // where a sound is: up to the end of the line
+			      char	line[1200];
+			      int	n = 0;
+			      char	ch;
+
+			      while (read (0, &ch, 1) == 1 && ch != '\n')
+				  if (n < (int) sizeof(line) - 1)
+				      line[n++] = ch;
+			      line[n] = 0;
+			      loadsfx (line);
+			  }
+			  break;
+
 			  case 'q':
 			    read(0, commandbuf, 1);
 			    waitingtofinish = 1; rc = 0;

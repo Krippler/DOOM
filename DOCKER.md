@@ -70,9 +70,14 @@ above; anything ending in `.wad` shows up in the in-game WAD menu below.
 Mods made for the original engine play, and so do those whose text file asks
 for a **limit-removing** port: the engine has no fixed tables left to
 overflow, and reads DeePBSP and ZDBSP nodes, tall and odd-height textures,
-and partial TEXTURE lumps. Mods that need Boom or more (Boom's line types,
-UDMF maps, ACS, DECORATE, ZScript — "Boom-compatible", "MBF21", "GZDoom
-only") do not.
+and partial TEXTURE lumps. Their **DEHACKED** patches are applied — the
+changes to monsters, weapons, frames, sounds and texts that classic mods make —
+whether the patch is a `DEHACKED` lump inside the WAD or a `.deh` (or `.bex`)
+file of the same name beside it in the WAD folder; `-deh file.deh` after the
+image name loads any other. A mod's own sound effects are played, and its
+`SWITCHES` and `ANIMATED` lumps read. Mods that need Boom or more (Boom's line
+types, UDMF maps, ACS, DECORATE, ZScript — "Boom-compatible", "MBF21",
+"GZDoom only") do not work.
 
 ## The browser client
 

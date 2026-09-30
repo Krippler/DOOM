@@ -36,6 +36,8 @@
 #             nodes with children past 15 bits, no BLOCKMAP, walls in a
 #             256-tall texture from a TEXTURE1 of its own, a sprite range of
 #             its own; it stays up and the texture is drawn
+#   dehacked  a DEHACKED lump is read, and a mod's own pistol sound (silence)
+#             is the one the mixer plays (needs xdotool)
 #   ogg       a level whose music is an Ogg Vorbis lump, as SIGIL II's are,
 #             is heard at the tone's own pitch (needs oggenc, from
 #             vorbis-tools, and a soundfont; skipped without)
@@ -484,6 +486,56 @@ say "compressed ZDBSP nodes, a made blockmap, a 256-tall texture: E1M1 stays up 
 kill "$game_pid" 2>/dev/null
 wait_game 10
 stop_x
+
+# ----------------------------------------------------------------- dehacked
+# A mod's DEHACKED lump is read, and a mod's own sounds reach the mixer. The
+# mixer used to load every effect from an IWAD it found by itself, so a mod's
+# sounds were never heard. Here a copy of the shareware IWAD carries a patch
+# and a pistol sound of silence: firing has to be silent.
+if command -v xdotool >/dev/null 2>&1; then
+    say "dehacked: a DEHACKED lump, and a mod's own (silent) pistol"
+    mkdir -p "$work/deh"
+    printf 'Patch File for DeHackEd v3.0\n\nMisc 0\nInitial Health = 150\n\n[STRINGS]\nGOTCLIP = Smoke test clip\n' \
+        >"$work/deh/dehacked"
+    python3 -c "import struct, sys; sys.stdout.buffer.write(struct.pack('<HHI', 3, 11025, 4000) + bytes([128]) * 4000)" \
+        >"$work/deh/dspistol"
+    add_lumps "$wad" "$work/deh/doom1.wad" \
+        DEHACKED "$work/deh/dehacked" DSPISTOL "$work/deh/dspistol" \
+        || die "could not add the patch and the sound"
+    start_x 24
+    start_mixer
+    printf 'music_volume 0\nsfx_volume 15\n' >"$work/.doomrc"
+    DOOM_SFX_SOCKET="$work/sfx.sock" DOOM_MUSIC_PIPE="$work/music.pipe" \
+    DOOM_AUDIO_RATE=22050 game_iwad="$work/deh/doom1.wad" \
+        start_game dehacked.log -warp 1 1 -nojoy
+    game_iwad=
+    i=0
+    until grep -q "I_InitGraphics" "$work/dehacked.log" 2>/dev/null; do
+        i=$((i + 1))
+        [ "$i" -gt 200 ] && { tail -20 "$work/dehacked.log" >&2; die "the engine never opened its window; see $work/dehacked.log"; }
+        sleep 0.1
+    done
+    grep -q "^DEHACKED: doom1.wad: 2 changes" "$work/dehacked.log" \
+        || die "the DEHACKED lump was not read; see $work/dehacked.log"
+    grep -q "^sound: told the mixer where [0-9]* effects are" "$work/dehacked.log" \
+        || die "the engine did not tell the mixer where its sounds are; see $work/dehacked.log"
+    sleep 2
+    python3 "$client" peak --audio "$audio_port" --secs 3 --quiet &
+    listener=$!
+    sleep 0.5
+    DISPLAY="$disp" xdotool keydown Control_L
+    sleep 1
+    DISPLAY="$disp" xdotool keyup Control_L
+    wait "$listener" \
+        || die "the pistol was heard: the mixer did not take the mod's sound"
+    kill "$game_pid" 2>/dev/null
+    wait_game 10
+    stop_mixer
+    stop_x
+    say "the patch was read, and the mod's pistol is the one the mixer plays"
+else
+    say "dehacked: skipped, xdotool is not installed"
+fi
 
 # ---------------------------------------------------------------------- ogg
 if [ -z "$soundfont" ] || ! command -v oggenc >/dev/null 2>&1; then

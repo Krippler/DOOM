@@ -44,6 +44,7 @@ rcsid[] = "$Id: f_finale.c,v 1.5 1997/02/03 21:26:34 b1 Exp $";
 #include "g_game.h"
 #include "r_state.h"
 #include "u_mapinfo.h"
+#include "d_deh.h"
 
 // ?
 //#include "doomstat.h"
@@ -256,7 +257,7 @@ void F_StartFinale (void)
     viewactive = false;
     automapactive = false;
 
-    finaletext = F_InterText ();
+    finaletext = (char*) D_Text (F_InterText ());	// or a patch's
     finaleflat = map && map->interbackdrop[0] ? map->interbackdrop
 					      : F_Backdrop ();
 
@@ -677,7 +678,7 @@ void F_CastDrawer (void)
     // erase the entire screen to a background
     V_DrawPatch (0,0,0, W_CacheLumpName ("BOSSBACK", PU_CACHE));
 
-    F_CastPrint (castorder[castnum].name);
+    F_CastPrint ((char*) D_Text (castorder[castnum].name));
     
     // draw the current frame in the middle of the screen
     sprdef = &sprites[caststate->sprite];
