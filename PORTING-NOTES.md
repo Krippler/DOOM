@@ -924,6 +924,21 @@ restart for one), `G_LoadFailed` puts up the title screen within the same
 tic. Otherwise the rest of that tic would run `P_Ticker` on a level that
 was never loaded.
 
+A save without the list that does not fit the running game still has a
+game it came from, and the same check finds it. `P_SaveFitsFile` reads a
+WAD's directory and its map's `SECTORS` and `LINEDEFS` straight from the
+file, without loading the WAD, and runs the check against that map. The
+map is found by either kind of name, since the running game decides
+whether episode 1, map 7 means E1M7 or MAP07. Flats and textures are
+skipped here, because only the running game's are loaded. That still pins
+a map down closely: every sector, line and side has to line up, and the
+archive has to end on the marker. `M_FindSaveWads` tries each mod in the
+WAD folder and then each game, putting a mod on the game `M_IwadFor`
+picks for it. `G_SaveGameWads` combines all of this into one answer —
+listed, running, found or unknown — which `G_DoLoadGame` acts on and the
+Load and Save Game menus name under the slots (`M_WadTitle` of the last
+WAD).
+
 Checking every map this way (save, load, carry on) turned up a second
 crash, in maps that load fine: DOOM II's MAP07, a few seconds after
 loading. id saved each thing's `target` and `tracer` as raw pointers.

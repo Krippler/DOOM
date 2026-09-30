@@ -85,6 +85,26 @@ boolean G_Responder (event_t*	ev);
 void G_ScreenShot (void);
 
 
+// What a savegame was made on (g_game.c).
+typedef enum
+{
+    SAVE_LISTED,
+    SAVE_RUNNING,
+    SAVE_FOUND,
+    SAVE_UNKNOWN,
+    SAVE_BAD
+} savewads_t;
+
+savewads_t
+G_SaveGameWads
+( byte*		buf,
+  int		length,
+  char**	files,
+  int		max,
+  int*		numfiles,
+  byte**	header,
+  byte**	end );
+
 #endif
 //-----------------------------------------------------------------------------
 //

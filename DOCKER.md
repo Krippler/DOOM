@@ -489,7 +489,10 @@ Useful engine flags: `-warp <episode> <map>`, `-skill 1..5`, `-nomonsters`,
 `/doom/state` holds `.doomrc` and `doomsavN.dsg`. A save remembers the game
 and mods it was made with: loading it while something else is running
 restarts the engine on those first, as Load WAD does, provided they are
-still in the WAD folder. The Compose file keeps it in
+still in the WAD folder. A save from before 1.17.2 does not say, and is
+matched to the game or mod in the folder whose map it fits instead. The
+Load and Save Game menus show which game the highlighted slot belongs to.
+The Compose file keeps it in
 a named volume so saves survive `docker compose down`, and a named volume with
 plain `docker run` works the same way:
 

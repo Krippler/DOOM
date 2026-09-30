@@ -71,6 +71,7 @@ rcsid[] = "$Id: m_menu.c,v 1.7 1997/02/03 22:45:10 b1 Exp $";
 #include "st_stuff.h"
 #include "r_lerp.h"
 #include "d_deh.h"
+#include "p_saveg.h"
 
 
 
@@ -593,6 +594,40 @@ menu_t  SaveDef =
 // M_ReadSaveStrings
 //  read the strings from the savegame files
 //
+//
+// M_SaveGameTitle
+// The game or mod a savegame file was made on, for the Load and Save Game
+// menus to name under the slots: what it lists, or what it fits
+// (G_SaveGameWads).
+//
+#define SAVETITLELEN	64		// WAD_NAMELEN, below
+static char	savegametitles[10][SAVETITLELEN];
+static void M_WadTitle (char* path, char* file, char* out, int outlen);
+
+static void M_SaveGameTitle (char* name, char* out)
+{
+    byte*	buf;
+    byte*	header;
+    byte*	end;
+    char*	files[256];
+    char*	base;
+    int		length, n;
+    savewads_t	how;
+
+    out[0] = 0;
+    length = M_ReadFile (name, &buf);
+    how = G_SaveGameWads (buf, length, files, 256, &n, &header, &end);
+    if (how == SAVE_UNKNOWN)
+	snprintf (out, SAVETITLELEN, "A GAME NOT IN THE WAD FOLDER");
+    else if (how != SAVE_BAD && n)
+    {
+	base = strrchr (files[n-1], '/');
+	base = base ? base + 1 : files[n-1];
+	M_WadTitle (files[n-1], base, out, SAVETITLELEN);
+    }
+    Z_Free (buf);
+}
+
 void M_ReadSaveStrings(void)
 {
     int             handle;
@@ -611,12 +646,14 @@ void M_ReadSaveStrings(void)
 	if (handle == -1)
 	{
 	    strcpy(&savegamestrings[i][0],EMPTYSTRING);
+	    savegametitles[i][0] = 0;
 	    LoadMenu[i].status = 0;
 	    continue;
 	}
 	count = read (handle, &savegamestrings[i], SAVESTRINGSIZE);
 	close (handle);
 	LoadMenu[i].status = 1;
+	M_SaveGameTitle (name, savegametitles[i]);
     }
 }
 
@@ -624,6 +661,21 @@ void M_ReadSaveStrings(void)
 //
 // M_LoadGame & Cie.
 //
+// Under the slots, what the one the cursor is on was saved in. Above the
+// status bar, which the line would otherwise be drawn onto and stay on.
+static void M_DrawSaveGameTitle (int slot)
+{
+    char	text[SAVETITLELEN + 16];
+    int		w;
+
+    if (slot < 0 || slot >= load_end || !savegametitles[slot][0])
+	return;
+    snprintf (text, sizeof(text), "SAVED IN %s", savegametitles[slot]);
+    while ((w = M_StringWidth (text)) > 316)
+	text[strlen (text) - 1] = 0;
+    M_WriteText ((320 - w) / 2, LoadDef.y + LINEHEIGHT*load_end, text);
+}
+
 void M_DrawLoad(void)
 {
     int             i;
@@ -634,6 +686,7 @@ void M_DrawLoad(void)
 	M_DrawSaveLoadBorder(LoadDef.x,LoadDef.y+LINEHEIGHT*i);
 	M_WriteText(LoadDef.x,LoadDef.y+LINEHEIGHT*i,savegamestrings[i]);
     }
+    M_DrawSaveGameTitle (itemOn);
 }
 
 
@@ -707,7 +760,8 @@ void M_DrawSave(void)
     {
 	i = M_StringWidth(savegamestrings[saveSlot]);
 	M_WriteText(LoadDef.x + i,LoadDef.y+LINEHEIGHT*saveSlot,"_");
-    }
+    }    else
+	M_DrawSaveGameTitle (itemOn);
 }
 
 //
@@ -2531,11 +2585,59 @@ boolean M_LoadSaveOn (char** files, int n, char* savename, char** missing)
 
 
 //
+// M_FindSaveWads
+// A savegame from before saves listed their WADs, which does not fit the
+// game running: the game or mod in the WAD folder whose map it fits, in
+// files -- a game on its own, or a mod and the game M_IwadFor puts it on.
+// How many; 0 for none. Mods first, since the game running has been tried.
+// The folder is read again only when it was not just read, so that the
+// menus can ask for every slot at once.
+//
+int
+M_FindSaveWads
+( byte*		p,
+  byte*		end,
+  int		episode,
+  int		map,
+  boolean*	ingame,
+  char**	files )
+{
+    static int	scanned = -1000;
+    char*	iwad;
+    int		pass, i;
+
+    if (I_GetTime () - scanned > TICRATE)
+	M_ScanWads ();
+    scanned = I_GetTime ();
+
+    for (pass = 0; pass < 2; pass++)
+	for (i = 0; i < numWads; i++)
+	{
+	    if (wadIsIwad[i] != (pass == 1))
+		continue;
+	    if (!P_SaveFitsFile (p, end, wadPaths[i], episode, map, ingame))
+		continue;
+	    if (wadIsIwad[i])
+	    {
+		files[0] = wadPaths[i];
+		return 1;
+	    }
+	    if (!(iwad = M_IwadFor (wadPaths[i])))
+		continue;
+	    files[0] = iwad;
+	    files[1] = wadPaths[i];
+	    return 2;
+	}
+    return 0;
+}
+
+
+//
 // M_LoadGameFailed
 // Why a savegame was not loaded, until a key is pressed. file: the WAD it
 // was saved on that is not here; NULL when the save does not fit the level
-// it names in the game running, which is a save from another game or mod
-// that did not record which.
+// it names in the game running, nor any in the WAD folder: a save from
+// before saves listed their WADs, whose game or mod is not here.
 //
 void M_LoadGameFailed (char* file)
 {
@@ -2555,9 +2657,9 @@ void M_LoadGameFailed (char* file)
     }
     else
 	snprintf (text, sizeof(text),
-		  "THIS GAME WAS SAVED IN ANOTHER\n"
-		  "GAME OR MOD. LOAD THAT FIRST,\n"
-		  "FROM OPTIONS, SETUP, LOAD WAD.\n\n"PRESSKEY);
+		  "THIS GAME WAS SAVED IN A GAME\n"
+		  "OR MOD THAT IS NOT IN THE\n"
+		  "WAD FOLDER.\n\n"PRESSKEY);
     M_StartMessage (text, NULL, false);
 }
 

@@ -63,6 +63,8 @@ void M_NewGameAfterRestart (void);
 // Loading a savegame made on other WADs (G_DoLoadGame).
 boolean M_LoadSaveOn (char** files, int n, char* savename, char** missing);
 void M_LoadGameFailed (char* file);
+int M_FindSaveWads (byte* p, byte* end, int episode, int map,
+		    boolean* ingame, char** files);
 
 
 

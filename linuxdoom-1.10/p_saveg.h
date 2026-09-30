@@ -49,6 +49,9 @@ extern boolean	savegamerefs;
 
 // Whether a savegame's archive fits the map it names, before loading it.
 boolean P_SaveGameFits (byte* p, byte* end, int maplump, boolean* ingame);
+// ... and the map in a WAD file that is not loaded.
+boolean P_SaveFitsFile (byte* p, byte* end, char* path, int episode, int map,
+			boolean* ingame);
 
 extern byte*		save_p; 
 
