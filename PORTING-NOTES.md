@@ -889,6 +889,63 @@ tables were raised eightfold: `MAXVISPLANES`, `MAXOPENINGS`, `MAXDRAWSEGS`,
 Only memory depends on them. The scrolling-wall list, which the original
 filled with no check at all, stops at its end now.
 
+## A savegame from another game or mod
+
+id's savegame is the level by number: the players, then each sector's
+heights, flats and light and each line's sides, in the map's own order,
+then every thing and every moving floor, door and light with its sector as
+an index. It names the map (skill, episode, map) and nothing else, not the
+WADs. `G_DoLoadGame` loaded that map from whatever was running and read the
+rest onto it. A game saved in SIGIL II's E6M2 and loaded with The Ultimate
+DOOM alone (what the container starts on) found E6M2 missing, played
+E4M2 instead, and wrote SIGIL II's sector numbers into E4M2's array. That
+died at `&sectors[index]->specialdata` in `P_UnArchiveSpecials`. The 1993
+engine had the same hole and wrote into whatever came after the array.
+
+Saves now list their WADs after the archive and its `0x1d` marker, which is
+where id's engine stops reading, so a save written here still loads on it.
+Each path is written with a NUL after it, then the list's length and
+`WADS`, four bytes each, so the list can be found from the end of the file.
+Loading compares the list with `wadfiles` (by device and inode, since the
+container's IWAD is a symlink). When they differ, `M_LoadSaveOn` restarts
+the engine on the save's WADs, as Load WAD does, with `DOOM_LOADGAME`
+naming the save for `D_DoomMain` to load. It does this once only; if a WAD
+is missing, the load is refused with a message naming the game.
+
+A save without the list, or one that got through anyway, is checked by
+`P_SaveGameFits` before anything is changed. It walks the archive the way
+the four `P_UnArchive` routines do, using the named map's `SECTORS` and
+`LINEDEFS` lump sizes for counts and its linedefs for which sides exist.
+It holds every index to its table: flats, textures, states, thing types,
+players, and each special's sector. It also requires the archive to end on
+the marker, within the file. If the save fails, the game in progress
+carries on under a message. With no game in progress (`-loadgame`, or the
+restart for one), `G_LoadFailed` puts up the title screen within the same
+tic. Otherwise the rest of that tic would run `P_Ticker` on a level that
+was never loaded.
+
+Checking every map this way (save, load, carry on) turned up a second
+crash, in maps that load fine: DOOM II's MAP07, a few seconds after
+loading. id saved each thing's `target` and `tracer` as raw pointers.
+`P_UnArchiveThinkers` set `target` to NULL and left `tracer` pointing into
+the process that saved. A Mancubus loaded partway through its attack then
+reached `A_FatAttack1` with no target. The other attacks check for that;
+the Mancubus's three do not, and `P_SpawnMissile` read `NULL->x`. DOS
+allowed that read; Linux gives a segmentation fault. A revenant missile's
+`A_Tracer` would likewise have followed its stale `tracer`.
+
+Both pointers are now saved as numbers, as later ports do:
+`P_ArchiveThinkers` numbers the things from 1 in the order it saves them,
+0 meaning none. A thing can still point to one that has been removed; its
+number is only trusted when the table of saved things agrees, and zone
+memory is never given back to the system, so reading it is safe.
+`P_UnArchiveThinkers` resolves the numbers once every thing is read. So
+monsters carry on attacking whoever they were after, and missiles keep
+homing. Only saves carrying the WAD list hold numbers (`savegamerefs`);
+older saves still have their pointers cleared. The three Mancubus attacks
+now return when there is no target, as the others always did, which also
+covers a DEHACKED frame that calls them.
+
 ## The WAD list by game name
 
 `M_WadTitle` names each file for the list, from the first of: its

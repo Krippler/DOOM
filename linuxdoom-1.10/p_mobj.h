@@ -293,6 +293,10 @@ typedef struct mobj_s
     fixed_t		oldz;
     angle_t		oldangle;
 
+    // Its number in a savegame being written, for others' target and tracer
+    // (p_saveg.c).
+    int			saveindex;
+
 } mobj_t;
 
 // How much of a mobj_t a save holds.

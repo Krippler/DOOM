@@ -1179,11 +1179,14 @@ void FindResponseFile (void)
 //
 // D_DoomMain
 //
+extern boolean	loadgame_restarted;	// g_game.c
+
 void D_DoomMain (void)
 {
     int             p;
     char                    file[256];
     boolean		newgame_restart;
+    char*		loadgame_restart = NULL;
 
     // Restarted by New Game's WAD list, to go on to the difficulty. Taken
     // out of the environment at once: should this start fail, the engine
@@ -1191,6 +1194,14 @@ void D_DoomMain (void)
     // its title screen as usual.
     newgame_restart = getenv ("DOOM_NEWGAME") != NULL;
     unsetenv ("DOOM_NEWGAME");
+
+    // Restarted to load a savegame on the WADs it was made on (G_DoLoadGame):
+    // which one. Taken out as at once, for the same reason.
+    if (getenv ("DOOM_LOADGAME"))
+    {
+	loadgame_restart = strdup (getenv ("DOOM_LOADGAME"));
+	unsetenv ("DOOM_LOADGAME");
+    }
 
     FindResponseFile ();
 	
@@ -1563,6 +1574,12 @@ void D_DoomMain (void)
 	else
 	    sprintf(file, SAVEGAMENAME"%c.dsg",myargv[p+1][0]);
 	G_LoadGame (file);
+    }
+
+    if (loadgame_restart)
+    {
+	loadgame_restarted = true;
+	G_LoadGame (loadgame_restart);
     }
 	
 
