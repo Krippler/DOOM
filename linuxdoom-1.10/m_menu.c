@@ -1879,7 +1879,8 @@ void M_DrawGameplay (void)
 #define WAD_NAMELEN	64
 #define WAD_ROWS	10
 
-static char	wadNames[MAX_WADS][WAD_NAMELEN];
+static char	wadNames[MAX_WADS][WAD_NAMELEN];	// the file's name
+static char	wadTitles[MAX_WADS][WAD_NAMELEN];	// the game's (M_WadTitle)
 static char	wadPaths[MAX_WADS][256];
 static boolean	wadIsIwad[MAX_WADS];
 static int	numWads = 0;
@@ -2108,6 +2109,231 @@ static char* M_IwadFor (char* pwad)
 }
 
 
+//
+// The name a WAD goes by, for the list: the game's or the mod's, rather
+// than its file's. From the first of:
+//
+//   - its GAMEINFO lump's STARTUPTITLE (ZDoom's; SIGIL and SIGIL II have one)
+//   - its UMAPINFO episodes' name, when they all have the one: how the 2024
+//     re-release's add-ons, TNT and Plutonia name themselves
+//   - the "Title :" line of a .txt of the same name beside it, the form
+//     every mod on the idgames archive comes with
+//   - for an IWAD, what its maps say it is, as the engine itself tells
+//   - the file's name, without ".wad"
+//
+static char* M_WadLump (FILE* f, unsigned char* dir, int numlumps,
+			const char* name, int* len)
+{
+    int		i;
+    char*	data;
+
+    for (i = numlumps - 1; i >= 0; i--)
+    {
+	unsigned char*	d = dir + i * 16;
+	int		pos = d[0] | d[1] << 8 | d[2] << 16 | d[3] << 24;
+	int		size = d[4] | d[5] << 8 | d[6] << 16 | d[7] << 24;
+
+	if (strncasecmp ((char*) d + 8, name, 8))
+	    continue;
+	if (size <= 0 || size > (1 << 20) || fseek (f, pos, SEEK_SET)
+	    || !(data = malloc (size + 1)))
+	    return NULL;
+	if (fread (data, 1, size, f) != (size_t) size)
+	{
+	    free (data);
+	    return NULL;
+	}
+	data[size] = 0;
+	*len = size;
+	return data;
+    }
+    return NULL;
+}
+
+// the quoted string after 'key =' in text, or NULL
+static boolean M_QuotedAfter (const char* text, const char* key,
+			      char* out, int outlen)
+{
+    const char*	p = text;
+    int		klen = strlen (key);
+
+    while ((p = strcasestr (p, key)))
+    {
+	const char*	q = p + klen;
+
+	p = q;
+	while (*q == ' ' || *q == '\t')
+	    q++;
+	if (*q != '=')
+	    continue;
+	q++;
+	while (*q == ' ' || *q == '\t')
+	    q++;
+	if (*q != '"')
+	    continue;
+	q++;
+	snprintf (out, outlen, "%.*s", (int) (strchr (q, '"') ? strchr (q, '"') - q
+					       : (int) strlen (q)), q);
+	return *out != 0;
+    }
+    return false;
+}
+
+static void M_WadTitle (char* path, char* file, char* out, int outlen)
+{
+    FILE*		f = fopen (path, "rb");
+    unsigned char	head[12];
+    unsigned char*	dir = NULL;
+    int			numlumps = 0, ofs, len, i;
+    char*		text;
+    boolean		iwad = false;
+    boolean		e1 = false, e2 = false, e4 = false, map01 = false;
+    boolean		freedoom = false, freedm = false;
+
+    out[0] = 0;
+
+    if (f && fread (head, 1, 12, f) == 12
+	&& (!memcmp (head, "IWAD", 4) || !memcmp (head, "PWAD", 4)))
+    {
+	iwad = !memcmp (head, "IWAD", 4);
+	numlumps = head[4] | head[5] << 8 | head[6] << 16 | head[7] << 24;
+	ofs = head[8] | head[9] << 8 | head[10] << 16 | head[11] << 24;
+	if (numlumps > 0 && numlumps < (1 << 20)
+	    && !fseek (f, ofs, SEEK_SET)
+	    && (dir = malloc (numlumps * 16))
+	    && fread (dir, 16, numlumps, f) != (size_t) numlumps)
+	    numlumps = 0;
+    }
+
+    if (dir && numlumps)
+    {
+	// GAMEINFO
+	if ((text = M_WadLump (f, dir, numlumps, "GAMEINFO", &len)))
+	{
+	    M_QuotedAfter (text, "STARTUPTITLE", out, outlen);
+	    free (text);
+	}
+
+	// UMAPINFO: episode = "M_EPIx", "Name", "k" -- one name for them all
+	if (!out[0] && (text = M_WadLump (f, dir, numlumps, "UMAPINFO", &len)))
+	{
+	    char	name[WAD_NAMELEN] = "";
+	    char*	p = text;
+	    boolean	one = true;
+
+	    while ((p = strcasestr (p, "episode")))
+	    {
+		char*	q = p + 7;
+		char*	a;
+		char*	b;
+
+		p = q;
+		while (*q == ' ' || *q == '\t')
+		    q++;
+		if (*q != '=' || !(a = strchr (q, '"')) || !(a = strchr (a + 1, '"'))
+		    || !(a = strchr (a + 1, '"')) || !(b = strchr (a + 1, '"'))
+		    || memchr (q, '\n', a - q))
+		    continue;		// "episode = clear", or not the key
+		if (!name[0])
+		    snprintf (name, sizeof(name), "%.*s", (int) (b - a - 1), a + 1);
+		else if ((int) strlen (name) != b - a - 1
+			 || strncmp (name, a + 1, b - a - 1))
+		    one = false;
+	    }
+	    if (name[0] && one)
+		snprintf (out, outlen, "%s", name);
+	    free (text);
+	}
+
+	for (i = 0; i < numlumps; i++)
+	{
+	    char*	n = (char*) dir + i * 16 + 8;
+
+	    if (!strncasecmp (n, "E1M1", 5))		e1 = true;
+	    else if (!strncasecmp (n, "E2M1", 5))	e2 = true;
+	    else if (!strncasecmp (n, "E4M1", 5))	e4 = true;
+	    else if (!strncasecmp (n, "MAP01", 6))	map01 = true;
+	    else if (!strncasecmp (n, "FREEDOOM", 8))	freedoom = true;
+	    else if (!strncasecmp (n, "FREEDM", 7))	freedm = true;
+	}
+    }
+    if (f)
+	fclose (f);
+    free (dir);
+
+    // the idgames text file beside it
+    if (!out[0])
+    {
+	char	txt[300];
+	char	line[256];
+	char*	dot;
+	FILE*	t = NULL;
+
+	snprintf (txt, sizeof(txt), "%s", path);
+	if ((dot = strrchr (txt, '.')) && !strchr (dot, '/'))
+	{
+	    strcpy (dot, ".txt");
+	    if (!(t = fopen (txt, "r")))
+	    {
+		strcpy (dot, ".TXT");
+		t = fopen (txt, "r");
+	    }
+	}
+	while (t && fgets (line, sizeof(line), t))
+	{
+	    char*	c = line;
+
+	    while (*c == ' ' || *c == '\t')
+		c++;
+	    if (strncasecmp (c, "Title", 5))
+		continue;
+	    c += 5;
+	    while (*c == ' ' || *c == '\t')
+		c++;
+	    if (*c != ':')
+		continue;
+	    c++;
+	    while (*c == ' ' || *c == '\t')
+		c++;
+	    c[strcspn (c, "\r\n")] = 0;
+	    if (*c)
+		snprintf (out, outlen, "%s", c);
+	    break;
+	}
+	if (t)
+	    fclose (t);
+    }
+
+    // an IWAD with nothing to say: what it is
+    if (!out[0] && iwad)
+    {
+	if (freedm)
+	    snprintf (out, outlen, "FreeDM");
+	else if (freedoom)
+	    snprintf (out, outlen, map01 ? "Freedoom: Phase 2"
+		      : "Freedoom: Phase 1");
+	else if (map01)
+	    snprintf (out, outlen, "%s",
+		      !strncasecmp (file, "tnt", 3) ? "TNT: Evilution"
+		      : !strncasecmp (file, "plutonia", 8)
+		      ? "The Plutonia Experiment" : "DOOM II: Hell on Earth");
+	else if (e4)
+	    snprintf (out, outlen, "The Ultimate DOOM");
+	else if (e2)
+	    snprintf (out, outlen, "DOOM");
+	else if (e1)
+	    snprintf (out, outlen, "DOOM Shareware");
+    }
+
+    if (!out[0])
+    {
+	snprintf (out, outlen, "%s", file);
+	if (strlen (out) > 4 && !strcasecmp (out + strlen (out) - 4, ".wad"))
+	    out[strlen (out) - 4] = 0;
+    }
+}
+
+
 static void M_ScanWads (void)
 {
     DIR*		d;
@@ -2138,28 +2364,38 @@ static void M_ScanWads (void)
 
 	snprintf (wadNames[numWads], WAD_NAMELEN, "%s", e->d_name);
 	wadIsIwad[numWads] = M_IsIwad (wadPaths[numWads]);
+	M_WadTitle (wadPaths[numWads], e->d_name, wadTitles[numWads],
+		    WAD_NAMELEN);
 	numWads++;
     }
 
     closedir (d);
 
-    // In alphabetical order, whatever order the folder keeps them in.
+    // In alphabetical order of the names shown, whatever order the folder
+    // keeps them in; two of the same name by file name.
     {
 	int	i, j;
 
 	for (i = 1; i < numWads; i++)
-	    for (j = i; j > 0 && strcasecmp (wadNames[j-1], wadNames[j]) > 0; j--)
+	    for (j = i; j > 0
+		 && (strcasecmp (wadTitles[j-1], wadTitles[j]) > 0
+		     || (!strcasecmp (wadTitles[j-1], wadTitles[j])
+			 && strcasecmp (wadNames[j-1], wadNames[j]) > 0)); j--)
 	    {
 		char	name[WAD_NAMELEN];
+		char	title[WAD_NAMELEN];
 		char	path[256];
 		boolean	iwad = wadIsIwad[j];
 
 		memcpy (name, wadNames[j], WAD_NAMELEN);
+		memcpy (title, wadTitles[j], WAD_NAMELEN);
 		memcpy (path, wadPaths[j], 256);
 		memcpy (wadNames[j], wadNames[j-1], WAD_NAMELEN);
+		memcpy (wadTitles[j], wadTitles[j-1], WAD_NAMELEN);
 		memcpy (wadPaths[j], wadPaths[j-1], 256);
 		wadIsIwad[j] = wadIsIwad[j-1];
 		memcpy (wadNames[j-1], name, WAD_NAMELEN);
+		memcpy (wadTitles[j-1], title, WAD_NAMELEN);
 		memcpy (wadPaths[j-1], path, 256);
 		wadIsIwad[j-1] = iwad;
 	    }
@@ -2486,12 +2722,20 @@ void M_DrawWadSelect (void)
     int		y;
     int		top = 38;
 
-    M_WriteText (40, 14, wadNewGame ? "NEW GAME" : "LOAD WAD");
+    M_WriteText (40, 14, wadNewGame ? "NEW GAME: WHICH GAME OR MOD?"
+		 : "LOAD WAD: THE GAME RESTARTS");
     // Above the list: with ten files the rows reach y=152, and anything
-    // below 168 would be drawn onto the status bar and stay there.
-    M_WriteText (40, 28, wadMessage[0] ? wadMessage
-		 : wadNewGame ? "PLAY WHICH GAME OR MOD?"
-		 : "THE GAME RESTARTS TO LOAD");
+    // below 168 would be drawn onto the status bar and stay there. The
+    // file the cursor is on, as the rows give the game's name.
+    if (wadMessage[0])
+	M_WriteText (40, 28, wadMessage);
+    else if (numWads && itemOn >= 0 && itemOn < numWads)
+    {
+	char	file[WAD_NAMELEN + 8];
+
+	snprintf (file, sizeof(file), "FILE: %.60s", wadNames[itemOn]);
+	M_WriteText (40, 28, file);
+    }
 
     if (!numWads)
     {
@@ -2511,18 +2755,30 @@ void M_DrawWadSelect (void)
     y = top;
     for (i = wadTop; i < numWads && i < wadTop + WAD_ROWS; i++)
     {
-	M_WriteText (WadDef.x, y, wadNames[i]);
+	// the game's name, cut short of the GAME / MOD column
+	{
+	    char	name[WAD_NAMELEN + 4];
+	    int		n = strlen (wadTitles[i]);
+
+	    snprintf (name, sizeof(name), "%.63s", wadTitles[i]);
+	    while (n > 1 && M_StringWidth (name) > 172)
+	    {
+		n--;
+		snprintf (name, sizeof(name), "%.*s...", n, wadTitles[i]);
+	    }
+	    M_WriteText (WadDef.x, y, name);
+	}
 	M_WriteText (WadDef.x + 180, y, M_WadIsRunning (i) ? "PLAYING"
 		     : wadIsIwad[i] ? "GAME" : "MOD");
 	y += WadDef.lineheight;
     }
 
-    // more above or below
+    // more above or below, against the screen's right edge
     if (wadTop > 0)
-	M_WriteText (WadDef.x + 250, top, "UP");
+	M_WriteText (318 - M_StringWidth ("UP"), top, "UP");
     if (wadTop + WAD_ROWS < numWads)
-	M_WriteText (WadDef.x + 250, top + (WAD_ROWS - 1) * WadDef.lineheight,
-		     "MORE");
+	M_WriteText (318 - M_StringWidth ("MORE"),
+		     top + (WAD_ROWS - 1) * WadDef.lineheight, "MORE");
 }
 
 

@@ -889,6 +889,21 @@ tables were raised eightfold: `MAXVISPLANES`, `MAXOPENINGS`, `MAXDRAWSEGS`,
 Only memory depends on them. The scrolling-wall list, which the original
 filled with no check at all, stops at its end now.
 
+## The WAD list by game name
+
+`M_WadTitle` names each file for the list, from the first of: its
+`GAMEINFO`'s `STARTUPTITLE`; its `UMAPINFO` episodes' name when they all
+have the same one (`episode = clear` skipped) -- how the 2024 re-release
+names its add-ons, TNT and Plutonia; the `Title :` line of a `.txt` of the
+same name beside it (the idgames template, which SIGIL II's follows too);
+for an IWAD, its maps: E4M1 The Ultimate DOOM, E2M1 DOOM, E1M1 alone the
+shareware, MAP01 DOOM II -- or TNT or Plutonia by file name, as the engine
+tells them -- and a `FREEDOOM` or `FREEDM` lump Freedoom's; else the file
+name less `.wad`. The list sorts by those names, then by file name, and
+the draw routine shows the cursor's file on the line above, cuts a long
+name short of the GAME/MOD column, and right-aligns `UP` and `MORE`, which
+were drawn at x=290 and ran off the screen.
+
 ## DEHACKED, and a mod's own sounds
 
 `d_deh.c` reads DeHackEd patches: every WAD's `DEHACKED` lump in load order

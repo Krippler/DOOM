@@ -12,6 +12,17 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [Unreleased]
+
+### Changed
+- **The WAD lists name games and mods, not files**: "SIGIL II", "The
+  Ultimate DOOM", "No Rest for the Living" rather than `sigil2.wad`,
+  `doom.wad`, `nerve.wad`, sorted by those names, with the file the cursor
+  is on named above the list. The name is the WAD's own (UMAPINFO or
+  GAMEINFO), the "Title" of the idgames text file beside it, or, for a
+  game, what its maps say it is; the file's name when there is none.
+- The list's `MORE` no longer runs off the edge of the screen.
+
 ## [1.17.0] — 2026-09-30
 
 ### Added
