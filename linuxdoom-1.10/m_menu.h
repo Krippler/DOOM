@@ -60,6 +60,10 @@ void M_StartControlPanel (void);
 // Just restarted from New Game's WAD list: open the menus on the difficulty.
 void M_NewGameAfterRestart (void);
 
+// Loading a savegame made on other WADs (G_DoLoadGame).
+boolean M_LoadSaveOn (char** files, int n, char* savename, char** missing);
+void M_LoadGameFailed (char* file);
+
 
 
 

@@ -24,6 +24,9 @@
 static const char
 rcsid[] = "$Id: p_tick.c,v 1.4 1997/02/03 16:47:55 b1 Exp $";
 
+#include <stddef.h>
+#include <stdlib.h>
+
 #include "i_system.h"
 #include "z_zone.h"
 #include "p_local.h"
@@ -31,6 +34,11 @@ rcsid[] = "$Id: p_tick.c,v 1.4 1997/02/03 16:47:55 b1 Exp $";
 // State.
 #include "doomstat.h"
 #include "r_state.h"
+#include "w_wad.h"
+#include "doomdata.h"
+#include "m_swap.h"
+
+extern int	numtextures;
 
 byte*		save_p;
 
@@ -265,10 +273,72 @@ typedef enum
 //
 // P_ArchiveThinkers
 //
+//
+// Targets and tracers.
+//
+// id's savegame kept each thing's target and tracer as the pointers they
+// were, and P_UnArchiveThinkers set target to NULL and left tracer as it was:
+// a pointer into the process that saved. A monster loaded in the middle of
+// an attack then fired at nothing -- a Mancubus's A_FatAttack read NULL->x,
+// harmless under DOS and a segmentation fault here -- and a revenant's
+// missile followed its old tracer into whatever memory was there.
+//
+// They are saved now as the number of the thing they point to, counting
+// things from 1 in the order they are saved, and 0 for none or for one not
+// saved (a thing removed but still pointed to). A save from before holds
+// pointers, and both are cleared for it; G_DoLoadGame says which kind of
+// save it has (savegamerefs). id's engine clears target whichever it is.
+//
+boolean			savegamerefs;
+static mobj_t**		savemobjs;
+static int		numsavemobjs, maxsavemobjs;
+
+static void P_AddSaveMobj (mobj_t* mo)
+{
+    if (numsavemobjs == maxsavemobjs)
+    {
+	maxsavemobjs = maxsavemobjs ? maxsavemobjs * 2 : 1024;
+	savemobjs = realloc (savemobjs, maxsavemobjs * sizeof(*savemobjs));
+	if (!savemobjs)
+	    I_Error ("P_AddSaveMobj: no memory for %d things", maxsavemobjs);
+    }
+    savemobjs[numsavemobjs++] = mo;
+}
+
+// A pointer as a number, from the things being saved. What the pointer
+// points to may be freed, so the number read from it is only trusted once
+// the table agrees.
+static intptr_t P_SaveRef (mobj_t* mo)
+{
+    int		i;
+
+    if (!mo)
+	return 0;
+    i = mo->saveindex;
+    if (i < 1 || i > numsavemobjs || savemobjs[i-1] != mo)
+	return 0;
+    return i;
+}
+
+static mobj_t* P_LoadRef (intptr_t i)
+{
+    return i >= 1 && i <= numsavemobjs ? savemobjs[i-1] : NULL;
+}
+
+
 void P_ArchiveThinkers (void)
 {
     thinker_t*		th;
     mobj_t*		mobj;
+
+    // number the things first, for what points to them
+    numsavemobjs = 0;
+    for (th = thinkercap.next ; th != &thinkercap ; th=th->next)
+	if (th->function.acp1 == (actionf_p1)P_MobjThinker)
+	{
+	    P_AddSaveMobj ((mobj_t *)th);
+	    ((mobj_t *)th)->saveindex = numsavemobjs;
+	}
 	
     // save off the current thinkers
     for (th = thinkercap.next ; th != &thinkercap ; th=th->next)
@@ -281,6 +351,8 @@ void P_ArchiveThinkers (void)
 	    memcpy (mobj, th, MOBJ_SAVESIZE);
 	    save_p += MOBJ_SAVESIZE;
 	    mobj->state = (state_t *)(mobj->state - states);
+	    mobj->target = (mobj_t *) P_SaveRef (((mobj_t *)th)->target);
+	    mobj->tracer = (mobj_t *) P_SaveRef (((mobj_t *)th)->tracer);
 	    
 	    if (mobj->player)
 		mobj->player = (player_t *)((mobj->player-players) + 1);
@@ -305,6 +377,7 @@ void P_UnArchiveThinkers (void)
     thinker_t*		currentthinker;
     thinker_t*		next;
     mobj_t*		mobj;
+    int			i;
     
     // remove all the current thinkers
     currentthinker = thinkercap.next;
@@ -320,6 +393,7 @@ void P_UnArchiveThinkers (void)
 	currentthinker = next;
     }
     P_InitThinkers ();
+    numsavemobjs = 0;
 	
     // read in saved thinkers
     while (1)
@@ -328,6 +402,15 @@ void P_UnArchiveThinkers (void)
 	switch (tclass)
 	{
 	  case tc_end:
+	    // what they point to, now that all of them are here
+	    for (i = 0; i < numsavemobjs; i++)
+	    {
+		mobj = savemobjs[i];
+		mobj->target = savegamerefs
+		    ? P_LoadRef ((intptr_t) mobj->target) : NULL;
+		mobj->tracer = savegamerefs
+		    ? P_LoadRef ((intptr_t) mobj->tracer) : NULL;
+	    }
 	    return; 	// end of list
 			
 	  case tc_mobj:
@@ -340,7 +423,7 @@ void P_UnArchiveThinkers (void)
 	    mobj->oldz = mobj->z;
 	    mobj->oldangle = mobj->angle;
 	    mobj->state = &states[(intptr_t)mobj->state];
-	    mobj->target = NULL;
+	    P_AddSaveMobj (mobj);	// target and tracer at the end
 	    if (mobj->player)
 	    {
 		mobj->player = &players[(intptr_t)mobj->player-1];
@@ -624,3 +707,167 @@ void P_UnArchiveSpecials (void)
 
 }
 
+
+
+
+//
+// P_SaveGameFits
+// Whether the archive at p, up to end, is one the four routines above can
+// read back onto the map whose marker lump is maplump, for the players in
+// ingame -- read without changing anything, before the game in progress is
+// given up for it.
+//
+// A savegame is the level by number: so many sectors, then so many lines
+// with so many sides, then things and specials naming sectors, states and
+// types by index. Loaded on a map that is not the one it was saved on (the
+// same ExMy in another game or mod), those numbers run past the ends of the
+// tables and the engine fell over in P_UnArchiveSpecials. Here each is held
+// to what this map and this game have.
+//
+boolean P_SaveGameFits (byte* p, byte* end, int maplump, boolean* ingame)
+{
+    int			nsectors, nlines, i, j;
+    int			nmobjs = 0;
+    uintptr_t		maxref = 0;
+    maplinedef_t*	ml;
+    short		v[5];
+    byte		tclass;
+
+#define PAD()	p += (4 - ((intptr_t) p & 3)) & 3
+#define NEED(n)	if (end - p < (int)(n)) return false
+
+    if (maplump < 0 || maplump + ML_SECTORS >= numlumps)
+	return false;
+    nsectors = W_LumpLength (maplump + ML_SECTORS) / sizeof(mapsector_t);
+    nlines = W_LumpLength (maplump + ML_LINEDEFS) / sizeof(maplinedef_t);
+
+    // players
+    for (i = 0; i < MAXPLAYERS; i++)
+    {
+	player_t	pl;
+
+	if (!ingame[i])
+	    continue;
+	PAD();
+	NEED(sizeof(pl));
+	memcpy (&pl, p, sizeof(pl));
+	p += sizeof(pl);
+	for (j = 0; j < NUMPSPRITES; j++)
+	    if ((uintptr_t) pl.psprites[j].state >= NUMSTATES)
+		return false;
+    }
+
+    // world: the sectors' flats, and the lines' sides' textures
+    for (i = 0; i < nsectors; i++)
+    {
+	NEED(7 * sizeof(short));
+	memcpy (v, p, 4 * sizeof(short));
+	p += 7 * sizeof(short);
+	if (v[2] < 0 || v[2] >= numflats || v[3] < 0 || v[3] >= numflats)
+	    return false;
+    }
+    ml = W_CacheLumpNum (maplump + ML_LINEDEFS, PU_CACHE);
+    for (i = 0; i < nlines; i++)
+    {
+	NEED(3 * sizeof(short));
+	p += 3 * sizeof(short);
+	for (j = 0; j < 2; j++)
+	{
+	    if ((unsigned short) SHORT(ml[i].sidenum[j]) == 0xffff)
+		continue;
+	    NEED(5 * sizeof(short));
+	    memcpy (v, p, 5 * sizeof(short));
+	    p += 5 * sizeof(short);
+	    if (v[2] < 0 || v[2] >= numtextures
+		|| v[3] < 0 || v[3] >= numtextures
+		|| v[4] < 0 || v[4] >= numtextures)
+		return false;
+	}
+    }
+
+    // things
+    while (1)
+    {
+	mobj_t	mo;
+
+	NEED(1);
+	tclass = *p++;
+	if (tclass == tc_end)
+	    break;
+	if (tclass != tc_mobj)
+	    return false;
+	PAD();
+	NEED(MOBJ_SAVESIZE);
+	memcpy (&mo, p, MOBJ_SAVESIZE);
+	p += MOBJ_SAVESIZE;
+	if ((uintptr_t) mo.state >= NUMSTATES
+	    || (unsigned) mo.type >= NUMMOBJTYPES
+	    || (uintptr_t) mo.player > MAXPLAYERS
+	    || (mo.player && !ingame[(uintptr_t) mo.player - 1]))
+	    return false;
+	nmobjs++;
+	if (savegamerefs)
+	{
+	    if ((uintptr_t) mo.target > maxref)
+		maxref = (uintptr_t) mo.target;
+	    if ((uintptr_t) mo.tracer > maxref)
+		maxref = (uintptr_t) mo.tracer;
+	}
+    }
+    if (maxref > (uintptr_t) nmobjs)
+	return false;
+
+    // specials: each has its sector's number where the sector was
+    while (1)
+    {
+	int		size, at;
+	sector_t*	sector;
+
+	NEED(1);
+	tclass = *p++;
+	switch (tclass)
+	{
+	  case tc_endspecials:
+	    NEED(1);
+	    return *p == 0x1d;		// what G_DoLoadGame checks after
+	  case tc_ceiling:
+	    size = sizeof(ceiling_t);
+	    at = offsetof(ceiling_t, sector);
+	    break;
+	  case tc_door:
+	    size = sizeof(vldoor_t);
+	    at = offsetof(vldoor_t, sector);
+	    break;
+	  case tc_floor:
+	    size = sizeof(floormove_t);
+	    at = offsetof(floormove_t, sector);
+	    break;
+	  case tc_plat:
+	    size = sizeof(plat_t);
+	    at = offsetof(plat_t, sector);
+	    break;
+	  case tc_flash:
+	    size = sizeof(lightflash_t);
+	    at = offsetof(lightflash_t, sector);
+	    break;
+	  case tc_strobe:
+	    size = sizeof(strobe_t);
+	    at = offsetof(strobe_t, sector);
+	    break;
+	  case tc_glow:
+	    size = sizeof(glow_t);
+	    at = offsetof(glow_t, sector);
+	    break;
+	  default:
+	    return false;
+	}
+	PAD();
+	NEED(size);
+	memcpy (&sector, p + at, sizeof(sector));
+	p += size;
+	if ((uintptr_t) sector >= (uintptr_t) nsectors)
+	    return false;
+    }
+#undef PAD
+#undef NEED
+}

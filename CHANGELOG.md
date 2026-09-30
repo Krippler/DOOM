@@ -12,6 +12,24 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [1.17.2] — 2026-09-30
+
+### Fixed
+- **Loading a game saved with another game or mod crashed the engine**: a
+  game saved in SIGIL II and loaded while The Ultimate DOOM was running (as
+  it is after a restart) died in `P_UnArchiveSpecials`. A save now lists the
+  WADs it was made on, and loading it while others are running restarts the
+  engine on its own and loads it there. A save from before this, or one
+  whose WADs are no longer in the WAD folder, is checked against the level
+  first and refused with a message if it does not fit, and the game in
+  progress carries on.
+- **Loading a game could crash moments later**: a Mancubus caught mid-attack
+  when the game was saved fired at nothing once it was loaded, and a
+  revenant's homing missile followed a pointer left over from the game
+  that saved it. Saves now keep what every monster is after and what every
+  homing missile is chasing, so monsters carry on where they were, and a
+  Mancubus with nothing to aim at no longer fires.
+
 ## [1.17.1] — 2026-09-30
 
 ### Changed

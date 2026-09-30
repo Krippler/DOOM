@@ -1361,6 +1361,10 @@ void A_FatAttack1 (mobj_t* actor)
     mobj_t*	mo;
     int		an;
 	
+    // nothing to fire at: a game loaded with the Mancubus mid-attack, or a
+    // DEHACKED frame that calls this; id's went on to read target->x
+    if (!actor->target)
+	return;
     A_FaceTarget (actor);
     // Change direction  to ...
     actor->angle += FATSPREAD;
@@ -1378,6 +1382,10 @@ void A_FatAttack2 (mobj_t* actor)
     mobj_t*	mo;
     int		an;
 
+    // nothing to fire at: a game loaded with the Mancubus mid-attack, or a
+    // DEHACKED frame that calls this; id's went on to read target->x
+    if (!actor->target)
+	return;
     A_FaceTarget (actor);
     // Now here choose opposite deviation.
     actor->angle -= FATSPREAD;
@@ -1395,6 +1403,10 @@ void A_FatAttack3 (mobj_t*	actor)
     mobj_t*	mo;
     int		an;
 
+    // nothing to fire at: a game loaded with the Mancubus mid-attack, or a
+    // DEHACKED frame that calls this; id's went on to read target->x
+    if (!actor->target)
+	return;
     A_FaceTarget (actor);
     
     mo = P_SpawnMissile (actor, actor->target, MT_FATSHOT);

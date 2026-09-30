@@ -48,6 +48,10 @@
 #             the controller's port is listened on again (needs xdotool)
 #   newgame   New Game offers the WAD folder first; another file restarts
 #             the engine on it and on to the difficulty menu (needs xdotool)
+#   savegame  a game saved on one WAD and loaded from the menu on another
+#             restarts the engine on the first and loads it there; a save
+#             that does not fit the map it names is refused, not loaded
+#             into a crash (needs xdotool for the first half)
 #   pointer   with capture on, the pointer is held at the centre in a level
 #             and let go in the menu (needs xdotool; skipped without it)
 #   crash     SIGSEGV prints "DOOM died on" and a backtrace with names in it
@@ -139,11 +143,13 @@ stop_mixer() {
 
 # The engine as the container runs it, less the parts that belong to the
 # container. HOME is where it keeps .doomrc.
+# Savegames go where it is started: $game_dir, if set.
 start_game() {  # log, then engine arguments
     log=$1
     shift
-    DISPLAY="$disp" HOME="$work" DOOMWADDIR="$work/wads" \
-        "$engine" -2 -iwad "${game_iwad:-$work/wads/doom1.wad}" "$@" \
+    ( cd "${game_dir:-.}" && DISPLAY="$disp" HOME="$work" \
+        DOOMWADDIR="$work/wads" exec "$engine" -2 \
+        -iwad "${game_iwad:-$work/wads/doom1.wad}" "$@" ) \
         >"$work/$log" 2>&1 &
     game_pid=$!
 }
@@ -739,6 +745,101 @@ if command -v xdotool >/dev/null 2>&1; then
     say "the list, the restart on the file chosen, and on with the new game"
 else
     say "newgame: skipped, xdotool is not installed"
+fi
+
+# ----------------------------------------------------------------- savegame
+# A savegame is its level by number, and did not say which WADs it was made
+# on: saved in SIGIL II and loaded with DOOM alone, it named sectors past the
+# end of the level's and the engine died in P_UnArchiveSpecials (up to
+# 1.17.1). Saves now list their WADs, and loading one restarts the engine on
+# them; one that does not list them is checked against its level first.
+wait_window() {  # log
+    i=0
+    until grep -q "I_InitGraphics" "$work/$1" 2>/dev/null; do
+        i=$((i + 1))
+        [ "$i" -gt 200 ] && die "the engine never opened its window; see $work/$1"
+        sleep 0.1
+    done
+    sleep 2
+}
+
+if command -v xdotool >/dev/null 2>&1; then
+    say "savegame: a save loads on its own WADs, and a stranger is refused"
+    cp "$wad" "$work/wads/doom1b.wad"
+    rm -f "$work"/doomsav*.dsg
+    game_dir=$work
+    start_x 24
+
+    # on the second file: Save Game, the first slot, a name, and saved
+    game_iwad="$work/wads/doom1b.wad" start_game savegame1.log -warp 1 1 -nojoy
+    wait_window savegame1.log
+    for k in F2 Return s Return; do
+        DISPLAY="$disp" xdotool key "$k"
+        sleep 0.5
+    done
+    i=0
+    until grep -q "^G_DoSaveGame: doomsav0.dsg" "$work/savegame1.log"; do
+        i=$((i + 1))
+        [ "$i" -gt 100 ] && die "the game was not saved; see $work/savegame1.log"
+        sleep 0.1
+    done
+    kill "$game_pid" 2>/dev/null
+    wait_game 10
+    [ "$(tail -c 4 "$work/doomsav0.dsg")" = WADS ] \
+        || die "the save does not list its WADs"
+
+    # on the first: Load Game and the first slot
+    start_game savegame2.log -nojoy
+    wait_window savegame2.log
+    for k in F3 Return; do
+        DISPLAY="$disp" xdotool key "$k"
+        sleep 0.5
+    done
+    i=0
+    until grep -q "^G_DoLoadGame: doomsav0.dsg, E1M1" "$work/savegame2.log"; do
+        i=$((i + 1))
+        [ "$i" -gt 200 ] && { tail -20 "$work/savegame2.log" >&2;
+            die "the save was not loaded on its own WAD; see $work/savegame2.log"; }
+        sleep 0.1
+    done
+    grep -q "^ adding .*/doom1b.wad" "$work/savegame2.log" \
+        || die "the save was loaded, but not on its own WAD; see $work/savegame2.log"
+    kill "$game_pid" 2>/dev/null
+    wait_game 10
+    say "saved on one WAD, loaded from another: restarted on the first, and loaded"
+
+    # The same save as one from before the list, and naming E1M2: E1M1's
+    # sectors and things do not fit E1M2's, and it has to be refused.
+    python3 - "$work/doomsav0.dsg" "$work/doomsav1.dsg" <<'EOF'
+import struct, sys
+d = open(sys.argv[1], 'rb').read()
+n = struct.unpack('<i', d[-8:-4])[0]
+d = bytearray(d[:-8 - n])
+d[24 + 16 + 2] = 2      # the map, after description, version, skill, episode
+open(sys.argv[2], 'wb').write(d)
+EOF
+    start_game savegame3.log -nojoy -loadgame 1
+    i=0
+    until grep -q "^G_DoLoadGame: doomsav1.dsg is not a game on this E1M2" \
+            "$work/savegame3.log" 2>/dev/null; do
+        i=$((i + 1))
+        [ "$i" -gt 200 ] && { tail -20 "$work/savegame3.log" >&2;
+            die "a save that does not fit its map was not refused; see $work/savegame3.log"; }
+        sleep 0.1
+    done
+    sleep 2
+    grep -q "DOOM died" "$work/savegame3.log" \
+        && die "refusing a save, the engine died; see $work/savegame3.log"
+    kill -0 "$game_pid" 2>/dev/null \
+        || die "refusing a save, the engine went away; see $work/savegame3.log"
+    kill "$game_pid" 2>/dev/null
+    wait_game 10
+    stop_x
+    game_dir=
+    rm -f "$work/wads/doom1b.wad" "$work"/doomsav*.dsg
+    say "a save that does not fit its map is refused, and the engine goes on"
+else
+    say "savegame: skipped, xdotool is not installed"
 fi
 
 # ------------------------------------------------------------ pointer, crash

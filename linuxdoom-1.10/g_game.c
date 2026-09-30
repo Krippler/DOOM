@@ -26,6 +26,8 @@ rcsid[] = "$Id: g_game.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 
 #include <string.h>
 #include <stdlib.h>
+#include <limits.h>
+#include <sys/stat.h>
 
 #include "doomdef.h" 
 #include "doomstat.h"
@@ -1428,14 +1430,144 @@ void G_LoadGame (char* name)
 #define VERSIONSIZE		16 
 
 
+//
+// The WADs a game is saved on.
+//
+// A savegame is the level by number -- its sectors, lines and things in
+// the order its map lists them -- and carries nothing to say which map
+// that was. Loaded on another game or mod's map of the same name it cannot
+// fit, and the engine fell over part way through reading it back. So after
+// the archive and its marker, where id's engine stops reading, a save now
+// lists the WADs it was made on: each path with a NUL after it, then the
+// length of that list and "WADS", four bytes each, to find it by from the
+// end of the file.
+//
+#define SAVEWADSMAGIC	"WADS"
+
+// Loading a save the engine restarted on its WADs for, from d_main.c: one
+// restart only, whatever happens.
+boolean		loadgame_restarted;
+
+// A WAD's path as a save records it: whole, so that it can be found again
+// from wherever the engine is started.
+static char* G_SaveWadPath (char* file, char* out)
+{
+    if (file[0] == '/' || !realpath (file, out))
+	snprintf (out, PATH_MAX, "%s", file);
+    return out;
+}
+
+static int G_SaveWadsSize (void)
+{
+    char	path[PATH_MAX];
+    int		i, size = 8;
+
+    for (i = 0; wadfiles[i]; i++)
+	size += strlen (G_SaveWadPath (wadfiles[i], path)) + 1;
+    return size;
+}
+
+static void G_WriteSaveWads (void)
+{
+    char	path[PATH_MAX];
+    byte*	start = save_p;
+    int		i, n;
+
+    for (i = 0; wadfiles[i]; i++)
+    {
+	n = strlen (G_SaveWadPath (wadfiles[i], path)) + 1;
+	memcpy (save_p, path, n);
+	save_p += n;
+    }
+    n = save_p - start;
+    *save_p++ = n;
+    *save_p++ = n >> 8;
+    *save_p++ = n >> 16;
+    *save_p++ = n >> 24;
+    memcpy (save_p, SAVEWADSMAGIC, 4);
+    save_p += 4;
+}
+
+// The WADs a save lists, up to max of them, pointing into it: how many, 0
+// for a save from before they were, whose archive then runs to the end.
+// *end is where the list starts.
+static int
+G_ReadSaveWads
+( byte*		buf,
+  int		length,
+  char**	files,
+  int		max,
+  byte**	end )
+{
+    byte*	p;
+    int		size, n = 0;
+
+    *end = buf + length;
+    if (length < SAVESTRINGSIZE + VERSIONSIZE + 8
+	|| memcmp (buf + length - 4, SAVEWADSMAGIC, 4))
+	return 0;
+    p = buf + length - 8;
+    size = p[0] | (p[1] << 8) | (p[2] << 16) | (p[3] << 24);
+    if (size < 2 || size > length - 8 - SAVESTRINGSIZE - VERSIONSIZE
+	|| p[-1] != 0)
+	return 0;
+
+    for (p -= size; p < buf + length - 8 && n < max; p += strlen ((char*)p) + 1)
+	files[n++] = (char*) p;
+    *end = buf + length - 8 - size;
+    return n;
+}
+
+static boolean G_SameWad (char* a, char* b)
+{
+    struct stat	sa, sb;
+
+    if (stat (a, &sa) || stat (b, &sb))
+	return !strcmp (a, b);
+    return sa.st_dev == sb.st_dev && sa.st_ino == sb.st_ino;
+}
+
+
+// Not loaded: why, and the buffer freed. The game going on goes on; with
+// none -- -loadgame, or the restart for one -- the title screen, which
+// otherwise is not started then (D_DoomMain).
+void D_DoAdvanceDemo (void);
+
+static void G_LoadFailed (char* missing)
+{
+    M_LoadGameFailed (missing);
+    Z_Free (savebuffer);
+    if (gamestate == GS_LEVEL && !usergame && !demoplayback)
+    {
+	// at once: the rest of this tic is the level's, and there is none
+	D_StartTitle ();
+	D_DoAdvanceDemo ();
+    }
+}
+
+
 void G_DoLoadGame (void) 
 { 
     int		length; 
     int		i; 
     int		a,b,c; 
     char	vcheck[VERSIONSIZE]; 
+    char*	files[256];
+    int		numfiles;
+    byte*	end;
+    int		skill, episode, map;
+    boolean	ingame[MAXPLAYERS];
+    char	mapname[9];
+    FILE*	f;
+    boolean	restarted = loadgame_restarted;
 	 
     gameaction = ga_nothing; 
+    loadgame_restarted = false;		// for this load only
+
+    // a slot emptied since the menu read it, or -loadgame of none
+    if (!(f = fopen (savename, "rb")))
+	return;
+    fclose (f);
 	 
     length = M_ReadFile (savename, &savebuffer); 
     save_p = savebuffer + SAVESTRINGSIZE;
@@ -1443,15 +1575,68 @@ void G_DoLoadGame (void)
     // skip the description field 
     memset (vcheck,0,sizeof(vcheck)); 
     sprintf (vcheck,"version %i",VERSION); 
-    if (strcmp (save_p, vcheck)) 
+    if (length < SAVEGAMEHEAD || strcmp ((char*)save_p, vcheck))
+    {
+	Z_Free (savebuffer);
 	return;				// bad version 
+    }
     save_p += VERSIONSIZE; 
+
+    // Saved on other WADs than these: restart on them to load it, once.
+    numfiles = G_ReadSaveWads (savebuffer, length, files,
+			       sizeof(files)/sizeof(*files), &end);
+    // the list of WADs came in with targets saved as numbers
+    savegamerefs = numfiles > 0;
+    if (numfiles)
+    {
+	boolean	same = true;
+
+	for (i = 0; i < numfiles && same; i++)
+	    same = wadfiles[i] && G_SameWad (files[i], wadfiles[i]);
+	if (same && wadfiles[numfiles])
+	    same = false;
+	if (!same)
+	{
+	    char*	missing = files[numfiles-1];
+
+	    printf ("G_DoLoadGame: %s was saved on", savename);
+	    for (i = 0; i < numfiles; i++)
+		printf (" %s", files[i]);
+	    printf ("\n");
+	    // (a demo on the title screen is no reason not to: loading
+	    // ends it anyway)
+	    if (!netgame && !restarted)
+		M_LoadSaveOn (files, numfiles, savename, &missing);
+	    // not restarted: one of them is not here
+	    printf ("G_DoLoadGame: not found: %s\n", missing);
+	    G_LoadFailed (missing);
+	    return;
+	}
+    }
 			 
-    gameskill = *save_p++; 
-    gameepisode = *save_p++; 
-    gamemap = *save_p++; 
+    skill = *save_p++; 
+    episode = *save_p++; 
+    map = *save_p++; 
     for (i=0 ; i<MAXPLAYERS ; i++) 
-	playeringame[i] = *save_p++; 
+	ingame[i] = *save_p++; 
+
+    // Nothing is changed until the save is known to fit: a game in
+    // progress goes on if it does not.
+    U_MapName (mapname, episode, map);
+    if (!P_SaveGameFits (save_p + 3, end, W_CheckNumForName (mapname),
+			 ingame))
+    {
+	printf ("G_DoLoadGame: %s is not a game on this %s\n",
+		savename, mapname);
+	G_LoadFailed (NULL);
+	return;
+    }
+
+    gameskill = skill;
+    gameepisode = episode;
+    gamemap = map;
+    for (i=0 ; i<MAXPLAYERS ; i++) 
+	playeringame[i] = ingame[i]; 
 
     // load a base level 
     G_InitNew (gameskill, gameepisode, gamemap); 
@@ -1470,6 +1655,7 @@ void G_DoLoadGame (void)
  
     if (*save_p != 0x1d) 
 	I_Error ("Bad savegame");
+    printf ("G_DoLoadGame: %s, %s\n", savename, mapname);
     
     // done 
     Z_Free (savebuffer); 
@@ -1516,7 +1702,8 @@ void G_DoSaveGame (void)
 	// fixed size, overrun by a big enough map and checked only after
 	static byte*	buffer;
 	static int	buffersize;
-	int		needed = SAVEGAMEHEAD + P_ArchiveSize ();
+	int		needed = SAVEGAMEHEAD + P_ArchiveSize ()
+				     + G_SaveWadsSize ();
 
 	if (needed > buffersize)
 	{
@@ -1551,9 +1738,16 @@ void G_DoSaveGame (void)
     P_ArchiveSpecials (); 
 	 
     *save_p++ = 0x1d;		// consistancy marker 
+    G_WriteSaveWads ();
 	 
     length = save_p - savebuffer; 
     M_WriteFile (name, savebuffer, length); 
+    {
+	char	mapname[9];
+
+	U_MapName (mapname, gameepisode, gamemap);
+	printf ("G_DoSaveGame: %s, %s\n", name, mapname);
+    }
     gameaction = ga_nothing; 
     savedescription[0] = 0;		 
 	 

@@ -2426,9 +2426,10 @@ static void M_ScanWads (void)
 // loaded at startup. So the engine hands itself the new arguments and starts
 // again, which takes a couple of seconds and lands back on the title screen.
 //
-static void M_RelaunchWith (char* path, char* iwad)
+static void M_RelaunchWithFiles (char** files, int n)
 {
-    char*	newargv[MAX_WADS + 8];
+    char*	newargv[2*MAX_WADS + 16];
+    char*	path = files[n-1];
     int		argc = 0;
     int		i;
 
@@ -2449,16 +2450,13 @@ static void M_RelaunchWith (char* path, char* iwad)
 	newargv[argc++] = myargv[i];
     }
 
-    // A game on its own, or a mod on the game M_IwadFor chose for it.
-    if (iwad)
-    {
-	newargv[argc++] = "-iwad";
-	newargv[argc++] = iwad;
+    // The game, and the mods on it.
+    newargv[argc++] = "-iwad";
+    newargv[argc++] = files[0];
+    if (n > 1)
 	newargv[argc++] = "-file";
-    }
-    else
-	newargv[argc++] = "-iwad";
-    newargv[argc++] = path;
+    for (i = 1; i < n && argc < 2*MAX_WADS + 15; i++)
+	newargv[argc++] = files[i];
     newargv[argc] = NULL;
 
     // Where to come back to if the engine cannot start on the new file:
@@ -2487,6 +2485,80 @@ static void M_RelaunchWith (char* path, char* iwad)
     execv (myargv[0], newargv);
 
     I_Error ("Could not restart to load %s", path);
+}
+
+// A game on its own, or a mod on the game M_IwadFor chose for it.
+static void M_RelaunchWith (char* path, char* iwad)
+{
+    char*	files[2];
+
+    if (iwad)
+    {
+	files[0] = iwad;
+	files[1] = path;
+	M_RelaunchWithFiles (files, 2);
+    }
+    else
+	M_RelaunchWithFiles (&path, 1);
+}
+
+
+//
+// M_LoadSaveOn
+// A savegame made on other WADs than these: a level is only its WADs'
+// (the save holds its sectors and lines by number), so the engine restarts
+// on them and loads it there -- DOOM_LOADGAME says which save. False, and
+// nothing done, when one of them is not here to restart on; *missing is it.
+//
+boolean M_LoadSaveOn (char** files, int n, char* savename, char** missing)
+{
+    FILE*	f;
+    int		i;
+
+    for (i = 0; i < n; i++)
+    {
+	if (!(f = fopen (files[i], "rb")))
+	{
+	    *missing = files[i];
+	    return false;
+	}
+	fclose (f);
+    }
+    setenv ("DOOM_LOADGAME", savename, 1);
+    M_RelaunchWithFiles (files, n);
+    return true;		// not reached
+}
+
+
+//
+// M_LoadGameFailed
+// Why a savegame was not loaded, until a key is pressed. file: the WAD it
+// was saved on that is not here; NULL when the save does not fit the level
+// it names in the game running, which is a save from another game or mod
+// that did not record which.
+//
+void M_LoadGameFailed (char* file)
+{
+    static char	text[256];
+
+    if (file)
+    {
+	char	title[WAD_NAMELEN];
+	char*	base = strrchr (file, '/');
+
+	base = base ? base + 1 : file;
+	M_WadTitle (file, base, title, sizeof(title));
+	snprintf (text, sizeof(text),
+		  "THIS GAME WAS SAVED IN\n%.30s,\n"
+		  "WHICH IS NOT IN THE WAD FOLDER.\n\n"PRESSKEY,
+		  title[0] ? title : base);
+    }
+    else
+	snprintf (text, sizeof(text),
+		  "THIS GAME WAS SAVED IN ANOTHER\n"
+		  "GAME OR MOD. LOAD THAT FIRST,\n"
+		  "FROM OPTIONS, SETUP, LOAD WAD.\n\n"PRESSKEY);
+    M_StartMessage (text, NULL, false);
 }
 
 

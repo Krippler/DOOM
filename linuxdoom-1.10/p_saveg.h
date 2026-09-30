@@ -43,6 +43,13 @@ void P_UnArchiveSpecials (void);
 // The most the four archive routines can write for the level as it is now.
 int P_ArchiveSize (void);
 
+// Whether the save being loaded holds things' targets and tracers as
+// numbers (saves that list their WADs); others' are pointers, cleared.
+extern boolean	savegamerefs;
+
+// Whether a savegame's archive fits the map it names, before loading it.
+boolean P_SaveGameFits (byte* p, byte* end, int maplump, boolean* ingame);
+
 extern byte*		save_p; 
 
 
