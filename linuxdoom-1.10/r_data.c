@@ -1252,6 +1252,97 @@ int R_FlatNumForName (char* name)
 
 
 //
+// R_AnimFrames
+// An animation's frames, from its first to its last, into frames: the
+// flats between the two names in the file whose flats list both, or the
+// textures between them in the TEXTURE lump that does -- the latest such
+// -- each the one its name is now. How many; 0 when no file lists the
+// first before the last.
+//
+// Numbering flats and textures by their place was id's way, and holds
+// while the frames are next to each other in the game's lists. Here a
+// flat or texture a later file brings again keeps the place of the one it
+// replaces, and one it adds goes on the end: a mod that brings a cycle
+// whose first frame the game has and whose last it does not -- Legacy of
+// Rust's NUKAGE1 to NUKAGE4, of which DOOM II has three -- would cycle
+// through every flat in between, 182 of them. With the game alone, the
+// names give the numbers they always had.
+//
+int R_AnimFrames (boolean istexture, char* start, char* end, int* frames,
+		  int max)
+{
+    char	name[9];
+    int		i, j, k, n = 0;
+
+    name[8] = 0;
+    if (!istexture)
+    {
+	for (i = numlumps - 1; i >= 0; i--)
+	{
+	    if (strncasecmp (lumpinfo[i].name, end, 8))
+		continue;
+	    // back to the first frame, in this file's run of flats
+	    for (j = i; j >= 0 && lumpinfo[j].handle == lumpinfo[i].handle; j--)
+		if (R_IsFlatMarker (lumpinfo[j].name, "F_START")
+		    || R_IsFlatMarker (lumpinfo[j].name, "F_END")
+		    || !strncasecmp (lumpinfo[j].name, start, 8))
+		    break;
+	    if (j < 0 || lumpinfo[j].handle != lumpinfo[i].handle
+		|| strncasecmp (lumpinfo[j].name, start, 8))
+		continue;
+	    for (; j <= i && n < max; j++)
+	    {
+		memcpy (name, lumpinfo[j].name, 8);
+		if ((k = R_CheckFlatNumForName (name)) >= 0)
+		    frames[n++] = k;
+	    }
+	    return n;
+	}
+	return 0;
+    }
+
+    for (i = numlumps - 1; i >= 0; i--)
+    {
+	int*		maptex;
+	int		count, len, first = -1, last = -1;
+
+	if (strncasecmp (lumpinfo[i].name, "TEXTURE1", 8)
+	    && strncasecmp (lumpinfo[i].name, "TEXTURE2", 8))
+	    continue;
+	maptex = W_CacheLumpNum (i, PU_CACHE);
+	len = W_LumpLength (i);
+	count = len >= 4 ? LONG (*maptex) : 0;
+	if (count < 0 || 4 + 4 * count > len)
+	    continue;
+	for (j = 0; j < count; j++)
+	{
+	    int	ofs = LONG (maptex[1 + j]);
+
+	    if (ofs < 0 || ofs + 8 > len)
+		break;
+	    if (first < 0 && !strncasecmp ((char*) maptex + ofs, start, 8))
+		first = j;
+	    if (first >= 0 && !strncasecmp ((char*) maptex + ofs, end, 8))
+	    {
+		last = j;
+		break;
+	    }
+	}
+	if (first < 0 || last <= first)
+	    continue;
+	for (j = first; j <= last && n < max; j++)
+	{
+	    memcpy (name, (char*) maptex + LONG (maptex[1 + j]), 8);
+	    if ((k = R_CheckTextureNumForName (name)) >= 0)
+		frames[n++] = k;
+	}
+	return n;
+    }
+    return 0;
+}
+
+
+//
 // R_CheckTextureNumForName
 // Check whether texture is available.
 // Filter out NoTexture indicator.

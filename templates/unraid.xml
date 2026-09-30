@@ -39,6 +39,11 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.18.1
+- Legacy of Rust's nukage and blood floors no longer flicker through
+  unrelated floors: a mod's animated floors and walls use their own
+  frames.
+
 ### 1.18.0
 - Boom mods play: generalized doors, lifts and stairs, scrollers,
   conveyors, ice, wind, deep water, translucent walls. The games

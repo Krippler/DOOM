@@ -1343,6 +1343,22 @@ frames are missing is skipped, and one that runs backwards is left out with
 a message rather than `I_Error`. `switchlist` and `anims` grow; id's arrays
 held 50 pairs (checked) and 32 cycles (not checked).
 
+A cycle's frames were id's run of numbers from the first frame's to the
+last's, which holds while they are next to each other in the game's lists.
+Merging a mod's flats and textures with the game's (`R_InitFlats`,
+`R_InitTextures`) keeps a replaced one where the game had it and puts a new one
+on the end, so a cycle whose first frame the game has and last it does not
+ran through everything between: Legacy of Rust brings NUKAGE1 to NUKAGE4
+and BLOOD1 to BLOOD4, where DOOM II has three of each, and its pools went
+through 182 and 163 flats, grids and checkerboards and lava. `anim_t` now
+holds its frames, which `R_AnimFrames` takes by name from the file that
+lists both ends in order -- the flats between them in that file's
+F_START/F_END, or the textures between them in its TEXTURE lump -- the
+latest such, each frame the flat or texture its name is now; with no such
+file, id's run of numbers. The phase is id's, `(leveltime/speed + number)`
+with the first frame's number, so with the game alone every cycle has the
+numbers it always had and shows as it always did.
+
 Neither changes play. A switch that now changes also now makes its sound,
 and `S_StartSound` draws on `M_Random` for the pitch, so `rndindex` (not
 `prndindex`) ends one or two further on in demos that use such switches:

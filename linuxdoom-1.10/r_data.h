@@ -52,6 +52,10 @@ int R_FlatNumForName (char* name);
 column_t* R_GetMaskedColumn (int tex, int col);
 int R_CheckFlatNumForName (char* name);	// -1 if there is no such flat
 
+// An animation's frames, start to end, as a file lists them; 0 if none does.
+int R_AnimFrames (boolean istexture, char* start, char* end, int* frames,
+		  int max);
+
 
 // Called by P_Ticker for switches and animations,
 // returns the texture number for the texture name.

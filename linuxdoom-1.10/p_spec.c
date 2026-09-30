@@ -66,9 +66,10 @@ typedef struct
 {
     boolean	istexture;
     int		picnum;
-    int		basepic;
+    int		basepic;	// frames[0]
     int		numpics;
     int		speed;
+    int*	frames;		// numpics of them, first to last
     
 } anim_t;
 
@@ -88,6 +89,7 @@ typedef struct
 // As many as there are: id's array held 32 and wrote past the end of it
 // when a mod asked for more.
 extern anim_t*	anims;
+extern int	numtextures;
 extern anim_t*	lastanim;
 
 //
@@ -161,6 +163,9 @@ static void P_AddAnim (int istexture, char* start, char* end, int speed,
 {
     anim_t*	a;
     int		base, pic;
+    int		max = istexture ? numtextures : numflats;
+    int*	frames;
+    int		n, i;
 
     if (istexture)
     {
@@ -180,8 +185,19 @@ static void P_AddAnim (int istexture, char* start, char* end, int speed,
 	base = R_FlatNumForName (start);
     }
 
-    if (pic - base + 1 < 2)
+    // the frames as a file lists them (R_AnimFrames), or else id's run of
+    // numbers from the first to the last
+    frames = malloc ((max > 0 ? max : 1) * sizeof(*frames));
+    if (!frames)
+	I_Error ("P_InitPicAnims: no memory for %s's frames", start);
+    n = R_AnimFrames (istexture, start, end, frames, max);
+    if (!n)
+	for (i = base; i <= pic && n < max; i++)
+	    frames[n++] = i;
+
+    if (n < 2)
     {
+	free (frames);
 	if (frommod)
 	{
 	    printf ("\nP_InitPicAnims: %s to %s is not a cycle, left out",
@@ -201,9 +217,10 @@ static void P_AddAnim (int istexture, char* start, char* end, int speed,
 
     a = &anims[numanims++];
     a->istexture = istexture;
-    a->picnum = pic;
-    a->basepic = base;
-    a->numpics = pic - base + 1;
+    a->frames = realloc (frames, n * sizeof(*frames));
+    a->numpics = n;
+    a->basepic = a->frames[0];
+    a->picnum = a->frames[n - 1];
     a->speed = speed > 0 ? speed : 8;
 }
 
@@ -219,6 +236,8 @@ void P_InitPicAnims (void)
     int		i;
     int		lump = W_CheckNumForName ("ANIMATED");
 
+    for (i = 0; i < numanims; i++)
+	free (anims[i].frames);
     numanims = 0;
 
     if (lump >= 0)
@@ -2375,13 +2394,16 @@ void P_UpdateSpecials (void)
     //	ANIMATE FLATS AND TEXTURES GLOBALLY
     for (anim = anims ; anim < lastanim ; anim++)
     {
-	for (i=anim->basepic ; i<anim->basepic+anim->numpics ; i++)
+	// id's phase, (tics + number) % frames, so that its cycles, whose
+	// frames are numbered in a run, show as they always did
+	for (i = 0; i < anim->numpics; i++)
 	{
-	    pic = anim->basepic + ( (leveltime/anim->speed + i)%anim->numpics );
+	    pic = anim->frames[(leveltime/anim->speed + anim->basepic + i)
+			       % anim->numpics];
 	    if (anim->istexture)
-		texturetranslation[i] = pic;
+		texturetranslation[anim->frames[i]] = pic;
 	    else
-		flattranslation[i] = pic;
+		flattranslation[anim->frames[i]] = pic;
 	}
     }
 
