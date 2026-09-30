@@ -39,6 +39,13 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.17.2
+- Loading a game saved with another game or mod no longer crashes: saves
+  remember their WADs, and loading one restarts on them. Older saves that
+  do not fit the running game are refused with a message.
+- Loading a game with a Mancubus mid-attack no longer crashes; monsters
+  and homing missiles keep their targets across a save.
+
 ### 1.17.1
 - The New Game and Load WAD lists name games and mods ("SIGIL II", "The
   Ultimate DOOM") rather than their files, with the file named above the

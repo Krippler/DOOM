@@ -12,7 +12,7 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
-## [Unreleased]
+## [1.17.2] — 2026-09-30
 
 ### Fixed
 - **Loading a game saved with another game or mod crashed the engine**: a
