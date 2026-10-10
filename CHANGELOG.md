@@ -12,7 +12,7 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
-## [Unreleased]
+## [1.19.0] — 2026-10-10
 
 ### Added
 - **Graphic detail: high and low**, in the Options menu, as DOS DOOM had
