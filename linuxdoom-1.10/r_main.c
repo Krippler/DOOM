@@ -683,12 +683,10 @@ R_SetViewSize
     if (blocks > 11)
 	blocks = 11;
 
-    // Low detail is not available in this port: R_DrawColumnLow range checks
-    // the column against the full screen width and then doubles it, so it
-    // indexes past the end of columnofs and writes wherever that lands. The
-    // menu no longer offers it; this makes sure a value left in a config file
-    // by an older build cannot switch it on either.
-    detail = 0;
+    // Low detail, as the menu's Graphic Detail sets it: the view drawn at
+    // half width, each column two pixels wide. 0 or 1, from the config
+    // file too.
+    detail = detail ? 1 : 0;
 
     // The minimal HUD draws over a view that fills the screen, whatever
     // size the screen size setting holds for the status bar.
@@ -748,8 +746,8 @@ void R_ExecuteSetViewSize (void)
     else
     {
 	colfunc = basecolfunc = R_DrawColumnLow;
-	fuzzcolfunc = R_DrawFuzzColumn;
-	transcolfunc = R_DrawTranslatedColumn;
+	fuzzcolfunc = R_DrawFuzzColumnLow;
+	transcolfunc = R_DrawTranslatedColumnLow;
 	spanfunc = R_DrawSpanLow;
     }
 

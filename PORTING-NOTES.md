@@ -2125,6 +2125,23 @@ the lump's -5 offset.
   `R_SetViewSize` refuses the mode outright, a stale value is corrected on
   load, and the check is against half the width where it belongs.
 
+  Low detail works now, and the toggle with it. What was missing, beyond
+  that range check: `R_DrawColumnLow` doubled the global `dc_x` in place and
+  never halved it back, so the second texture `R_RenderSegLoop` draws in a
+  column -- a wall's lower one, after its upper -- went in at twice its x,
+  past the view's edge, and was left out (`R_DrawColumnLow: 84 to 86 at
+  160`); it uses its own copy now. `R_DrawSpanLow` did the same to `ds_x1`
+  and `ds_x2`, and took its count after doubling them, so each span wrote
+  twice its length. The fuzz and colour-translated columns had no low
+  versions at all on Linux -- DOS drew them through the VGA's planes -- and
+  ran the full-width routines on the half-width view's columns, a Spectre
+  or another player's soldier squeezed into the left half of where it
+  stood: `R_DrawFuzzColumnLow` and `R_DrawTranslatedColumnLow` now, chosen
+  in `R_ExecuteSetViewSize` with the rest, and `R_DrawVisSprite` takes the
+  translated routine from `transcolfunc` rather than naming the full-width
+  one. And `HUlib_eraseTextLine` erased the border right of the view from
+  `viewwidth`, the half width, rather than `scaledviewwidth`.
+
 ## Not changed
 
 - Networking (`i_net.c`) is untouched and untested here.

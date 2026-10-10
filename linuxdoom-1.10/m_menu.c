@@ -3229,29 +3229,19 @@ void M_ChangeSensitivity(int choice)
 void M_ChangeDetail(int choice)
 {
     choice = 0;
+    detailLevel = 1 - detailLevel;
 
-    // Low detail does not work in this port. The 1997 source says so itself,
-    // in the comment just below, and the routine it selects indexes past the
-    // end of its column table.
-    //
-    // It used to flip detailLevel anyway. That did nothing visible, because
-    // the call that would apply it is commented out -- but the changed value
-    // was still written to .doomrc, and the next start applied it for real,
-    // at which point the renderer drew outside the framebuffer and the game
-    // died. Pressing this one menu item broke the game on the following
-    // launch. Leave the setting alone and say why.
-    players[consoleplayer].message = "LOW DETAIL IS NOT AVAILABLE";
-
-    return;
-    
-    /*R_SetViewSize (screenblocks, detailLevel);
+    // Low detail draws the view at half width, each column two pixels wide,
+    // as DOS DOOM did for slower machines. id's Linux code left it switched
+    // off -- its low-detail routines wrote outside the screen -- and this
+    // menu item did nothing; they are fixed and complete now (r_draw.c).
+    R_SetViewSize (screenblocks, detailLevel);
 
     if (!detailLevel)
 	players[consoleplayer].message = DETAILHI;
     else
-	players[consoleplayer].message = DETAILLO;*/
+	players[consoleplayer].message = DETAILLO;
 }
-
 
 
 
@@ -4257,8 +4247,7 @@ void M_Init (void)
     if (screenblocks > 11)
 	screenblocks = 11;
 
-    // Older builds could save this as 1; see M_ChangeDetail.
-    detailLevel = 0;
+    detailLevel = detailLevel ? 1 : 0;
 
     // Configs written before backquote became the default carry the old
     // no-op value. Escape is read directly either way, so promoting it
