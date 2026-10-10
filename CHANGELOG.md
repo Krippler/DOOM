@@ -12,6 +12,14 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [1.19.0] — 2026-10-10
+
+### Added
+- **Graphic detail: high and low**, in the Options menu, as DOS DOOM had
+  them: low draws the view at half width, each column two pixels wide. The
+  menu item did nothing before -- id's Linux code had never finished low
+  detail -- and it is saved with the other settings.
+
 ## [1.18.1] — 2026-09-30
 
 ### Fixed

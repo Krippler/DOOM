@@ -439,11 +439,12 @@ void R_DrawColumnLow (void)
     }
     //	dccount++; 
 #endif 
-    // Blocky mode, need to multiply by 2.
-    dc_x <<= 1;
-    
-    dest = ylookup[dc_yl] + columnofs[dc_x];
-    dest2 = ylookup[dc_yl] + columnofs[dc_x+1];
+    // Blocky mode, need to multiply by 2. Into the screen's columns, not
+    // into dc_x, as id's code did: R_RenderSegLoop draws a wall's upper and
+    // lower textures with the one dc_x, and the second went in at double,
+    // past the view's edge, leaving the lower texture out.
+    dest = ylookup[dc_yl] + columnofs[dc_x<<1];
+    dest2 = ylookup[dc_yl] + columnofs[(dc_x<<1)+1];
     
     fracstep = dc_iscale; 
     frac = dc_texturemid + (dc_yl-centery)*fracstep;
@@ -670,6 +671,92 @@ void R_DrawTranslatedColumn (void)
 
 
 //
+// R_DrawFuzzColumnLow, R_DrawTranslatedColumnLow
+// Low detail's: each column of the half-width view two pixels wide, as
+// R_DrawColumnLow draws walls. id's Linux code had neither -- low detail
+// on DOS drew these through the VGA's planes -- and used the full-width
+// routines, which put a Spectre or a green player's coloured soldier in
+// the left half of where it stood, squeezed to half its width.
+//
+void R_DrawFuzzColumnLow (void)
+{
+    int		count;
+    byte*	dest;
+    byte*	dest2;
+
+    if (!dc_yl)
+	dc_yl = 1;
+    if (dc_yh == viewheight-1)
+	dc_yh = viewheight - 2;
+
+    count = dc_yh - dc_yl;
+    if (count < 0)
+	return;
+
+#ifdef RANGECHECK
+    if ((unsigned)dc_x >= SCREENWIDTH/2
+	|| dc_yl < 0 || dc_yh >= SCREENHEIGHT)
+    {
+	R_ReportOutOfRange ("R_DrawFuzzColumnLow", dc_yl, dc_yh, dc_x);
+	return;
+    }
+#endif
+
+    dest = ylookup[dc_yl] + columnofs[dc_x<<1];
+    dest2 = ylookup[dc_yl] + columnofs[(dc_x<<1)+1];
+
+    do
+    {
+	*dest = fullcolormap[6*256+dest[fuzzoffset[fuzzpos]]];
+	*dest2 = fullcolormap[6*256+dest2[fuzzoffset[fuzzpos]]];
+
+	if (++fuzzpos == FUZZTABLE)
+	    fuzzpos = 0;
+
+	dest += SCREENWIDTH;
+	dest2 += SCREENWIDTH;
+    } while (count--);
+}
+
+void R_DrawTranslatedColumnLow (void)
+{
+    int		count;
+    byte*	dest;
+    byte*	dest2;
+    fixed_t	frac;
+    fixed_t	fracstep;
+
+    count = dc_yh - dc_yl;
+    if (count < 0)
+	return;
+
+#ifdef RANGECHECK
+    if ((unsigned)dc_x >= SCREENWIDTH/2
+	|| dc_yl < 0
+	|| dc_yh >= SCREENHEIGHT)
+    {
+	R_ReportOutOfRange ("R_DrawTranslatedColumnLow", dc_yl, dc_yh, dc_x);
+	return;
+    }
+#endif
+
+    dest = ylookup[dc_yl] + columnofs[dc_x<<1];
+    dest2 = ylookup[dc_yl] + columnofs[(dc_x<<1)+1];
+
+    fracstep = dc_iscale;
+    frac = dc_texturemid + (dc_yl-centery)*fracstep;
+
+    do
+    {
+	*dest2 = *dest = dc_colormap[dc_translation[dc_source[frac>>FRACBITS]]];
+	dest += SCREENWIDTH;
+	dest2 += SCREENWIDTH;
+	frac += fracstep;
+    } while (count--);
+}
+
+
+//
 // R_InitTranslationTables
 // Creates the translation tables to map
 //  the green color ramp to gray, brown, red.
@@ -871,10 +958,10 @@ void R_DrawSpanLow (void)
 #ifdef RANGECHECK 
     if (ds_x2 < ds_x1
 	|| ds_x1<0
-	|| ds_x2>=SCREENWIDTH  
+	|| ds_x2>=SCREENWIDTH/2
 	|| (unsigned)ds_y>SCREENHEIGHT)
     {
-	R_ReportOutOfRange ("R_DrawSpan", ds_x1, ds_x2, ds_y);
+	R_ReportOutOfRange ("R_DrawSpanLow", ds_x1, ds_x2, ds_y);
 	return;
     }
 //	dscount++; 
@@ -883,12 +970,9 @@ void R_DrawSpanLow (void)
     xfrac = ds_xfrac; 
     yfrac = ds_yfrac; 
 
-    // Blocky mode, need to multiply by 2.
-    ds_x1 <<= 1;
-    ds_x2 <<= 1;
-    
-    dest = ylookup[ds_y] + columnofs[ds_x1];
-  
+    // Blocky mode, need to multiply by 2: the screen's columns, leaving
+    // ds_x1 and ds_x2 as they were given, as R_DrawColumnLow leaves dc_x.
+    dest = ylookup[ds_y] + columnofs[ds_x1<<1];
     
     count = ds_x2 - ds_x1; 
     do 
