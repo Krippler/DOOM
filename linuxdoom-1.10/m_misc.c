@@ -327,6 +327,7 @@ default_t	defaults[] =
     {"pad_movedeadzone",&padmovedeadzone, 6},
     {"pad_turndeadzone",&padturndeadzone, 6},
     {"max_fps",&max_fps, 35},
+    {"aspect_correct",&aspect_correct, 1},
 
     {"use_joystick",&usejoystick, 0},
     {"joyb_fire",&joybfire,0},

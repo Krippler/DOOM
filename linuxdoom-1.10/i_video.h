@@ -45,6 +45,11 @@ void I_SetPalette (byte* palette);
 // Turn the pointer grab on or off while running.
 void I_SetMouseGrab (boolean grab);
 
+// The Aspect Ratio setting (1: 4:3, as DOS showed 320x200), and its change
+// applied to a window the engine sized itself.
+extern int aspect_correct;
+void I_SetAspect (void);
+
 void I_UpdateNoBlit (void);
 void I_FinishUpdate (void);
 

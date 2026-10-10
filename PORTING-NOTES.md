@@ -1942,6 +1942,39 @@ name the engine and the sound server look for, runs the engine there with
 `-config` pointing at its own settings file, and lets the engine's own
 `DOOMWADDIR` and `DOOM_WADPATH` do the rest.
 
+## Aspect ratio: 320x200 at 4:3
+
+DOS DOOM drew 320x200 into VGA mode 13h, which a monitor of the time
+stretched over its 4:3 screen: every pixel a fifth taller than wide. The
+artists drew for that, and the game's own pictures -- the status bar's
+face, the title screen, a round pillar seen end on -- come out right only
+so. Drawn with square pixels, as this container did and Chocolate Doom
+calls "aspect ratio correction off", the picture is 16:10 and everything
+in it a little squat.
+
+The Gameplay menu's **Aspect ratio** (`aspect_correct` in `.doomrc`, on by
+default, as Chocolate Doom has it) puts it back, without the engine drawing
+anything differently:
+
+- **In the container** the page stretches it. The engine's window stays
+  640x400 -- the screen x11vnc reads and the smoke test measures -- and the
+  engine tells the page the setting over the controller's connection, which
+  already carried vibration the other way: `'A'` and a byte, when the page
+  connects and whenever it changes (`PAD_BridgeAspect`, `i_pad.c`).
+  `fitCanvas` in `play.html` sizes the canvas a fifth taller than the
+  framebuffer when it is on, so no more pixels cross the network. Until the
+  engine has said, the page goes by what it said last time (`localStorage`),
+  or on.
+- **On a desktop** the engine stretches it, in a window it sizes itself
+  (`-autoscale`, which the launcher passes): 1280x960 rather than 1280x800 at
+  four times, its rows spread by `I_TrueColorBlit` -- between `multiply` and
+  one more for each of the 200 -- and `-autoscale` leaves room on the screen
+  for the taller one. Changing the setting rebuilds the image at the new
+  height (`I_SetAspect`) and resizes the window; a window manager is told
+  its new fixed size. Only in truecolour: the 8-bit paths keep their
+  whole-number scaling, and a window sized by `-2` and the like keeps its
+  size.
+
 ## The controller moved into the engine
 
 A controller used to be entirely the page's business. The 1997 engine had never

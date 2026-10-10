@@ -144,6 +144,10 @@ static void PAD_Say (const char* what)
 //
 //	'R' low high (2 each, 0..65535) milliseconds (2)
 //		7 bytes; little-endian
+//	'A' on (1)
+//		the Aspect Ratio setting: 1 for DOS's 4:3, the page drawing
+//		the picture a fifth taller; 0 for square pixels. Sent when the
+//		page connects and whenever it changes (PAD_BridgeAspect).
 //
 // One page at a time: a new connection replaces the old, which is what a
 // reload of the page looks like from here.
@@ -153,6 +157,9 @@ static int		br_listen = -1;
 static int		br_conn = -1;
 static byte		br_buf[256];
 static int		br_len;
+static int		br_aspect = -1;	// last sent; -1 none yet
+
+extern int		aspect_correct;
 
 static void PAD_BridgeInit (int port)
 {
@@ -216,6 +223,7 @@ static void PAD_BridgeRead (void)
     {
 	PAD_BridgeDrop ();
 	br_conn = c;
+	br_aspect = -1;
 	fcntl (br_conn, F_SETFD, FD_CLOEXEC);
 	fcntl (br_conn, F_SETFL, O_NONBLOCK);
 	setsockopt (br_conn, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
@@ -547,12 +555,29 @@ static void PAD_Nav (void)
     }
 }
 
+//
+// The page draws the picture, so the page is told how: the Aspect Ratio
+// setting, once on connecting and again whenever it changes.
+//
+static void PAD_BridgeAspect (void)
+{
+    byte	m[2];
+
+    if (br_conn < 0 || br_aspect == !!aspect_correct)
+	return;
+    m[0] = 'A';
+    m[1] = !!aspect_correct;
+    if (send (br_conn, m, sizeof(m), MSG_DONTWAIT | MSG_NOSIGNAL) == sizeof(m))
+	br_aspect = m[1];
+}
+
 void I_PadPoll (void)
 {
     unsigned	now, change;
     int		b;
 
     PAD_BridgeRead ();
+    PAD_BridgeAspect ();
     PAD_SDLRead ();
 
     now = 0;

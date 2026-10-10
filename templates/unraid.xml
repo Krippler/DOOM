@@ -39,6 +39,11 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.20.0
+- Aspect ratio, in Options, Setup, Gameplay: 4:3 by default, as DOOM
+  looked on DOS, or 16:10 with square pixels. The browser draws the
+  picture to match.
+
 ### 1.19.0
 - Graphic detail in the Options menu works: low draws the view at half
   width, as DOS DOOM did, and is saved with the other settings.

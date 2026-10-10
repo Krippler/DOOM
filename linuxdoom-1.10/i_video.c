@@ -96,6 +96,15 @@ int		doPointerWarp = POINTER_WARP_COUNTDOWN;
 // to use ....
 static int	multiply=1;
 
+// Aspect Ratio, the Gameplay menu's: 1 shows the 320x200 picture at DOS's
+// 4:3, each pixel a fifth taller than wide, as a CRT showed it; 0 with
+// square pixels, 16:10. In the container the page draws it so, told over
+// the controller's connection (i_pad.c); a window the engine sizes itself
+// (-autoscale, the desktop launcher's) is made a fifth taller here, its
+// rows stretched by I_TrueColorBlit.
+int		aspect_correct = 1;
+static boolean	X_selfsized;
+
 // Truecolour.
 //
 // The original drew into an 8-bit PseudoColor visual: each frame is palette
@@ -648,10 +657,17 @@ static void I_TrueColorBlit (void)
 	    }
 	}
 
-	// and the same row again for the rest of this one's height
-	for (k=1 ; k<multiply ; k++)
-	    memcpy (row + k*pitch, row, rowbytes);
-	row += multiply * pitch;
+	// and the same row again for the rest of this one's height: multiply
+	// rows each, or, stretched to 4:3, between multiply and one more, so
+	// that 200 make the window's height
+	{
+	    int	rows = (y + 1) * X_height / SCREENHEIGHT
+		       - y * X_height / SCREENHEIGHT;
+
+	    for (k=1 ; k<rows ; k++)
+		memcpy (row + k*pitch, row, rowbytes);
+	    row += rows * pitch;
+	}
     }
 }
 
@@ -1037,6 +1053,114 @@ void I_SetMouseGrab (boolean grab)
 }
 
 
+// A window's height: 200 rows times the scale, a fifth more at 4:3.
+static int I_WantHeight (void)
+{
+    if (X_selfsized && X_truecolor && aspect_correct)
+	return SCREENHEIGHT * multiply * 6 / 5;
+    return SCREENHEIGHT * multiply;
+}
+
+//
+// The image the frame goes into, X_width by X_height: shared with the X
+// server where it can be, client memory otherwise.
+//
+static void I_CreateImage (void)
+{
+    if (doShm)
+    {
+	image = XShmCreateImage(	X_display,
+					X_visual,
+					X_visualinfo.depth,
+					ZPixmap,
+					0,
+					&X_shminfo,
+					X_width,
+					X_height );
+
+	grabsharedmemory(image->bytes_per_line * image->height);
+
+	if (!image->data)
+	{
+	    perror("");
+	    I_Error("shmat() failed in InitGraphics()");
+	}
+
+	// get the X server to attach to it
+	if (!XShmAttach(X_display, &X_shminfo))
+	    I_Error("XShmAttach() failed in InitGraphics()");
+    }
+    else
+    {
+	image = XCreateImage(	X_display,
+    				X_visual,
+    				X_visualinfo.depth,
+    				ZPixmap,
+    				0,
+    				NULL,
+    				X_width, X_height,
+    				X_truecolor ? 32 : 8,
+    				0 );
+	image->data = (char *) malloc (image->bytes_per_line * X_height);
+    }
+}
+
+static void I_DestroyImage (void)
+{
+    if (doShm)
+    {
+	XShmDetach (X_display, &X_shminfo);
+	XSync (X_display, False);
+	shmdt (X_shminfo.shmaddr);
+	shmctl (X_shminfo.shmid, IPC_RMID, 0);
+    }
+    else
+	free (image->data);
+    image->data = NULL;
+    XDestroyImage (image);
+    image = NULL;
+}
+
+// The window's fixed size, for a window manager.
+static void I_SizeHints (void)
+{
+    XSizeHints*	size = XAllocSizeHints ();
+
+    if (size)
+    {
+	size->flags = PMinSize | PMaxSize;
+	size->min_width = size->max_width = X_width;
+	size->min_height = size->max_height = X_height;
+	XSetWMNormalHints (X_display, X_mainWindow, size);
+	XFree (size);
+    }
+}
+
+//
+// I_SetAspect
+// The Aspect Ratio setting, changed from the menu: a window the engine
+// sized itself takes its new height now. In the container the page is told
+// (i_pad.c), and the window stays as it is.
+//
+void I_SetAspect (void)
+{
+    int		h;
+
+    if (!image || !X_selfsized || !X_truecolor)
+	return;
+    h = I_WantHeight ();
+    if (h == X_height)
+	return;
+
+    I_DestroyImage ();
+    X_height = h;
+    I_SizeHints ();
+    XResizeWindow (X_display, X_mainWindow, X_width, X_height);
+    I_CreateImage ();
+    I_BuildPixels ();
+}
+
+
 void I_InitGraphics(void)
 {
 
@@ -1126,12 +1250,15 @@ void I_InitGraphics(void)
 	int	sw = DisplayWidth (X_display, DefaultScreen (X_display));
 	int	sh = DisplayHeight (X_display, DefaultScreen (X_display));
 
+	// room for the window at 4:3, a fifth taller, whether or not it is
+	// that now: the setting can change while the game runs
 	for (multiply = 4; multiply > 1; multiply--)
 	    if (SCREENWIDTH * multiply <= sw * 9 / 10
-		&& SCREENHEIGHT * multiply <= sh * 9 / 10)
+		&& SCREENHEIGHT * multiply * 6 / 5 <= sh * 9 / 10)
 		break;
 	X_width = SCREENWIDTH * multiply;
 	X_height = SCREENHEIGHT * multiply;
+	X_selfsized = true;
     }
 
     // The display's own kind of visual: 8-bit PseudoColor on an 8-bit
@@ -1152,6 +1279,9 @@ void I_InitGraphics(void)
 	I_Error("DOOM needs a TrueColor display at depth 15, 16, 24 or 30, or a "
 		"256-colour PseudoColor one (this one is depth %d)", depth);
     X_visual = X_visualinfo.visual;
+
+    // a window the engine sizes itself is 4:3 now if the setting says so
+    X_height = I_WantHeight ();
     fprintf(stderr, "I_InitGraphics: %s, depth %d\n",
 	    X_truecolor ? "truecolour" : "8-bit PseudoColor",
 	    X_visualinfo.depth);
@@ -1224,21 +1354,12 @@ void I_InitGraphics(void)
     // window -- and that the close button should ask rather than kill.
     {
 	XClassHint	class_hint;
-	XSizeHints*	size = XAllocSizeHints ();
-
 	XStoreName (X_display, X_mainWindow, "DOOM");
 	class_hint.res_name = "doom";
 	class_hint.res_class = "Doom";
 	XSetClassHint (X_display, X_mainWindow, &class_hint);
 
-	if (size)
-	{
-	    size->flags = PMinSize | PMaxSize;
-	    size->min_width = size->max_width = X_width;
-	    size->min_height = size->max_height = X_height;
-	    XSetWMNormalHints (X_display, X_mainWindow, size);
-	    XFree (size);
-	}
+	I_SizeHints ();
 
 	X_wmdelete = XInternAtom (X_display, "WM_DELETE_WINDOW", False);
 	XSetWMProtocols (X_display, X_mainWindow, &X_wmdelete, 1);
@@ -1277,62 +1398,8 @@ void I_InitGraphics(void)
     // The pointer is taken when a level starts, not here: I_UpdateGrab.
 
     if (doShm)
-    {
-
 	X_shmeventtype = XShmGetEventBase(X_display) + ShmCompletion;
-
-	// create the image
-	image = XShmCreateImage(	X_display,
-					X_visual,
-					X_visualinfo.depth,
-					ZPixmap,
-					0,
-					&X_shminfo,
-					X_width,
-					X_height );
-
-	grabsharedmemory(image->bytes_per_line * image->height);
-
-
-	// UNUSED
-	// create the shared memory segment
-	// X_shminfo.shmid = shmget (IPC_PRIVATE,
-	// image->bytes_per_line * image->height, IPC_CREAT | 0777);
-	// if (X_shminfo.shmid < 0)
-	// {
-	// perror("");
-	// I_Error("shmget() failed in InitGraphics()");
-	// }
-	// fprintf(stderr, "shared memory id=%d\n", X_shminfo.shmid);
-	// attach to the shared memory segment
-	// image->data = X_shminfo.shmaddr = shmat(X_shminfo.shmid, 0, 0);
-	
-
-	if (!image->data)
-	{
-	    perror("");
-	    I_Error("shmat() failed in InitGraphics()");
-	}
-
-	// get the X server to attach to it
-	if (!XShmAttach(X_display, &X_shminfo))
-	    I_Error("XShmAttach() failed in InitGraphics()");
-
-    }
-    else
-    {
-	image = XCreateImage(	X_display,
-    				X_visual,
-    				X_visualinfo.depth,
-    				ZPixmap,
-    				0,
-    				NULL,
-    				X_width, X_height,
-    				X_truecolor ? 32 : 8,
-    				0 );
-	image->data = (char *) malloc (image->bytes_per_line * X_height);
-
-    }
+    I_CreateImage ();
 
     // 24-bit pixels packed three bytes apiece are allowed by X and used by
     // almost nothing; every server this runs on keeps them in 32 bits.

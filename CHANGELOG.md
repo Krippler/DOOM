@@ -12,6 +12,15 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [1.20.0] — 2026-10-10
+
+### Added
+- **Aspect ratio**, in Options → Setup → Gameplay: **4:3**, the default, as
+  DOOM looked on DOS -- its 320x200 picture filled a 4:3 monitor, every pixel
+  a fifth taller than wide -- or **16:10**, the square pixels it was shown
+  with until now, in which everything looked a little squat. The browser
+  draws the picture to match, and so does the desktop build's window.
+
 ## [1.19.0] — 2026-10-10
 
 ### Added

@@ -147,8 +147,9 @@ def playpal(wad):
 
 # ------------------------------------------------------------------ controller
 #
-# The same 16-byte state message doom-gamepad.js sends, and the 7-byte
-# vibration message the engine sends back (linuxdoom-1.10/i_pad.c).
+# The same 16-byte state message doom-gamepad.js sends, and the engine's two
+# back (linuxdoom-1.10/i_pad.c): 7 bytes of vibration, and 2 of the Aspect
+# Ratio setting, for the page to draw the picture by.
 #
 
 BUTTONS = 'A B X Y LB RB LT RT VIEW START LS RS UP DOWN LEFT RIGHT GUIDE'.split()
@@ -166,6 +167,7 @@ class Pad:
                     die('nothing listening for the controller on port %d' % port)
                 time.sleep(0.2)
         self.rumbles = []
+        self.aspects = []
         self.buttons = 0
         self.axes = [0.0, 0.0, 0.0, 0.0]
         self.trig = [0, 0]
@@ -184,12 +186,19 @@ class Pad:
             if not d:
                 return
             buf += d
-            while len(buf) >= 7:
-                if buf[0:1] != b'R':
+            while buf:
+                if buf[0:1] == b'A':
+                    if len(buf) < 2:
+                        break
+                    self.aspects.append(buf[1])
+                    buf = buf[2:]
+                elif buf[0:1] == b'R':
+                    if len(buf) < 7:
+                        break
+                    self.rumbles.append(struct.unpack('<HHH', buf[1:7]))
+                    buf = buf[7:]
+                else:
                     buf = b''
-                    break
-                self.rumbles.append(struct.unpack('<HHH', buf[1:7]))
-                buf = buf[7:]
 
     def _send(self):
         self.s.sendall(b'P' + bytes([1])
@@ -336,6 +345,10 @@ def level(a):
     pad.press('RT', 0.3)
     time.sleep(0.8)
     loud = audio.peak(t0, time.time())
+    if pad.aspects[:1] != [1]:
+        die('the engine did not tell the page the aspect ratio, 4:3 by '
+            'default: got %r' % pad.aspects)
+    say('the engine told the page to draw the picture at 4:3')
     if not pad.rumbles:
         die('fired, and the engine asked the pad for no vibration')
     lo, hi, ms = pad.rumbles[0]
