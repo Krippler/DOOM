@@ -35,8 +35,9 @@
     justify-content: center;
   }
   /* The engine renders one fixed size. The canvas is scaled up to fill the
-     window, by the same factor in both directions so the picture keeps its
-     shape -- the black bars are whatever is left over on the other axis.
+     window, keeping its shape -- 4:3 as DOS showed it, or square pixels, as
+     the game's Aspect Ratio setting says (fitCanvas) -- and the black bars
+     are whatever is left over on the other axis.
 
      Set here with !important rather than as an inline style, because noVNC
      writes its own width and height onto the canvas whenever the framebuffer
@@ -522,21 +523,40 @@ function canvas() {
   return screenEl.querySelector('canvas');
 }
 
+// The game's Aspect Ratio setting, which the engine sends over the
+// controller's connection (doom-gamepad.js): DOS showed its 320x200 picture
+// on a 4:3 monitor, every pixel a fifth taller than wide, and the artists
+// drew for that. On, the picture is drawn that much taller; off, with
+// square pixels. Until the engine says, the last answer it gave this
+// browser, or on, the game's default.
+let aspectTall = true;
+try { aspectTall = localStorage.getItem('doom-aspect') !== '0'; } catch (e) {}
+
+function setAspect(tall) {
+  if (tall === aspectTall) return;
+  aspectTall = tall;
+  try { localStorage.setItem('doom-aspect', tall ? '1' : '0'); } catch (e) {}
+  fitCanvas();
+}
+
 function fitCanvas() {
   const c = canvas();
   if (!c || !c.width || !c.height) return;
 
+  // The picture's shape on screen: the framebuffer's, a fifth taller at 4:3.
+  const w = c.width;
+  const h = c.height * (aspectTall ? 1.2 : 1);
+
   // The smaller of the two ratios, so the picture fits in both directions;
-  // applying it to both axes is what keeps it from being stretched. Whole
-  // numbers were sharper but wasted most of a large screen -- a 640x400
-  // picture on a 2560x1440 display could only manage 3x.
-  const scale = Math.min(window.innerWidth  / c.width,
-                         window.innerHeight / c.height);
+  // applying it to both axes is what keeps it in that shape. Whole numbers
+  // were sharper but wasted most of a large screen -- a 640x400 picture on
+  // a 2560x1440 display could only manage 3x.
+  const scale = Math.min(window.innerWidth / w, window.innerHeight / h);
 
   document.documentElement.style.setProperty(
-    '--fb-w', `${Math.round(c.width  * scale)}px`);
+    '--fb-w', `${Math.round(w * scale)}px`);
   document.documentElement.style.setProperty(
-    '--fb-h', `${Math.round(c.height * scale)}px`);
+    '--fb-h', `${Math.round(h * scale)}px`);
 }
 
 // Fullscreen resizes the window after the event, so refit on both.
@@ -752,6 +772,7 @@ const AUDIO_VIA_ELEMENT =
 const gamepad = new DoomPadBridge({
   url: `${scheme}://${location.host}/websockify?token=pad`,
   onChange: () => { renderPadNote(); reportPad(); },
+  onAspect: setAspect,
 });
 
 // Whether the game is being played: the start screen is down and this tab is

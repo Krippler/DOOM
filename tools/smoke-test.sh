@@ -18,9 +18,10 @@
 #
 # The phases, each on a fresh X server:
 #
-#   level     depth 24, the mixer, a controller: E1M1 appears, the sticks walk
-#             and turn, RT fires and is heard and felt, Start opens the menu,
-#             and SIGINT saves the config and exits 0
+#   level     depth 24, the mixer, a controller: E1M1 appears, the engine
+#             tells the page the aspect ratio (4:3), the sticks walk and turn,
+#             RT fires and is heard and felt, Start opens the menu, and
+#             SIGINT saves the config and exits 0
 #   music     the title screen with music on is not silent (skipped when no
 #             General MIDI soundfont is installed)
 #   depth 8   the colour-mapped path the engine was written for draws the

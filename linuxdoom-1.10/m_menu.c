@@ -1782,6 +1782,7 @@ enum
     gp_hud,
     gp_pickup,
     gp_maxfps,
+    gp_aspect,
     gp_end
 } gameplay_e;
 
@@ -1792,6 +1793,7 @@ void M_ChangeCrosshairBlue (int choice);
 void M_ChangeHudStyle (int choice);
 void M_ChangeWeaponPickup (int choice);
 void M_ChangeMaxFps (int choice);
+void M_ChangeAspect (int choice);
 void M_DrawGameplay (void);
 
 menuitem_t GameplayMenu[] =
@@ -1802,7 +1804,8 @@ menuitem_t GameplayMenu[] =
     {2,"",M_ChangeCrosshairBlue,'b'},
     {2,"",M_ChangeHudStyle,'h'},
     {2,"",M_ChangeWeaponPickup,'w'},
-    {2,"",M_ChangeMaxFps,'f'}
+    {2,"",M_ChangeMaxFps,'f'},
+    {2,"",M_ChangeAspect,'a'}
 };
 
 menu_t GameplayDef =
@@ -1811,7 +1814,7 @@ menu_t GameplayDef =
     &SetupDef,
     GameplayMenu,
     M_DrawGameplay,
-    32,48,
+    32,40,
     0,
     SMALLLINEHEIGHT
 };
@@ -1844,6 +1847,18 @@ void M_ChangeWeaponPickup (int choice)	{ M_Cycle (&weaponpickup, choice, 3); }
 // 35 is id's: drawn once a tic, nothing blended. 0 is no limit at all.
 static int maxfpsvalues[] = { 35, 60, 72, 90, 120, 144, 165, 240, 0 };
 #define NUMMAXFPS	(int) (sizeof(maxfpsvalues) / sizeof(maxfpsvalues[0]))
+
+//
+// 4:3, as DOS showed the 320x200 picture on a monitor of that shape, each
+// pixel a fifth taller than wide, or 16:10, square pixels. Either way, left
+// or right, it changes; the page or the window follows (I_SetAspect).
+//
+void M_ChangeAspect (int choice)
+{
+    choice = 0;
+    aspect_correct = !aspect_correct;
+    I_SetAspect ();
+}
 
 void M_ChangeMaxFps (int choice)
 {
@@ -1918,6 +1933,10 @@ void M_DrawGameplay (void)
 	snprintf (buf, sizeof(buf), "%d", max_fps);
     M_WriteText (x, y, "MAX FPS");
     M_WriteText (vx, y, buf);
+    y += GameplayDef.lineheight;
+
+    M_WriteText (x, y, "ASPECT RATIO");
+    M_WriteText (vx, y, aspect_correct ? "4:3 (DOS)" : "16:10");
 
     // ONLY IF NEW is id's, and all a demo or a net game will use
     M_WriteText (x, 146, "ONLY IF NEW IS ID'S, AND WHAT DEMOS");

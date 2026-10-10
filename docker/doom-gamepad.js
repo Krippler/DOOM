@@ -29,6 +29,12 @@
 //
 //   'R' low high:u16 milliseconds:u16                        7 bytes
 //
+// and the game's Aspect Ratio setting (Options -> Setup -> Gameplay), when
+// this connects and whenever it changes, for the page to draw the picture
+// at 4:3 or with square pixels:
+//
+//   'A' on:u8                                                2 bytes
+//
 // played through the browser's vibrationActuator where it has one, and
 // hapticActuators (Firefox's) where it has that instead.
 //
@@ -45,9 +51,10 @@ const HEARTBEAT_MS = 250;   // resent this often even when nothing changes
 const RETRY_MS = 2000;      // and the connection tried again this often
 
 export class DoomPadBridge {
-  constructor({ url, onChange } = {}) {
+  constructor({ url, onChange, onAspect } = {}) {
     this._url = url;
     this._onChange = onChange || (() => {});
+    this._onAspect = onAspect || (() => {});
     this._sock = null;
     this._open = false;
     this._retryAt = 0;
@@ -150,15 +157,20 @@ export class DoomPadBridge {
     buf.set(this._rx);
     buf.set(add, this._rx.length);
     let at = 0;
-    while (buf.length - at >= 7) {
-      if (buf[at] !== 82) {           // not 'R': lost the thread, drop it all
+    while (at < buf.length) {
+      if (buf[at] === 65) {           // 'A'
+        if (buf.length - at < 2) break;
+        this._onAspect(buf[at + 1] !== 0);
+        at += 2;
+      } else if (buf[at] === 82) {    // 'R'
+        if (buf.length - at < 7) break;
+        const v = new DataView(buf.buffer, at);
+        this._rumble(v.getUint16(1, true) / 65535, v.getUint16(3, true) / 65535,
+                     v.getUint16(5, true));
+        at += 7;
+      } else {                        // lost the thread: drop it all
         at = buf.length;
-        break;
       }
-      const v = new DataView(buf.buffer, at);
-      this._rumble(v.getUint16(1, true) / 65535, v.getUint16(3, true) / 65535,
-                   v.getUint16(5, true));
-      at += 7;
     }
     this._rx = buf.slice(at);
   }

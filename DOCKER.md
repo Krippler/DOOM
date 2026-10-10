@@ -250,6 +250,7 @@ pistol reaches the super shotgun; the shotgun is the one going back from it.
 | HUD style | the status bar, or **minimal**: the view fills the screen, with the face and health in the bottom left, armour after them, the ammunition in hand in the bottom right and the keys above |
 | Weapon on pickup | change to a weapon picked up **always**, **only if new** (id's), or **never**. Demos and net games always play id's way |
 | Max FPS | **35** (id's, the default), 60, 72, 90, 120, 144, 165, 240 or **no limit**. Above 35, frames are drawn between the game's tics too, for smoother motion. Up to 60 reach the browser; above that, see `DOOM_VNC_WAIT` |
+| Aspect ratio | **4:3** (the default), as DOOM looked on DOS: its 320x200 picture filled a 4:3 monitor, every pixel a fifth taller than wide, and the artists drew for that. Or **16:10**, square pixels. The page draws the picture to match, as does the desktop build's window |
 
 **Max FPS.** DOOM runs 35 times a second and always will — demos and net games
 depend on it — and it used to draw 35 times a second too, so everything that
