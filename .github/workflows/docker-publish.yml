@@ -10,6 +10,10 @@ on:
     tags: ["v*.*.*"]
   pull_request:
     branches: ["master"]
+  # Run by hand (Actions -> Docker -> Run workflow, or the API) on master to
+  # finish a release whose push never started a run: the same detection as a
+  # release merge, so a top CHANGELOG section with no tag yet is released.
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -42,7 +46,7 @@ jobs:
       # `latest` and creates the tag and GitHub Release in the same run.
       - name: Detect release-on-merge
         id: detect
-        if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
         run: |
           set -euo pipefail
           TOP="$(awk '/^## \[/ {print; exit}' CHANGELOG.md || true)"
