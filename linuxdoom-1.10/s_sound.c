@@ -877,12 +877,15 @@ S_AdjustSoundParams
     }
     else if (gamemap == 8)
     {
-	if (approx_dist > S_CLIPPING_DIST)
-	    approx_dist = S_CLIPPING_DIST;
-
-	*vol = 15+ ((snd_SfxVolume-15)
-		    *((S_CLIPPING_DIST - approx_dist)>>FRACBITS))
-	    / S_ATTENUATOR;
+	// The boss levels -- E1M8 to E4M8, SIGIL's E5M8 and SIGIL II's E6M8,
+	// DOOM II's MAP08 -- are heard at any distance, so a boss across the
+	// map is. id's sum here was 15 + (volume - 15) * nearness: 15 at
+	// full volume, as meant, but below it a sound came out louder the
+	// farther away it was, reaching 15 -- the top of the scale, whatever
+	// the effects volume was set to. Every distant monster on those
+	// levels played at nearly twice the volume of everything else. The
+	// effects volume, at any distance, is what id's comes to at 15.
+	*vol = snd_SfxVolume;
     }
     else
     {

@@ -329,6 +329,18 @@ the scaling used to be. Measured off a PulseAudio null sink, a pistol shot at
 the default volume setting went from a peak of 1693 to 14114 once the scaling
 was restored.
 
+On levels numbered 8 -- the boss levels, E1M8 to SIGIL II's E6M8 and DOOM
+II's MAP08 -- `S_AdjustSoundParams` lets every sound be heard at any
+distance, so a boss across the map is. id's volume there was `15 +
+(snd_SfxVolume - 15) * nearness`: 15 at full volume, as meant, but below it
+the farther a sound the louder, up to 15 whatever the setting. The DOS
+version had DMX's master volume on top to hold that down; the Linux code
+never did. At the default setting of 8, monsters on E1M8 measured 10 to 12
+at 450 to 720 units and 15 past 2500, against 8 for the player's own
+pistol, and on E1M7 the same distances gave 6, 1 and nothing. On those
+levels every sound now plays at the setting, at any distance: what id's
+comes to at 15.
+
 ## Music
 
 Every music function in `i_sound.c` was an empty stub, and nothing ever

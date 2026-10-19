@@ -12,6 +12,15 @@ fixes or adjusts moves the patch (`1.11.1`). Up to 1.10.78 the first two
 numbers followed the engine, linuxdoom-1.10, and every release moved the
 patch whatever was in it.
 
+## [1.20.1] — 2026-10-19
+
+### Fixed
+- On the boss levels -- every level numbered 8: E1M8 to E4M8, SIGIL's E5M8,
+  SIGIL II's E6M8, DOOM II's MAP08 -- sound effects got louder the farther
+  away they were, up to full volume whatever the effects volume was set to:
+  id's sum for hearing a boss across the map, which only came out right at
+  the top volume. They now play at the effects volume, from anywhere.
+
 ## [1.20.0] — 2026-10-10
 
 ### Added
