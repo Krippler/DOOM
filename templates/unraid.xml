@@ -39,6 +39,11 @@
   <DonateLink/>
   <Requires>Nothing. The shareware game data ships with the container. Add your own IWAD to the WADs folder to play the full game.</Requires>
   <Changes>
+### 1.20.1
+- On the boss levels (every level numbered 8, SIGIL II's E6M8 among them)
+  sound effects no longer get louder with distance, up to full volume:
+  they play at the effects volume.
+
 ### 1.20.0
 - Aspect ratio, in Options, Setup, Gameplay: 4:3 by default, as DOOM
   looked on DOS, or 16:10 with square pixels. The browser draws the
