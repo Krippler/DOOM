@@ -16,6 +16,7 @@ on:
     branches: ["master", "claude/**", "fix/**", "feat/**"]
   pull_request:
     branches: ["master"]
+  workflow_dispatch:
 
 jobs:
   smoke:
